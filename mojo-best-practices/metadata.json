@@ -1,0 +1,191 @@
+{
+  "name": "mojo-best-practices",
+  "version": "5.2.0",
+  "license": "MIT",
+  "organization": "Modular Community",
+  "author": "Modular Community",
+  "published": "January 2026",
+  "supported_versions": {
+    "stable": {
+      "mojo_version": "26.1.0",
+      "note": "v26.1 introduces comptime keyword (preferred over alias), deprecated GPU import paths"
+    },
+    "nightly": {
+      "mojo_version": "26.2.0.dev2026022005",
+      "note": "Track latest at https://docs.modular.com/mojo/changelog/"
+    }
+  },
+  "last_verified": "2026-02-20",
+  "changelog_reference": "https://docs.modular.com/stable/mojo/changelog",
+  "unreleased_changelog": "https://raw.githubusercontent.com/modular/modular/main/mojo/docs/changelog.md",
+  "source_reference": "https://github.com/modular/modular",
+  "abstract": "Mojo programming best practices from the official modular/modular repository. Supports both stable (v26.1) and nightly. 40 patterns across 14 categories covering memory safety, GPU kernels (SM90/SM100), language porting, testing, and performance.",
+  "patterns": {
+    "total": 40,
+    "categories": {
+      "memory-safety": {
+        "prefix": "memory-",
+        "priority": "CRITICAL",
+        "count": 4
+      },
+      "type-system": {
+        "prefix": "type-",
+        "priority": "CRITICAL",
+        "count": 3
+      },
+      "gpu-programming": {
+        "prefix": "gpu-",
+        "priority": "CRITICAL",
+        "count": 15
+      },
+      "c-interoperability": {
+        "prefix": "ffi-",
+        "priority": "CRITICAL",
+        "count": 2
+      },
+      "struct-design": {
+        "prefix": "struct-",
+        "priority": "HIGH",
+        "count": 1
+      },
+      "function-design": {
+        "prefix": "fn-",
+        "priority": "HIGH",
+        "count": 1
+      },
+      "testing": {
+        "prefix": "test-",
+        "priority": "HIGH",
+        "count": 2
+      },
+      "debugging": {
+        "prefix": "debug-",
+        "priority": "HIGH",
+        "count": 1
+      },
+      "error-handling": {
+        "prefix": "error-",
+        "priority": "MEDIUM-HIGH",
+        "count": 1
+      },
+      "performance": {
+        "prefix": "perf-",
+        "priority": "MEDIUM",
+        "count": 4
+      },
+      "python-interop": {
+        "prefix": "python-",
+        "priority": "MEDIUM",
+        "count": 1
+      },
+      "language-porting": {
+        "prefix": "porting-",
+        "priority": "MEDIUM",
+        "count": 3
+      },
+      "metaprogramming": {
+        "prefix": "meta-",
+        "priority": "LOW",
+        "count": 2
+      }
+    }
+  },
+  "files": {
+    "mainReference": "SKILL.md",
+    "fullGuide": "references/FULL_REFERENCE.md",
+    "patternsDirectory": "patterns/",
+    "referenceDirectory": "references/"
+  },
+  "triggers": [
+    "Write Mojo code",
+    "Convert Python to Mojo",
+    "Optimize Mojo function",
+    "Review Mojo code",
+    "Write GPU kernel in Mojo",
+    "Use BLAS in Mojo"
+  ],
+  "references": [
+    {
+      "title": "Mojo Manual",
+      "url": "https://docs.modular.com/mojo/manual/"
+    },
+    {
+      "title": "Mojo Standard Library",
+      "url": "https://docs.modular.com/mojo/std/"
+    },
+    {
+      "title": "Mojo Changelog",
+      "url": "https://docs.modular.com/mojo/changelog"
+    },
+    {
+      "title": "MAX Kernels (GPU examples)",
+      "url": "https://github.com/modular/modular/tree/main/max/kernels"
+    }
+  ],
+  "pattern_dependencies": {
+    "_description": "Cross-skill dependencies - which MAX patterns require or recommend these Mojo patterns",
+    "_format": "Same structure as max-best-practices for consistency",
+    "gpu-fundamentals": {
+      "required_by_max": [
+        "engine-operations"
+      ],
+      "recommends_to_max": [
+        "serve-configuration"
+      ]
+    },
+    "struct-design": {
+      "required_by_max": [
+        "engine-operations",
+        "engine-lora"
+      ]
+    },
+    "memory-ownership": {
+      "required_by_max": [
+        "engine-weights"
+      ],
+      "recommends_to_max": [
+        "engine-lora"
+      ]
+    },
+    "type-simd": {
+      "required_by_max": [
+        "engine-quantization",
+        "engine-operations"
+      ]
+    },
+    "type-system": {
+      "required_by_max": [
+        "engine-operations"
+      ],
+      "recommends_to_max": [
+        "graph-construction"
+      ]
+    },
+    "gpu-memory-access": {
+      "recommends_to_max": [
+        "engine-weights"
+      ]
+    },
+    "gpu-synchronization": {
+      "recommends_to_max": [
+        "multigpu-scaling"
+      ]
+    },
+    "perf-vectorization": {
+      "recommends_to_max": [
+        "engine-quantization"
+      ]
+    }
+  },
+  "related_skills": [
+    {
+      "name": "max-best-practices",
+      "relationship": "sibling",
+      "cross_references": [
+        "engine-* patterns for MAX deployment",
+        "serve-* patterns for model serving",
+        "multigpu-* patterns for multi-GPU inference"
+      ]
+    }
+  ]
+}

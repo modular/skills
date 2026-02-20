@@ -1,0 +1,158 @@
+{
+  "name": "max-best-practices",
+  "version": "3.1.0",
+  "license": "MIT",
+  "organization": "Modular Community",
+  "author": "Modular Community",
+  "published": "January 2026",
+  "supported_versions": {
+    "stable": {
+      "max_version": "26.1.0",
+      "note": "v26.1 aligned with Mojo 26.1 - comptime keyword preferred"
+    },
+    "nightly": {
+      "max_version": "26.2.0.dev2026022005",
+      "note": "Track latest at https://docs.modular.com/max/changelog/"
+    }
+  },
+  "last_verified": "2026-02-20",
+  "changelog_reference": "https://docs.modular.com/stable/max/changelog/",
+  "unreleased_changelog": "https://docs.modular.com/max/changelog/",
+  "source_reference": "https://github.com/modular/modular",
+  "abstract": "MAX AI inference framework best practices from Modular. Supports both stable (v26.1) and nightly. Covers MAX Serve deployment, MAX Graph API, multi-GPU inference, and performance optimization. 15 patterns across 7 categories.",
+  "patterns": {
+    "total": 15,
+    "categories": {
+      "serve": {
+        "prefix": "serve-",
+        "priority": "CRITICAL",
+        "count": 5
+      },
+      "multigpu": {
+        "prefix": "multigpu-",
+        "priority": "CRITICAL",
+        "count": 1
+      },
+      "engine": {
+        "prefix": "engine-",
+        "priority": "HIGH",
+        "count": 4
+      },
+      "graph": {
+        "prefix": "graph-",
+        "priority": "HIGH",
+        "count": 1
+      },
+      "model": {
+        "prefix": "model-",
+        "priority": "HIGH",
+        "count": 2
+      },
+      "perf": {
+        "prefix": "perf-",
+        "priority": "MEDIUM",
+        "count": 1
+      },
+      "deploy": {
+        "prefix": "deploy-",
+        "priority": "MEDIUM",
+        "count": 1
+      }
+    }
+  },
+  "files": {
+    "mainReference": "SKILL.md",
+    "fullGuide": "references/FULL_REFERENCE.md",
+    "patternsDirectory": "patterns/",
+    "referenceDirectory": "references/"
+  },
+  "triggers": [
+    "Deploy MAX model",
+    "MAX Serve",
+    "max serve",
+    "MAX inference",
+    "Multi-GPU inference",
+    "MAX Graph",
+    "MAX Engine",
+    "MAX container",
+    "OpenAI-compatible endpoint",
+    "LLM serving",
+    "Model deployment"
+  ],
+  "pattern_dependencies": {
+    "_description": "Cross-skill dependencies - which Mojo patterns each MAX pattern requires",
+    "engine-operations": {
+      "requires_from_mojo": [
+        "gpu-fundamentals",
+        "struct-design"
+      ],
+      "recommends_from_mojo": [
+        "type-system",
+        "type-simd"
+      ]
+    },
+    "engine-weights": {
+      "requires_from_mojo": [
+        "memory-ownership"
+      ],
+      "recommends_from_mojo": [
+        "gpu-memory-access"
+      ]
+    },
+    "engine-quantization": {
+      "requires_from_mojo": [
+        "type-simd"
+      ],
+      "recommends_from_mojo": [
+        "perf-vectorization"
+      ]
+    },
+    "engine-lora": {
+      "requires_from_mojo": [
+        "struct-design"
+      ],
+      "recommends_from_mojo": [
+        "memory-ownership"
+      ]
+    },
+    "graph-construction": {
+      "recommends_from_mojo": [
+        "type-system"
+      ]
+    },
+    "multigpu-scaling": {
+      "recommends_from_mojo": [
+        "gpu-synchronization"
+      ]
+    }
+  },
+  "related_skills": [
+    {
+      "name": "mojo-best-practices",
+      "relationship": "sibling",
+      "cross_references": [
+        "gpu-* patterns for kernel development",
+        "memory-* patterns for memory management",
+        "type-* patterns for type system"
+      ]
+    }
+  ],
+  "references": [
+    {
+      "title": "MAX Documentation",
+      "url": "https://docs.modular.com/max/"
+    },
+    {
+      "title": "MAX Changelog",
+      "url": "https://docs.modular.com/max/changelog/"
+    },
+    {
+      "title": "MAX Container",
+      "url": "https://docs.modular.com/max/container/"
+    },
+    {
+      "title": "MAX GitHub",
+      "url": "https://github.com/modular/modular/tree/main/max"
+    }
+  ]
+}
