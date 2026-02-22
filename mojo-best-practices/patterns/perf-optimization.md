@@ -554,7 +554,7 @@ fn copy_array[T: Copyable](
     count: Int,
 ):
     @parameter
-    if T.__copyinit__is_trivial:
+    if T.__copy_ctor_is_trivial:
         # Trivial: single memcpy (uses SIMD, very fast)
         memcpy(dest=dest, src=src, count=count)
     else:
@@ -567,8 +567,8 @@ fn copy_array[T: Copyable](
 
 | Flag | Meaning | True For |
 |------|---------|----------|
-| `T.__moveinit__is_trivial` | Move is bitwise copy | Int, Float32, SIMD, Pointer |
-| `T.__copyinit__is_trivial` | Copy is bitwise copy | Int, Float32, SIMD, Pointer |
+| `T.__move_ctor_is_trivial` | Move is bitwise copy | Int, Float32, SIMD, Pointer |
+| `T.__copy_ctor_is_trivial` | Copy is bitwise copy | Int, Float32, SIMD, Pointer |
 | `T.__del__is_trivial` | Destructor is no-op | Int, Float32, SIMD, Pointer |
 
 ---
@@ -884,7 +884,7 @@ fn conv2d_adaptive(cfg: ConvConfig, mps: MPSContext) -> Bool:
 - **Caching pattern**: Check flag, load if miss, return cached
 - **mmap cleanup**: Track is_mmapped, use munmap vs free appropriately
 - **Compile-time**: Use `comptime` (alias is deprecated)
-- **Trivial check**: `T.__copyinit__is_trivial`
+- **Trivial check**: `T.__copy_ctor_is_trivial`
 - **Benchmark**: Warmup + best of 10, separate setup
 
 ---
@@ -898,7 +898,7 @@ fn conv2d_adaptive(cfg: ConvConfig, mps: MPSContext) -> Bool:
 | `buffer pool exhaustion` | All buffers in use | Increase pool size; add blocking wait for buffer |
 | `mmap leak` | Missing munmap | Track is_mmapped flag; call munmap in destructor |
 | `benchmark variance too high` | Cold cache or background work | Add warmup iterations; isolate benchmark process |
-| `trivial copy check wrong` | Using wrong trait check | Use `T.__copyinit__is_trivial` for trivial copy detection |
+| `trivial copy check wrong` | Using wrong trait check | Use `T.__copy_ctor_is_trivial` for trivial copy detection |
 
 ---
 

@@ -132,8 +132,8 @@ struct TrivialPoint(Copyable, Movable):
     var y: Float32
 
     # Declare that copy/move are just bitwise copies
-    comptime __copyinit__is_trivial: Bool = True
-    comptime __moveinit__is_trivial: Bool = True
+    comptime __copy_ctor_is_trivial: Bool = True
+    comptime __move_ctor_is_trivial: Bool = True
     comptime __del__is_trivial: Bool = True
 ```
 
@@ -143,7 +143,7 @@ Generic code can check these flags:
 # nocompile
 fn copy_array[T: Copyable](dest: UnsafePointer[T], src: UnsafePointer[T], n: Int):
     @parameter
-    if T.__copyinit__is_trivial:
+    if T.__copy_ctor_is_trivial:
         memcpy(dest=dest, src=src, count=n)  # Fast path
     else:
         for i in range(n):

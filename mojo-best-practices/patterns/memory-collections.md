@@ -589,7 +589,7 @@ fn extend(mut self, var other: List[Self.T, ...]):
     var src_ptr = other.unsafe_ptr()
 
     @parameter
-    if Self.T.__moveinit__is_trivial:
+    if Self.T.__move_ctor_is_trivial:
         memcpy(dest=dest_ptr, src=src_ptr, count=other_len)
     else:
         for _ in range(other_len):
