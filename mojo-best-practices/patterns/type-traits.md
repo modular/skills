@@ -66,11 +66,11 @@ struct Vector2D(Copyable, Movable, Writable, Equatable):
         self.x = x
         self.y = y
 
-    fn __copyinit__(out self, copy: Self):
+    fn __init__(out self, *, copy: Self):
         self.x = copy.x
         self.y = copy.y
 
-    fn __moveinit__(out self, deinit take: Self):
+    fn __init__(out self, *, deinit take: Self):
         self.x = take.x
         self.y = take.y
 
@@ -126,6 +126,7 @@ Implement the appropriate traits based on how your type will be used.
 **When:** Creating custom types
 
 **Do:**
+
 ```mojo
 struct TrivialPoint(Copyable, Movable):
     var x: Float32
@@ -154,8 +155,8 @@ fn copy_array[T: Copyable](dest: UnsafePointer[T], src: UnsafePointer[T], n: Int
 
 | Trait | Purpose | Required Methods |
 |-------|---------|-----------------|
-| Copyable | Allow copying | `__copyinit__` |
-| Movable | Allow moving | `__moveinit__` |
+| Copyable | Allow copying | `__init__(copy=)` |
+| Movable | Allow moving | `__init__(move=)` |
 | Writable | Print/output support | `write_to[W: Writer]` |
 | Stringable | String conversion | `__str__` |
 | Representable | Debug representation | `__repr__` |
@@ -172,6 +173,7 @@ Only require the traits you actually use.
 **When:** Writing generic functions
 
 **Do:**
+
 ```mojo
 # Minimal requirements
 fn just_print[T: Writable](value: T):
@@ -179,6 +181,7 @@ fn just_print[T: Writable](value: T):
 ```
 
 **Don't:**
+
 ```mojo
 # Over-constrained
 fn just_print[T: Movable & Copyable & Hashable & Writable](value: T):
@@ -192,6 +195,7 @@ Define generic structs with explicit trait requirements.
 **When:** Creating generic containers
 
 **Do:**
+
 ```mojo
 # nocompile
 struct SortedList[T: Movable & ImplicitlyDestructible & Comparable](
@@ -221,6 +225,7 @@ Combine traits to define reusable requirement sets.
 **When:** Multiple functions need the same trait combination
 
 **Do:**
+
 ```mojo
 # nocompile
 # Definition from stdlib
@@ -255,6 +260,7 @@ Create wrappers that forward trait requirements.
 **When:** Building generic containers or decorators
 
 **Do:**
+
 ```mojo
 # nocompile
 # Modern Mojo requires Self.T syntax and explicit traits
@@ -291,6 +297,7 @@ Add methods conditionally based on type parameter traits.
 **When:** Some operations only make sense for certain types
 
 **Do:**
+
 ```mojo
 # nocompile
 struct Pair[T: Movable & ImplicitlyDestructible & Equatable](
@@ -325,6 +332,7 @@ Check trait conformance and downcast at runtime when needed.
 **When:** Generic code that can optionally use trait methods
 
 **Do:**
+
 ```mojo
 # nocompile
 fn compare_elements[T: Copyable](a: T, b: T) -> Bool:
@@ -389,6 +397,7 @@ var s = str(p)  # Calls __str__()
 ```
 
 **With Representable for debug output:**
+
 ```mojo
 # nocompile
 struct User(Stringable, Representable):
@@ -437,6 +446,7 @@ print(p)  # Output: Point(1.0, 2.0)
 | `ImplicitlyIntable` | Yes | Yes (changed) |
 
 **Converting to String when needed:**
+
 ```mojo
 # nocompile
 fn to_string[T: Writable](value: T) -> String:
@@ -461,7 +471,7 @@ Understanding what traits are **not** available helps avoid confusion when comin
 | `Display` (Rust) | `Writable` (v26.1+) or `Stringable` | Different naming |
 | `Debug` (Rust) | `Representable` | Similar purpose |
 | `Default` (Rust) | `Defaultable` | Available in stdlib |
-| `Clone` (Rust) | `Copyable` with `__copyinit__` | Mojo uses copy constructors |
+| `Clone` (Rust) | `Copyable` with `__init__(copy=)` | Mojo uses copy constructors |
 | `Drop` (Rust) | `__del__` destructor | Automatic with ASAP destruction |
 | `Send` / `Sync` (Rust) | Not available | No trait-based thread safety |
 | `Deref` (Rust) | Not available | Use explicit `.value` access |
@@ -477,6 +487,7 @@ Understanding what traits are **not** available helps avoid confusion when comin
 ### Common Mistakes from Rust Developers
 
 **Using the Iterator trait:**
+
 ```mojo
 # nocompile
 # The stdlib provides an Iterator trait in std/iter/:
@@ -501,6 +512,7 @@ struct MyIter[T: Movable & ImplicitlyDestructible]:
 ```
 
 **Expecting Send/Sync for thread safety:**
+
 ```mojo
 # WRONG: No Send/Sync traits
 # fn spawn_thread[T: Send](value: T):  # Not available
@@ -510,6 +522,7 @@ struct MyIter[T: Movable & ImplicitlyDestructible]:
 ```
 
 **Expecting Deref for smart pointers:**
+
 ```mojo
 # nocompile
 # WRONG: No Deref trait

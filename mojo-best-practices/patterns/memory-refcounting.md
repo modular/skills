@@ -132,10 +132,10 @@ struct RefCounted[T: Movable & ImplicitlyDestructible](ImplicitlyCopyable):
         self._inner = alloc[Self._inner_type](1)
         __get_address_as_uninit_lvalue(self._inner.address) = Self._inner_type(value^)
 
-    fn __copyinit__(out self, existing: Self):
+    fn __init__(out self, *, copy: Self):
         """Copy: increment refcount atomically."""
-        existing._inner[].add_ref()  # MONOTONIC - we have a valid ref
-        self._inner = existing._inner
+        copy._inner[].add_ref()  # MONOTONIC - we have a valid ref
+        self._inner = copy._inner
 
     @no_inline  # Reduce code bloat from inlining destructor
     fn __del__(deinit self):
@@ -385,6 +385,7 @@ fn process_each[T](items: List[RefCounted[T]]):
 | **ImplicitlyDestructible** | Available | v26.1+ |
 
 **Example (v26.1+):**
+
 ```mojo
 # nocompile
 from os.atomic import Atomic, Consistency, fence
@@ -405,6 +406,7 @@ struct _RefCountedInner[T: Movable & ImplicitlyDestructible]:
 ```
 
 **Notes:**
+
 - ArcPointer API is stable across versions
 - Atomic operations and memory ordering constants are stable
 - Reference counting patterns (MONOTONIC increment, RELEASE decrement, ACQUIRE fence) are stable

@@ -275,13 +275,9 @@ struct MoveCounter[T: Copyable & ImplicitlyDestructible](Copyable):
         self.value = value^
         self.move_count = 0
 
-    fn __moveinit__(out self, deinit existing: Self):
-        self.value = existing.value^
-        self.move_count = existing.move_count + 1
-
-    fn __copyinit__(out self, existing: Self):
-        self.value = existing.value
-        self.move_count = existing.move_count
+    fn __init__(out self, *, deinit take: Self):
+        self.value = take.value^
+        self.move_count = take.move_count + 1
 ```
 
 **Usage - verify List doesn't copy unnecessarily:**
@@ -325,9 +321,9 @@ struct CopyCounter[T: ImplicitlyCopyable & Writable & Defaultable = NoneType](
         self.value = value
         self.copy_count = 0
 
-    fn __copyinit__(out self, existing: Self):
-        self.value = existing.value
-        self.copy_count = existing.copy_count + 1
+    fn __init__(out self, *, copy: Self):
+        self.value = copy.value
+        self.copy_count = copy.copy_count + 1
 ```
 
 **Usage - verify function doesn't copy when borrowing:**
@@ -400,7 +396,7 @@ struct AbortOnCopy(ImplicitlyCopyable):
     """Type that aborts if copied - for testing move-only code paths."""
     var value: Int
 
-    fn __copyinit__(out self, other: Self):
+    fn __init__(out self, *, other: Self):
         abort("Unexpected copy of AbortOnCopy!")
 ```
 
@@ -665,19 +661,22 @@ fn test_with_fixture() raises:
 
 ## When to Apply
 
-### Use TestSuite for:
+### Use TestSuite for
+
 - All unit test files
 - Integration tests
 - Module-level testing
 - CI/CD test suites
 
-### Use Lifecycle Counters for:
+### Use Lifecycle Counters for
+
 - Testing container implementations
 - Verifying move-only operations
 - Debugging unexpected performance (too many copies)
 - Ensuring destructors are called correctly
 
-### Use Property-Based Testing for:
+### Use Property-Based Testing for
+
 - Testing data structure invariants
 - Verifying mathematical properties
 - Encode/decode roundtrip tests
@@ -727,6 +726,7 @@ mojo run --target-accelerator=nvidia:sm_80 test_gpu.mojo
 | **Constants** | `alias` or `comptime` | Both work in v26.1+ |
 
 **Example (v26.1+):**
+
 ```mojo
 from testing import TestSuite, assert_equal
 

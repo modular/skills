@@ -115,6 +115,7 @@ Complete guide for porting C++ code to Mojo with side-by-side examples. Covers s
 C++ has no borrow checker. Memory errors are caught by sanitizers (runtime) or static analysis (limited).
 
 **C++23 (unsafe by default):**
+
 ```cpp
 // C++23 — compiles fine, undefined behavior at runtime
 std::vector<int> vec = {1, 2, 3};
@@ -125,6 +126,7 @@ std::cout << ref;       // DANGLING REFERENCE — undefined behavior
 ```
 
 **Mojo (safe by default):**
+
 ```mojo
 # nocompile
 fn main():
@@ -139,6 +141,7 @@ fn main():
 C++ templates are Turing-complete but produce cryptic errors and slow compilation. Mojo parameters are explicit and fast.
 
 **C++23 (templates):**
+
 ```cpp
 // C++23 — template metaprogramming
 template<typename T>
@@ -160,6 +163,7 @@ struct SIMDVector {
 ```
 
 **Mojo (parameters):**
+
 ```mojo
 # nocompile
 # Mojo — parametric types with clear constraints
@@ -178,6 +182,7 @@ struct SIMDVector[T: DType, Width: Int]:
 Both C++ and Mojo use deterministic destruction. Mojo simplifies it.
 
 **C++23:**
+
 ```cpp
 class FileHandle {
     int fd_;
@@ -200,6 +205,7 @@ public:
 ```
 
 **Mojo:**
+
 ```mojo
 # nocompile
 struct FileHandle:
@@ -210,11 +216,11 @@ struct FileHandle:
         if self.fd < 0:
             raise "Failed to open"
 
-    fn __moveinit__(out self, var existing: Self):
-        self.fd = existing.fd
-        existing.fd = -1
+    fn __init__(out self, *, deinit take: Self):
+        self.fd = take.fd
+        take.fd = -1
 
-    fn __del__(var self):
+    fn __del__(deinit self):
         if self.fd >= 0:
             pass  # Close file
     # No Rule of Five — Mojo generates safe defaults
@@ -228,6 +234,7 @@ struct FileHandle:
 ### Level 1: SIMD — Built-In vs Intrinsics
 
 **C++23 (manual intrinsics):**
+
 ```cpp
 // C++23 — requires platform-specific intrinsics
 #include <immintrin.h>  // x86 only!
@@ -246,6 +253,7 @@ void add_arrays_avx(float* a, float* b, float* c, int n) {
 ```
 
 **Mojo (portable, first-class SIMD):**
+
 ```mojo
 # nocompile
 from sys import simdwidthof
@@ -268,6 +276,7 @@ fn add_arrays(a: UnsafePointer[Float32], b: UnsafePointer[Float32],
 ### Level 2: Compile-Time Computation
 
 **C++23 (constexpr/consteval):**
+
 ```cpp
 // C++23
 consteval int fibonacci(int n) {
@@ -286,6 +295,7 @@ constexpr int fib_10 = fibonacci(10);  // 55, computed at compile time
 ```
 
 **Mojo (alias — simpler):**
+
 ```mojo
 fn fibonacci(n: Int) -> Int:
     if n <= 1:
@@ -304,6 +314,7 @@ fn main():
 ### Level 3: GPU Kernels — Unified vs Separate Toolchain
 
 **C++23 + CUDA (separate toolchain):**
+
 ```cpp
 // kernel.cu — MUST be a .cu file, compiled with nvcc
 __global__ void vector_add(float* a, float* b, float* c, int n) {
@@ -330,6 +341,7 @@ int main() {
 ```
 
 **Mojo (unified — ONE file, ONE compiler):**
+
 ```mojo
 # nocompile
 from gpu.host import DeviceContext
@@ -455,6 +467,7 @@ fn gpu_kernel(data: UnsafePointer[Float32], n: Int):
 ### Pattern 1: std::vector → List
 
 **C++23:**
+
 ```cpp
 std::vector<int> vec;
 vec.push_back(1);
@@ -465,6 +478,7 @@ auto size = vec.size();
 ```
 
 **Mojo:**
+
 ```mojo
 # nocompile
 var vec = List[Int]()
@@ -479,6 +493,7 @@ var size = len(vec)
 ### Pattern 2: std::unique_ptr → Ownership
 
 **C++23:**
+
 ```cpp
 auto ptr = std::make_unique<Widget>(42);
 process(std::move(ptr));  // Transfer ownership
@@ -486,6 +501,7 @@ process(std::move(ptr));  // Transfer ownership
 ```
 
 **Mojo:**
+
 ```mojo
 # nocompile
 var widget = Widget(42)
@@ -496,6 +512,7 @@ process(widget^)  # Transfer ownership with ^
 ### Pattern 3: Concepts → Traits
 
 **C++23:**
+
 ```cpp
 template<typename T>
 concept Printable = requires(T t, std::ostream& os) {
@@ -509,6 +526,7 @@ void print_item(const T& item) {
 ```
 
 **Mojo:**
+
 ```mojo
 # nocompile
 trait Printable:
@@ -522,6 +540,7 @@ fn print_item[T: Printable](item: T):
 ### Pattern 4: constexpr/consteval → alias/comptime
 
 **C++23:**
+
 ```cpp
 constexpr int BUFFER_SIZE = 1024;
 consteval int compute_table_size(int entries) { return entries * 2 + 1; }
@@ -536,6 +555,7 @@ FixedBuffer<BUFFER_SIZE> buf;
 ```
 
 **Mojo:**
+
 ```mojo
 # nocompile
 comptime BUFFER_SIZE = 1024

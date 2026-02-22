@@ -328,16 +328,16 @@ fn test_string_ops():
     var contains = "World" in s
     var split = s.split(",")
     var length = len(s)
-    
+
     # v26.2+ renamed ljust/rjust to ascii_ljust/ascii_rjust
     var padded = s.ascii_ljust(20, "*")
     var right_padded = s.ascii_rjust(20, "*")
-    
+
     # v26.2+ Safety: use .as_bytes() for byte-level access
     # Direct subscripting returns Unicode codepoints now
     var bytes = s.as_bytes()
     var first_byte = bytes[0]
-    
+
     _ = upper
     _ = lower
     _ = contains
@@ -377,7 +377,7 @@ struct Resource(Movable):
     fn __init__(out self, value: Int):
         self.data = value
 
-    fn __moveinit__(out self, deinit take: Self):
+    fn __init__(out self, *, deinit take: Self):
         self.data = take.data
 
 fn takes_ownership(var r: Resource) -> Int:
@@ -400,9 +400,6 @@ struct Value(Copyable):
 
     fn __init__(out self, value: Int):
         self.data = value
-
-    fn __copyinit__(out self, copy: Self):
-        self.data = copy.data
 
 fn takes_copy(v: Value) -> Int:
     return v.data
@@ -650,7 +647,8 @@ fn main():
 ## Version Info
 
 This canary file is tested against:
-- **Stable**: v26.1 (via https://github.com/modular/modular/releases)
+
+- **Stable**: v26.1 (via <https://github.com/modular/modular/releases>)
 - **Nightly**: Latest from conda.modular.com/max-nightly
 
 Last updated: 2026-01-27

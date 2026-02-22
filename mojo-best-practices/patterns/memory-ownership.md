@@ -95,6 +95,7 @@ fn main():
 ```
 
 **When copying is appropriate:**
+
 - Small types that fit in registers (Int, Float64, Bool)
 - When you need an independent copy to modify
 - Types conforming to `TrivialRegisterType` trait
@@ -164,7 +165,7 @@ struct BadBox[T: Movable]:
 
 ### Lifecycle Methods
 
-Types that manage resources (memory, file handles, sockets) must implement appropriate lifecycle methods: `__init__`, `__del__`, `__copyinit__`, and `__moveinit__`.
+Types that manage resources (memory, file handles, sockets) must implement appropriate lifecycle methods: `__init__`, `__del__`.
 
 **Pattern (complete lifecycle implementation):**
 
@@ -173,7 +174,7 @@ from memory import UnsafePointer
 from builtin.type_aliases import MutAnyOrigin
 
 # Both 'alias' and 'comptime' work for type aliases (v25.7+)
-# Use whichever is consistent with your codebase
+# Use whichever is consistent with your codebase, but prefer 'comptime'.
 comptime UInt8Ptr = UnsafePointer[mut=True, type=UInt8, origin=MutAnyOrigin]
 
 struct FileBuffer(Movable):
@@ -191,12 +192,12 @@ struct FileBuffer(Movable):
         if self.data:
             self.data.free()
 
-    fn __moveinit__(out self, deinit take: Self):
+    fn __init__(out self, *, deinit take: Self):
         # Transfer ownership - take source's resources
         self.data = take.data
         self.size = take.size
 
-    # Explicitly NOT implementing __copyinit__ means copying is disallowed
+    # Explicitly NOT implementing Copyable means copying is disallowed
     # This is correct for unique resource ownership
 ```
 
@@ -213,29 +214,23 @@ struct FileBuffer(Movable):
 **When:** Creating types that should be freely copyable (like Point, Color, etc.)
 
 **Do:**
+
 ```mojo
-struct Point(Copyable, Movable):
+@fieldwise_init
+struct Point(Copyable):
     var x: Float64
     var y: Float64
-
-    fn __init__(out self, x: Float64, y: Float64):
-        self.x = x
-        self.y = y
-
-    fn __copyinit__(out self, copy: Self):
-        self.x = copy.x
-        self.y = copy.y
-
-    fn __moveinit__(out self, deinit take: Self):
-        self.x = take.x
-        self.y = take.y
 ```
+
+Mojo synthesizes implementations of the copy and move constructor that is
+correct for most cases. It is better to use this than reimplement it.
 
 ### Full-Featured Generic Container
 
 **When:** Building containers that need printing, comparison, and value return
 
 **Do:**
+
 ```mojo
 # nocompile
 struct SmartContainer[
@@ -265,6 +260,7 @@ fn main():
 **When:** Managing raw memory with UnsafePointer
 
 **Do:**
+
 ```mojo
 # nocompile
 # 1. Allocate
@@ -292,6 +288,7 @@ ptr.free()                               # Return memory to allocator
 **When:** Reducing code size for types used frequently
 
 **Do:**
+
 ```mojo
 # nocompile
 from builtin.type_aliases import MutAnyOrigin
@@ -314,11 +311,11 @@ struct OwnedPointer[T: Movable]:
 |----------|----------|-------------------|
 | Pass large data to function | Use default `read` (borrowing) | None |
 | Transfer ownership permanently | Use `^` operator with `var` param | `Movable` |
-| Allow copying of custom type | Implement `__copyinit__` | `Copyable` |
+| Allow copying of custom type | Implement copy ctor if custom | `Copyable` |
 | Generic container with cleanup | Add `ImplicitlyDestructible` bound | `Movable & ImplicitlyDestructible` |
 | Return generic value by value | Add `ImplicitlyCopyable` bound | `+ ImplicitlyCopyable` |
 | Resource management (files, memory) | Implement `__del__` | None (manual) |
-| Prevent copying | Don't implement `__copyinit__` | `Movable` only |
+| Prevent copying | Don't implement `Copyable` | `Movable` only |
 
 ### Common Trait Combinations
 
@@ -337,7 +334,7 @@ struct OwnedPointer[T: Movable]:
 - **`var` parameter**: Function takes ownership of argument
 - **`read` (default)**: Immutable borrow, no copy
 - **`mut`**: Mutable borrow
-- **`deinit`**: Consuming convention for `__del__` and `__moveinit__` (value is destroyed when method returns)
+- **`deinit`**: Consuming convention for `__del__` and `__init__(*, take=)` (value is destroyed when method returns)
 - **`ImplicitlyDestructible`**: Required for generic types with automatic cleanup
 - **`ImplicitlyCopyable`**: Required for returning generic types by value
 - **`@no_inline` on destructors**: Reduces code bloat
@@ -369,16 +366,17 @@ struct OwnedPointer[T: Movable]:
 
 ## Version-Specific Features
 
-### Ownership Keywords (v26.1+)
+### Ownership Keywords
 
 | Context | Keyword | Purpose |
 |---------|---------|---------|
 | Function parameters taking ownership | `var value: T` | Caller transfers or copies value; callee owns it |
-| `__moveinit__` parameter | `deinit take: Self` | Source is consumed and destroyed after move |
-| `__del__` parameter | `deinit self` | Value is destroyed when destructor returns |
+| move ctor argument | `deinit take: Self` | Source is consumed and destroyed after move |
+| `__del__` argument | `deinit self` | Value is destroyed when destructor returns |
 | Consuming methods | `var self` | Method consumes `self`, taking ownership |
 
 **Taking ownership in functions:**
+
 ```mojo
 fn take_ownership(var value: String):  # 'var' takes ownership
     print(value)
@@ -390,15 +388,17 @@ fn main():
 ```
 
 **Lifecycle methods:**
+
 ```mojo
 # nocompile
-struct Container[T: Movable]:
+struct Container[T: Movable](Movable):
     var data: T
 
     fn __init__(out self, var value: T):
         self.data = value^
 
-    fn __moveinit__(out self, deinit take: Self):  # 'deinit' for move source
+    # only include this if custom; Mojo will synthesize a default impl.
+    fn __init__(out self, *, deinit take: Self):  # 'deinit' for move source
         self.data = take.data^
 
     fn __del__(deinit self):  # 'deinit' in destructor
@@ -408,9 +408,10 @@ struct Container[T: Movable]:
         return self.data^
 ```
 
-### Constants: alias and comptime (v26.1+)
+### Constants: alias and comptime
 
-Both `alias` and `comptime` work for compile-time constants in v26.1 and nightly:
+Both `alias` and `comptime` work for compile-time constants, but prefer
+`comptime`.
 
 ```mojo
 # Both syntaxes work in v26.1+
@@ -422,8 +423,8 @@ fn main():
 ```
 
 **Version guidance:**
+
 - Both `alias` and `comptime` work for compile-time constants
-- As of v26.1, the compiler warns on `alias` and suggests `comptime` instead
 - `comptime` is preferred going forward; `alias` remains functional
 
 ---

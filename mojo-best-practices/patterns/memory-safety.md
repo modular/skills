@@ -79,6 +79,7 @@ fn get_longest(a: String, b: String) -> ref [a, b] String:
 ```
 
 **Rules for safe references:**
+
 - Only return references to data that outlives the function call
 - Use lifetime parameters `ref [param]` to express dependencies
 - When in doubt, return by value or transfer ownership
@@ -178,7 +179,7 @@ struct Container:
         self.data = OwnedPointer(value)  # Automatic allocation
 
     # __del__ not needed - OwnedPointer cleans up automatically
-    # __moveinit__ handled by OwnedPointer's move semantics
+    # move ctor handled by OwnedPointer's move semantics
 
     fn get(self) -> Int:
         return self.data[]
@@ -388,6 +389,7 @@ fn reduction_kernel[dtype: DType](...):
 | Recursive function | Minimal or none |
 
 **Common pitfalls:**
+
 - Large arrays on stack in recursive functions → stack overflow
 - Forgetting `free()` on heap allocations → memory leak
 - Returning pointers to stack memory → dangling pointer
@@ -447,6 +449,7 @@ fn reduction_kernel[dtype: DType](...):
 | `origin_of()` | `origin_of()` (v26.1+) | `__origin_of()` was renamed |
 
 **Example (v26.1+):**
+
 ```mojo
 from memory import UnsafePointer, alloc
 from builtin.type_aliases import MutAnyOrigin

@@ -72,6 +72,7 @@ Always start from the top. A better algorithm beats micro-optimizations every ti
 **Impact:** CRITICAL (20-50% speedup by mathematically eliminating work)
 
 **Benchmark (Mandelbrot 1920x1080):**
+
 - Without shortcuts: 11.2 ms
 - With cardioid/bulb skip: 3.9 ms (**65% faster**)
 
@@ -141,11 +142,6 @@ struct PipelineContext(Movable):
     fn __init__(out self):
         self.cached_tokenizer = Tokenizer()
         self.tokenizer_cached = False
-
-    fn __moveinit__(out self, deinit take: Self):
-        self.cached_tokenizer = take.cached_tokenizer^
-        self.tokenizer_cached = take.tokenizer_cached
-
 
 fn encode_text(mut ctx: Context, prompt: String) -> Embeddings:
     var tokenizer_path = ctx.model_dir + "/tokenizer/tokenizer.json"
@@ -246,6 +242,7 @@ struct SafetensorsFile:
 | Zero-copy (mmap) | 4GB |
 
 **mmap FFI bindings:**
+
 ```mojo
 # nocompile
 comptime PROT_READ: Int32 = 1
@@ -261,6 +258,7 @@ fn libc_munmap(addr: UInt8Ptr, length: Int) -> Int32:
 ```
 
 **Best practices:**
+
 - Track mmap state for correct cleanup
 - Handle MAP_FAILED
 - Close fd after mmap (mmap keeps internal reference)
@@ -275,6 +273,7 @@ fn libc_munmap(addr: UInt8Ptr, length: Int) -> Int32:
 **Impact:** CRITICAL (100-1000x speedup vs Python object operations)
 
 **Don't:**
+
 ```mojo
 # nocompile
 from python import Python
@@ -291,6 +290,7 @@ fn slow_sum() -> Float64:
 ```
 
 **Do (convert at boundaries, compute natively):**
+
 ```mojo
 # nocompile
 fn process_numpy_data(py_array: PythonObject) -> Float64:
@@ -350,6 +350,7 @@ comptime SQUARES = generate_squares[256]()
 ```
 
 **Use comptime for:**
+
 - Mathematical constants
 - Lookup tables with fixed values
 - Type definitions
@@ -365,6 +366,7 @@ comptime SQUARES = generate_squares[256]()
 **Impact:** HIGH (5-15% speedup by eliminating allocation overhead in hot loops)
 
 **Don't (allocate per call):**
+
 ```mojo
 fn layer_forward(mut model: Model, layer: Layer, seq_len: Int):
     # Allocates buffers every call - 36 layers = 36 allocations per forward
@@ -380,6 +382,7 @@ fn layer_forward(mut model: Model, layer: Layer, seq_len: Int):
 ```
 
 **Do (persistent buffers in struct):**
+
 ```mojo
 struct Model:
     # Persistent work buffers (allocated once)
@@ -405,6 +408,7 @@ fn layer_forward(mut model: Model, layer: Layer, seq_len: Int):
 ```
 
 **Buffer pool pattern:**
+
 ```mojo
 # nocompile
 @align(64)  # Cache-line alignment for SIMD
@@ -438,6 +442,7 @@ This eliminates ~7 allocations per layer x 36 layers = 252 malloc/free calls per
 **When:** Variable-size inputs on memory-constrained systems
 
 **Don't (pre-allocate for max):**
+
 ```mojo
 # nocompile
 struct Transformer:
@@ -451,6 +456,7 @@ fn load() -> Transformer:
 ```
 
 **Do (allocate based on actual size):**
+
 ```mojo
 fn forward(tf: Transformer, img_h: Int, img_w: Int, txt_seq: Int):
     var img_seq = img_h * img_w
@@ -471,6 +477,7 @@ fn forward(tf: Transformer, img_h: Int, img_w: Int, txt_seq: Int):
 **Impact:** HIGH (3-4 second savings by avoiding redundant warmup)
 
 **Don't (redundant explicit warming):**
+
 ```mojo
 fn load_model_gpu(model: Model, mps: MPSContext):
     # Explicit pre-warming: loops through ALL weights
@@ -485,6 +492,7 @@ fn load_model_gpu(model: Model, mps: MPSContext):
 ```
 
 **Do (rely on lazy caching):**
+
 ```mojo
 # nocompile
 fn load_model_gpu(model: Model, mps: MPSContext):
@@ -680,6 +688,7 @@ fn forward_gpu_ffi(...):
 **Optimization strategies (in order of effectiveness):**
 
 1. **Enable weight caching** (most important - 1.8x speedup):
+
 ```mojo
 # nocompile
 # Cache weights across inference steps
@@ -688,14 +697,16 @@ if not ctx.model_cached:
     ctx.model_cached = True
 ```
 
-2. **Batch/chain GPU operations** (reduce sync points):
+1. **Batch/chain GPU operations** (reduce sync points):
+
 ```mojo
 mps.gpu_batch_begin()
 # ... multiple operations ...
 mps.gpu_batch_end()  # Single sync
 ```
 
-3. **Fuse operations** (reduce FFI calls):
+1. **Fuse operations** (reduce FFI calls):
+
 ```mojo
 # nocompile
 # BAD: 3 separate FFI calls
@@ -725,6 +736,7 @@ qkv = mps.gpu_fused_qkv(input, qkv_weight)
 **Impact:** CRITICAL — Prevents 4+ second warmup overhead when GPU caches are invalidated
 
 **Don't (clears cache between phases):**
+
 ```mojo
 # nocompile
 fn run_pipeline(mut ctx: Context):
@@ -739,6 +751,7 @@ fn run_pipeline(mut ctx: Context):
 ```
 
 **Do (preserve cache when weights are shared):**
+
 ```mojo
 # nocompile
 fn run_pipeline(mut ctx: Context):
@@ -772,6 +785,7 @@ fn run_pipeline(mut ctx: Context):
 **Impact:** HIGH — GPU 10-100x faster than CPU even with FFI overhead
 
 **Anti-Pattern: Native CPU Path**
+
 ```mojo
 # "Native" path - eliminates FFI but uses CPU BLAS
 fn transformer_forward_native(...) raises:
@@ -779,6 +793,7 @@ fn transformer_forward_native(...) raises:
 ```
 
 **Correct: GPU FFI Path**
+
 ```mojo
 # FFI GPU path - has FFI overhead but uses GPU acceleration
 fn transformer_forward_gpu(...) raises:
@@ -793,6 +808,7 @@ fn transformer_forward_gpu(...) raises:
 | Concat/copy | 830ms overhead | 662ms | CPU (25% faster) |
 
 **Recommendation for Apple Silicon:**
+
 - Use GPU for compute-intensive ops (matmul, attention, convolution)
 - Use CPU for memory operations (concat, transpose, copy)
 - Always measure with timing to verify assumptions
@@ -808,6 +824,7 @@ fn transformer_forward_gpu(...) raises:
 MPSGraph caches compiled graphs per configuration. Each unique configuration compiles a new graph at first use (50-200ms).
 
 **Case Study (Image Decoder with ~30 unique configs):**
+
 ```
 GPU Path (first run):
 - Graph compilations: 30 × ~100ms = ~3000ms
@@ -820,6 +837,7 @@ CPU BLAS Path:
 ```
 
 **Solution: Pre-compile all configs at startup:**
+
 ```mojo
 # nocompile
 fn precompile_conv_graphs(mps: MPSContext, configs: List[ConvConfig]):
@@ -846,6 +864,7 @@ fn get_decoder_configs(max_resolution: Int) -> List[ConvConfig]:
 ```
 
 **Alternative: Adaptive GPU/CPU selection:**
+
 ```mojo
 # nocompile
 fn conv2d_adaptive(cfg: ConvConfig, mps: MPSContext) -> Bool:
@@ -914,6 +933,7 @@ fn conv2d_adaptive(cfg: ConvConfig, mps: MPSContext) -> Bool:
 | **FFI** | `external_call[]` | Stable |
 
 **Example (v26.1+):**
+
 ```mojo
 # nocompile
 from memory import alloc
@@ -926,6 +946,7 @@ fn allocate_buffer(size: Int) -> UnsafePointer[Float32]:
 ```
 
 **Notes:**
+
 - Both `alias` and `comptime` work for compile-time constants in v26.1+
 - `alloc()` is available in v26.1+ (not nightly-only)
 - Caching strategies and patterns are stable across versions

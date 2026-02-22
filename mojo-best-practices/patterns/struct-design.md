@@ -67,11 +67,13 @@ var point = Point3D(1.0, 2.0, 3.0)
 ```
 
 **When to use `@fieldwise_init`:**
+
 - Simple data structs (DTOs, records)
 - Types where all fields should be set at construction
 - No complex initialization logic needed
 
 **When NOT to use:**
+
 - Types requiring validation in constructor
 - Types with computed or derived fields
 - Types needing partial initialization
@@ -136,12 +138,14 @@ var d = c.diameter()   # Computed property
 ```
 
 **Benefits of encapsulation:**
+
 - Change internal representation without breaking clients
 - Add validation logic
 - Support computed/derived properties
 - Clearer API boundaries
 
 **When direct field access is OK:**
+
 - Simple data transfer objects (DTOs)
 - Performance-critical inner loops (with `@fieldwise_init`)
 - Internal/private types
@@ -207,6 +211,7 @@ struct Wrapper[T: Movable & ImplicitlyDestructible](ImplicitlyDestructible):
 The official Modular style guide prescribes a specific section header format for organizing struct members.
 
 **Do:**
+
 ```mojo
 # nocompile
 # ===-----------------------------------------------------------------------===#
@@ -236,11 +241,11 @@ struct MyStruct(Sized, Stringable):
     fn __init__(out self):
         self.field = 0
 
-    fn __moveinit__(out self, deinit take: Self):
+    fn __init__(out self, *, deinit take: Self):
         self.field = take.field
 
-    fn __copyinit__(out self, existing: Self):
-        self.field = existing.field
+    fn __init__(out self, *, copy: Self):
+        self.field = copy.field
 
     fn __del__(deinit self):
         pass
@@ -284,6 +289,7 @@ struct MyStruct(Sized, Stringable):
 ```
 
 **Don't:**
+
 ```mojo
 struct MyStruct:
     var field: Int
@@ -294,6 +300,7 @@ struct MyStruct:
 ```
 
 **Section order:**
+
 1. **Aliases** - Type aliases and compile-time constants
 2. **Fields** - Instance variables (`var` declarations)
 3. **Life cycle methods** - `__init__`, `__moveinit__`, `__copyinit__`, `__del__`
@@ -307,6 +314,7 @@ struct MyStruct:
 Methods should only take `mut self` when they actually need to modify the struct. Immutable methods enable better compiler optimizations and clearer API contracts.
 
 **Do:**
+
 ```mojo
 struct Counter:
     var value: Int
@@ -334,6 +342,7 @@ struct Counter:
 ```
 
 **Don't:**
+
 ```mojo
 struct Counter:
     var value: Int
@@ -377,6 +386,7 @@ struct Vector2D:
 Mojo uses traits rather than class inheritance. Compose behavior by embedding structs and implementing traits for a more flexible design.
 
 **Do:**
+
 ```mojo
 # Define behavior contracts with traits
 trait Drawable:
@@ -442,6 +452,7 @@ fn update_all[T: Updatable](mut items: List[T], dt: Float64):
 When implementing operators, provide the complete set: binary, reverse-binary, and in-place variants.
 
 **Do:**
+
 ```mojo
 # nocompile
 struct Complex:
@@ -666,6 +677,7 @@ fn main():
 ```
 
 **Do:**
+
 ```mojo
 # nocompile
 struct MyList[T: Movable]:
@@ -702,6 +714,7 @@ for item in list:
 ```
 
 **Don't:**
+
 ```mojo
 # nocompile
 struct MyList[T: Movable]:
@@ -772,6 +785,7 @@ for item in reversed(list):
 ```
 
 **Key requirements:**
+
 - `__iter__()` returns iterator object
 - Iterator has `__next__()` returning next item (may `raises StopIteration` per the stdlib `Iterator` trait)
 - Iterator optionally has `__len__()` returning remaining items and `__has_next__()` returning `Bool`
@@ -926,6 +940,7 @@ struct SimdBuffer:
 ```
 
 **Alignment rules:**
+
 - N must be power of 2 (1, 2, 4, 8, 16, 32, 64...)
 - Cannot reduce below natural alignment
 - Actual = max(specified, natural)

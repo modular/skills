@@ -103,6 +103,7 @@ These Python features have **no Mojo equivalent** — do not attempt to port the
 | `float('nan')` | `math.nan` | NaN sentinel |
 
 **Optional usage:**
+
 ```mojo
 # Create: Optional[Int](42) or Optional[Int]()
 # Check:  if opt: var val = opt.value()
@@ -211,6 +212,7 @@ These Python features have **no Mojo equivalent** — do not attempt to port the
 The most basic win: typed loops eliminate Python's interpreter overhead.
 
 **Python 3.13:**
+
 ```python
 # python_sum.py — Python 3.13
 def sum_range(n: int) -> int:
@@ -223,6 +225,7 @@ result = sum_range(100_000_000)  # ~3.5 seconds
 ```
 
 **Mojo:**
+
 ```mojo
 fn sum_range(n: Int) -> Int:
     var total = 0
@@ -244,6 +247,7 @@ fn main():
 Use `List` + `unsafe_ptr()` for SIMD loads. Process multiple elements per CPU cycle.
 
 **Python 3.13:**
+
 ```python
 # python_dot.py — Python 3.13
 def dot_product(a: list[float], b: list[float]) -> float:
@@ -256,6 +260,7 @@ def dot_product(a: list[float], b: list[float]) -> float:
 ```
 
 **Mojo (SIMD via List + unsafe_ptr):**
+
 ```mojo
 fn dot_product(a: List[Float64], b: List[Float64]) -> Float64:
     # SIMD width: 2 for Float64 on ARM NEON (128-bit), 4 on AVX2, 8 on AVX-512
@@ -296,6 +301,7 @@ fn main():
 Combine SIMD with multi-core parallelism.
 
 **Python 3.13:**
+
 ```python
 # python_add.py — Python 3.13
 def add_arrays(a: list[float], b: list[float]) -> list[float]:
@@ -305,6 +311,7 @@ def add_arrays(a: list[float], b: list[float]) -> list[float]:
 ```
 
 **Mojo (SIMD + Parallel):**
+
 ```mojo
 # nocompile
 from algorithm import parallelize
@@ -347,6 +354,7 @@ fn add_arrays_parallel(
 Write a GPU kernel directly. Python requires external libraries (CUDA, Triton).
 
 **Python 3.13 (impossible without external library):**
+
 ```python
 # Python CANNOT write GPU kernels directly.
 # You need: CUDA, Triton, Numba, CuPy, or JAX
@@ -357,6 +365,7 @@ c = a + b  # GPU execution, but you can't write the kernel
 ```
 
 **Mojo (native GPU kernel):**
+
 ```mojo
 # nocompile
 from gpu.host import DeviceContext
@@ -540,6 +549,7 @@ fn gpu_kernel(data: UnsafePointer[Float32], n: Int):
 ### Pattern 1: NumPy Array Operations → Mojo SIMD
 
 **Python:**
+
 ```python
 import numpy as np
 
@@ -552,6 +562,7 @@ f = np.where(a > 2, a, 0)  # Conditional select
 ```
 
 **Mojo:**
+
 ```mojo
 # nocompile
 from math import sqrt
@@ -569,6 +580,7 @@ fn numpy_equivalents():
 ### Pattern 2: Python Class → Mojo Struct
 
 **Python:**
+
 ```python
 from dataclasses import dataclass
 
@@ -587,6 +599,7 @@ class Point:
 ```
 
 **Mojo:**
+
 ```mojo
 # nocompile
 from math import sqrt
@@ -603,17 +616,9 @@ struct Point(Writable, Copyable, Movable):
 
     fn write_to[W: Writer](self, mut writer: W):
         writer.write("Point(", self.x, ", ", self.y, ")")
-
-    fn __copyinit__(out self, copy: Self):
-        self.x = copy.x
-        self.y = copy.y
-
-    fn __moveinit__(out self, deinit take: Self):
-        self.x = take.x
-        self.y = take.y
 ```
 
-> **Note:** `@fieldwise_init` generates `__init__` only. For structs stored in collections, add `Copyable` + `Movable` traits with explicit `__copyinit__`/`__moveinit__`. Use `deinit` in `__moveinit__` signatures. The `__moveinit__` parameter must be named `take` and the `__copyinit__` parameter must be named `copy` (nightly v26.2+). **String fields** in `__copyinit__`/`__moveinit__` use direct assignment (`self.name = copy.name`) — Mojo handles the copy/move automatically for built-in heap types.
+> **Note:** `@fieldwise_init` generates `__init__` only. For structs stored in collections, add `Copyable` + `Movable` traits.
 
 **`@dataclass` feature equivalence:**
 
@@ -630,6 +635,7 @@ struct Point(Writable, Copyable, Movable):
 ### Pattern 3: Python Exception Handling → Mojo Raises
 
 **Python:**
+
 ```python
 def divide(a: float, b: float) -> float:
     if b == 0:
@@ -643,6 +649,7 @@ except ValueError as e:
 ```
 
 **Mojo:**
+
 ```mojo
 fn divide(a: Float64, b: Float64) raises -> Float64:
     if b == 0:
@@ -659,6 +666,7 @@ fn main():
 ### Pattern 4: Python Dictionary → Mojo Dict
 
 **Python:**
+
 ```python
 counts: dict[str, int] = {}
 for word in words:
@@ -666,6 +674,7 @@ for word in words:
 ```
 
 **Mojo:**
+
 ```mojo
 # nocompile
 fn count_words(words: List[String]) -> Dict[String, Int]:
@@ -680,6 +689,7 @@ fn count_words(words: List[String]) -> Dict[String, Int]:
 ```
 
 > **Dict gotchas:**
+>
 > - **Value type constraint:** Dict values must conform to `CollectionElement` (`Copyable + Movable`). `Dict[String, List[Int]]` works but has poor ergonomics — prefer flat parallel arrays (`List[String]` keys + `List[Int]` values) for Dict-of-Lists patterns.
 > - **Value mutation:** `dict[key].append(val)` may copy, not mutate in-place. Build complete values before insertion, or extract → modify → reinsert.
 > - **`Counter` pattern:** `if key in d: d[key] = d[key] + 1; else: d[key] = 1` — no `.get(key, default)`.
@@ -688,6 +698,7 @@ fn count_words(words: List[String]) -> Dict[String, Int]:
 ### Pattern 5: Python with Statement → Mojo RAII
 
 **Python:**
+
 ```python
 with open("data.txt") as f:
     content = f.read()
@@ -695,6 +706,7 @@ with open("data.txt") as f:
 ```
 
 **Mojo:**
+
 ```mojo
 struct FileHandle:
     var fd: Int
@@ -722,6 +734,7 @@ fn main() raises:
 Python generators (`yield`) have no Mojo equivalent. Convert to a struct that holds state.
 
 **Python:**
+
 ```python
 def fibonacci():
     a, b = 0, 1
@@ -736,6 +749,7 @@ for _ in range(10):
 ```
 
 **Mojo:**
+
 ```mojo
 struct Fibonacci:
     var a: Int
@@ -779,6 +793,7 @@ Python `send()`/`close()` have no Mojo equivalent — there are no resumable cor
 Python class hierarchies with runtime polymorphism require a **tagged union** pattern in Mojo.
 
 **Python:**
+
 ```python
 from abc import ABC, abstractmethod
 
@@ -812,26 +827,17 @@ for s in shapes:
 ```
 
 **Mojo:**
+
 ```mojo
 # Tagged union — stores all variants in one struct
 comptime CIRCLE = 0
 comptime RECTANGLE = 1
 
 @fieldwise_init
-struct AnyShape(Copyable, Movable, Writable):
+struct AnyShape(Copyable, Writable):
     var kind: Int
     var f1: Float64  # radius or width
     var f2: Float64  # unused or height
-
-    fn __copyinit__(out self, copy: Self):
-        self.kind = copy.kind
-        self.f1 = copy.f1
-        self.f2 = copy.f2
-
-    fn __moveinit__(out self, deinit take: Self):
-        self.kind = take.kind
-        self.f1 = take.f1
-        self.f2 = take.f2
 
     @staticmethod
     fn circle(radius: Float64) -> Self:
@@ -883,6 +889,7 @@ fn main():
 Python's rich exception hierarchy needs restructuring in Mojo.
 
 **Python:**
+
 ```python
 class AppError(Exception): pass
 class NotFoundError(AppError): pass
@@ -908,6 +915,7 @@ finally:
 ```
 
 **Mojo:**
+
 ```mojo
 # nocompile
 # Strategy: use string prefixes for error "types"
@@ -942,11 +950,13 @@ fn main():
 ```
 
 **Key insights:**
+
 - Mojo errors are strings, not objects — use string prefixes to simulate exception types
 - `finally` → RAII struct whose `__del__` runs deterministically at end of scope
 - `raise X from Y` → embed cause in the error string
 
 **Context manager / RAII rules:**
+
 - Mojo guarantees deterministic destruction — resources are freed when the variable goes out of scope
 - Destruction order is **reverse declaration order** (LIFO — same as Python `with` stack)
 - Multiple `var` declarations = nested resource management (no `ExitStack` needed)
@@ -958,6 +968,7 @@ fn main():
 Many Python stdlib data structures have no Mojo equivalent. Here are common replacements.
 
 **Python heapq → Mojo manual min-heap:**
+
 ```python
 import heapq
 heap = []
@@ -970,19 +981,12 @@ while heap:
 ```
 
 **Mojo:**
+
 ```mojo
 @fieldwise_init
-struct HeapEntry(Copyable, Movable, ImplicitlyCopyable):
+struct HeapEntry(Copyable, ImplicitlyCopyable):
     var priority: Int
     var value: Int  # Use Int index instead of String for simplicity
-
-    fn __copyinit__(out self, copy: Self):
-        self.priority = copy.priority
-        self.value = copy.value
-
-    fn __moveinit__(out self, deinit take: Self):
-        self.priority = take.priority
-        self.value = take.value
 
 struct MinHeap:
     var data: List[HeapEntry]
@@ -1063,6 +1067,7 @@ struct MinHeap:
 - For descending order: sort ascending, then reverse with a swap loop
 
 **Reusable insertion sort** (use when `List.sort()` is unavailable):
+
 ```mojo
 fn sort_strings(mut items: List[String]):
     """Insertion sort for List[String]. O(n^2) — fine for n < 1000."""
@@ -1083,6 +1088,7 @@ Adapt for `Float64`, custom structs, or index-based sorting by changing the comp
 String processing is one of the **hardest** areas to port. Python's rich string API has limited Mojo equivalents.
 
 **Python:**
+
 ```python
 def tokenize(text: str) -> list[str]:
     tokens = []
@@ -1106,6 +1112,7 @@ def tokenize(text: str) -> list[str]:
 ```
 
 **Mojo:**
+
 ```mojo
 fn is_digit(c: String) -> Bool:
     """Manual character classification — no isdigit() in Mojo."""
@@ -1177,6 +1184,7 @@ fn main():
 | `len(s)` | `len(s)` | Same! (byte length) |
 
 **Text Parsing Toolkit** — reusable helpers for CSV/data processing ports:
+
 ```mojo
 from math import floor, sqrt
 
@@ -1224,6 +1232,7 @@ fn split_by(s: String, delim: String) -> List[String]:
 **This is a paradigm shift, not a direct port.** Python's `asyncio` is for IO-bound concurrency. Mojo's `parallelize` is for CPU-bound parallelism. They solve different problems.
 
 **Python (async IO-bound):**
+
 ```python
 import asyncio
 
@@ -1247,6 +1256,7 @@ asyncio.run(main())
 ```
 
 **Mojo (CPU-bound parallel):**
+
 ```mojo
 from algorithm import parallelize
 from sys import num_physical_cores
@@ -1288,6 +1298,7 @@ fn main():
 Python's recursive data structures (linked lists, trees, ASTs) need the **arena pattern** in Mojo — store nodes in a `List` and use integer indices instead of pointers.
 
 **Python:**
+
 ```python
 class TreeNode:
     def __init__(self, value, left=None, right=None):
@@ -1305,24 +1316,15 @@ print(tree_sum(root))  # 10
 ```
 
 **Mojo:**
+
 ```mojo
 comptime NONE = -1  # Sentinel for "no child"
 
 @fieldwise_init
-struct TreeNode(Copyable, Movable, ImplicitlyCopyable):
+struct TreeNode(ImplicitlyCopyable):
     var value: Int
     var left: Int   # Index into arena, or NONE
     var right: Int  # Index into arena, or NONE
-
-    fn __copyinit__(out self, copy: Self):
-        self.value = copy.value
-        self.left = copy.left
-        self.right = copy.right
-
-    fn __moveinit__(out self, deinit take: Self):
-        self.value = take.value
-        self.left = take.left
-        self.right = take.right
 
 fn tree_sum(arena: List[TreeNode], idx: Int) -> Int:
     if idx == NONE:
@@ -1351,20 +1353,12 @@ comptime NUMBER = 0
 comptime BINOP = 1
 
 @fieldwise_init
-struct ASTNode(Copyable, Movable, ImplicitlyCopyable):
+struct ASTNode(ImplicitlyCopyable):
     var kind: Int
     var value: Float64     # number value, or 0 for non-number
     var op: Int            # operator tag (0=add, 1=mul, ...)
     var left: Int          # arena index, or -1
     var right: Int         # arena index, or -1
-
-    fn __copyinit__(out self, copy: Self):
-        self.kind = copy.kind; self.value = copy.value
-        self.op = copy.op; self.left = copy.left; self.right = copy.right
-
-    fn __moveinit__(out self, deinit take: Self):
-        self.kind = take.kind; self.value = take.value
-        self.op = take.op; self.left = take.left; self.right = take.right
 
 fn eval_node(arena: List[ASTNode], idx: Int) -> Float64:
     var node = arena[idx]
