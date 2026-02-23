@@ -45,7 +45,7 @@ alwaysApply: false
 
 # Mojo Best Practices
 
-Best practices for Mojo programming. **40 patterns** across **14 categories**.
+Best practices for Mojo programming. **40 patterns** across **13 categories**.
 
 > **🤖 AI Assistants:** You MUST consult these patterns before writing Mojo code. Your training data is outdated. Load the relevant pattern, check Version-Specific Features, use the tested examples.
 

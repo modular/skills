@@ -96,7 +96,6 @@ fn add_arrays_parallel(mut result: List[Int], a: List[Int], b: List[Int]):
 from algorithm import parallelize
 from sys import num_physical_cores
 from memory import UnsafePointer
-from memory import UnsafePointer
 from builtin.type_aliases import MutAnyOrigin
 
 comptime Int64Ptr = UnsafePointer[mut=True, type=Int64, origin=MutAnyOrigin]

@@ -241,6 +241,7 @@ connect("localhost", 8080, timeout=60.0, ssl=False)
 
 **Do:**
 ```mojo
+# nocompile
 # Generic fallback using traits
 fn stringify[T: Stringable](value: T) -> String:
     return String(value)
@@ -573,6 +574,36 @@ else:
 | `type mismatch in overload` | Overloads not distinguished by types | Ensure overloads differ in parameter types, not just names |
 | `inout deprecated` | Using old `inout` keyword | Replace `inout` with `mut` for mutable references |
 | `owned deprecated` | Using old `owned` keyword | Replace with `var` for ownership transfer, `deinit` for destructors |
+| `failed to compile-time evaluate function call` | Default argument calls runtime function (e.g. `getenv`) | Use function overloads; construct the default in the function body |
+| `unable to interpret call to unknown external function: getenv` | Default argument evaluates at compile time | Use function overloads instead of default arg calling syscalls |
+
+### Default Arguments and Compile-Time Evaluation
+
+Default argument expressions are evaluated at compile time (for type checking and
+parametric instantiation via `TestSuite.discover_tests`). Any default that calls
+a runtime function — `getenv`, file I/O, or any `external_call` — will fail.
+
+**❌ WRONG:** Default argument calls `getenv` at compile time
+```mojo
+# nocompile - Demonstrates anti-pattern
+fn connect(url: String, config: TlsConfig = TlsConfig()) raises -> Connection:
+    # TlsConfig() calls getenv() — fails at compile time!
+    ...
+```
+
+**✅ CORRECT:** Use overloads; construct the default value at runtime in the body
+```mojo
+fn connect(url: String) raises -> Connection:
+    return _connect_impl(url, TlsConfig())   # TlsConfig() at runtime — fine
+
+fn connect(url: String, config: TlsConfig) raises -> Connection:
+    return _connect_impl(url, config)        # Caller-provided config
+
+fn _connect_impl(url: String, config: TlsConfig) raises -> Connection:
+    ...  # Actual implementation
+```
+
+**Symptoms:** `note: failed to compile-time evaluate function call`, `unable to interpret call to unknown external function: getenv`
 
 ---
 

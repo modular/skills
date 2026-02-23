@@ -21,6 +21,7 @@ This index maps common error messages to relevant patterns.
 | `CUTLASS to Mojo` | [gpu-porting-cute](../patterns/gpu-porting-cute.md) | gpu |
 | `CuTe equivalent` | [gpu-porting-cute](../patterns/gpu-porting-cute.md) | gpu |
 | `DLHandle` | [ffi-interop](../patterns/ffi-interop.md) | ffi |
+| `execution crashed` (Linux x86_64, before any test runs) | [ffi-interop](../patterns/ffi-interop.md) | ffi |
 | `DeviceBuffer` | [gpu-custom-ops](../patterns/gpu-custom-ops.md) | gpu |
 | `GIL` | [python-interop](../patterns/python-interop.md) | python |
 | `GIL deadlock` | [ffi-vendor](../patterns/ffi-vendor.md) | ffi |
@@ -256,6 +257,26 @@ This index maps common error messages to relevant patterns.
 | `width must be` | [type-simd](../patterns/type-simd.md) | type |
 | `work distribution` | [perf-parallelization](../patterns/perf-parallelization.md) | perf |
 | `wrong output` | [debug-debugging](../patterns/debug-debugging.md) | debug |
+| `invalid use of mutating method on rvalue` | [ffi-interop](../patterns/ffi-interop.md) | ffi |
+| `as_c_string_slice` | [ffi-interop](../patterns/ffi-interop.md) | ffi |
+| `cannot transfer out of immutable reference` | [memory-ownership](../patterns/memory-ownership.md) | memory |
+| `field .* destroyed out of the middle of a value` | [memory-ownership](../patterns/memory-ownership.md) | memory |
+| `destroyed out of the middle` | [memory-ownership](../patterns/memory-ownership.md) | memory |
+| `value of type 'Error' cannot be implicitly copied` | [error-handling](../patterns/error-handling.md) | error |
+| `does not conform to 'ImplicitlyCopyable'` | [type-traits](../patterns/type-traits.md) | type |
+| `failed to compile-time evaluate function call` | [fn-design](../patterns/fn-design.md) | fn |
+| `unable to interpret call to unknown external function: getenv` | [fn-design](../patterns/fn-design.md) | fn |
+| `StringSlice` | [ffi-interop](../patterns/ffi-interop.md) | ffi |
+| `value passed to .* cannot be converted from 'StringSlice'` | [ffi-interop](../patterns/ffi-interop.md) | ffi |
+| `value passed to .* cannot be converted from 'Span\[Byte\]'` | [ffi-interop](../patterns/ffi-interop.md) | ffi |
+| `Span\[Byte\]` | [ffi-interop](../patterns/ffi-interop.md) | ffi |
+| `function instantiation failed` | [test-testing](../patterns/test-testing.md) | test |
+| `BenchConfig` | [test-benchmarking](../patterns/test-benchmarking.md) | test |
+| `'run' expects 0 positional parameters, but 1 was specified` | [test-benchmarking](../patterns/test-benchmarking.md) | test |
+| `candidate not viable: value passed to 'func3' cannot be converted from 'fn()` | [test-benchmarking](../patterns/test-benchmarking.md) | test |
+| `Bench` | [test-benchmarking](../patterns/test-benchmarking.md) | test |
+| `Bencher` | [test-benchmarking](../patterns/test-benchmarking.md) | test |
+| `bench_function` | [test-benchmarking](../patterns/test-benchmarking.md) | test |
 
 ## Patterns by Error Count
 

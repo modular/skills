@@ -11,6 +11,8 @@ Quick reference for common Mojo pitfalls. Each entry shows the wrong approach, t
 - [Memory & Ownership](#memory--ownership)
 - [Type System](#type-system)
 - [Structs & Initialization](#structs--initialization)
+- [FFI & Strings](#ffi--strings)
+- [Testing & Benchmarks](#testing--benchmarks)
 - [GPU Programming](#gpu-programming)
 - [Performance](#performance)
 - [Version-Specific](#version-specific)
@@ -189,6 +191,236 @@ struct Good:
 ```
 
 **Why?** `out self` indicates the initializer is creating a new instance. Without it, `self` is borrowed (read-only).
+
+---
+
+## FFI & Strings
+
+### `String.unsafe_ptr()` for FFI (not `as_c_string_slice().unsafe_ptr()`)
+
+**❌ WRONG:** Chaining through `as_c_string_slice()` on a rvalue
+```mojo
+# nocompile - Demonstrates anti-pattern
+fn call_c(s: String):
+    external_call["c_func", NoneType](s.as_c_string_slice().unsafe_ptr())
+    # Error: invalid use of mutating method on rvalue of type 'String'
+```
+
+**✅ CORRECT:** Call `unsafe_ptr()` directly on the `String`
+```mojo
+fn call_c(s: String):
+    external_call["c_func", NoneType](s.unsafe_ptr())
+```
+
+**Why?** `as_c_string_slice()` is a mutating method (`mut self`) and cannot be called on a temporary/rvalue. `s.unsafe_ptr()` returns the same pointer to the string's null-terminated buffer without the mutation requirement.
+
+---
+
+### `StringSlice` vs `String` — Conversions Required
+
+**❌ WRONG:** Passing slice results directly to functions expecting `String`
+```mojo
+# nocompile - Demonstrates anti-pattern
+fn needs_string(s: String): ...
+
+fn example(line: String):
+    needs_string(line[:10].strip())  # strip() returns StringSlice, not String
+    var hk = _lower(line[:colon])    # slicing returns StringSlice, not String
+```
+
+**✅ CORRECT:** Wrap with `String(...)` to convert
+```mojo
+fn example(line: String):
+    needs_string(String(line[:10].strip()))    # Explicit conversion
+    needs_string(String(String(line[:10]).strip()))  # Chain: slice → String → strip → String
+    var hk = _lower(String(line[:colon]))      # Convert slice first
+```
+
+**Why?** String slicing (`s[a:b]`), `.strip()`, and similar methods return `StringSlice` (a borrowed view), not an owned `String`. Functions declared with `s: String` parameters do not accept `StringSlice` implicitly. Double-wrapping is needed when chaining: first convert the slice to `String`, then call the method.
+
+---
+
+### `List[UInt8]` vs `Span[Byte]` from `as_bytes()`
+
+**❌ WRONG:** Expecting `as_bytes()` to return a `List`
+```mojo
+# nocompile - Demonstrates anti-pattern
+fn takes_list(body: List[UInt8]): ...
+
+fn example(s: String):
+    takes_list(s.as_bytes())  # Error: Span[Byte] ≠ List[UInt8]
+```
+
+**✅ CORRECT:** Copy into a `List` explicitly
+```mojo
+fn example(s: String):
+    var body = List[UInt8](s.as_bytes())  # Copy Span into owned List
+    takes_list(body^)
+```
+
+**Why?** `String.as_bytes()` returns a `Span[Byte]` — a non-owning view into the string's buffer. `List[UInt8]` is an owned, heap-allocated buffer. When a function needs `List[UInt8]`, use `List[UInt8](span)` to copy.
+
+---
+
+### Default Arguments Must Not Call Runtime Functions
+
+**❌ WRONG:** Default argument that calls `getenv` (or any syscall)
+```mojo
+# nocompile - Demonstrates anti-pattern
+fn connect(url: String, config: TlsConfig = TlsConfig()) raises -> Connection:
+    # TlsConfig.__init__ calls getenv() → evaluated at COMPILE TIME → fails
+    ...
+```
+
+**✅ CORRECT:** Use function overloads to defer runtime default construction
+```mojo
+fn connect(url: String) raises -> Connection:
+    # TlsConfig() created in function BODY → runtime → fine
+    return _connect_impl(url, TlsConfig())
+
+fn connect(url: String, config: TlsConfig) raises -> Connection:
+    return _connect_impl(url, config)
+
+fn _connect_impl(url: String, config: TlsConfig) raises -> Connection:
+    ...
+```
+
+**Why?** Mojo evaluates default argument expressions at compile time during function type-checking and `TestSuite.discover_tests`. Any default that calls `getenv`, reads files, or performs I/O will fail with `failed to compile-time evaluate function call`. Use overloads instead, constructing the default value in the function body at runtime.
+
+**Symptoms:** `note: failed to compile-time evaluate function call`, `unable to interpret call to unknown external function: getenv`
+
+---
+
+### Partial Move from Struct Fields
+
+**❌ WRONG:** Moving one field out of a struct via `^`
+```mojo
+# nocompile - Demonstrates anti-pattern
+struct Result(Movable):
+    var frame: WsFrame   # non-trivial, has List[UInt8] payload
+    var consumed: Int
+
+fn example(result: Result) -> WsFrame:
+    return result.frame^  # Error: field 'result.frame.payload' destroyed
+                          # out of the middle of a value
+```
+
+**✅ CORRECT:** Add a `deinit self` method that consumes the whole struct
+```mojo
+struct Result(Movable):
+    var frame: WsFrame
+    var consumed: Int
+
+    fn take_frame(deinit self) -> WsFrame:
+        """Consume this result and return the frame."""
+        return self.frame^  # OK: self is consumed, remaining fields are dropped
+
+fn example(var result: Result) -> WsFrame:
+    return result^.take_frame()
+```
+
+**Why?** When you move a field out via `result.field^`, the struct `result` is partially destroyed — its other fields still need destruction but `field` is gone. Mojo refuses partial moves unless the whole struct is consumed. `deinit self` parameters declare "I consume this value entirely; you don't need to destroy it after the call." The remaining `Int` fields are then destroyed normally at the end of `take_frame`.
+
+**Symptoms:** `field 'result.X.Y' destroyed out of the middle of a value, preventing the overall value from being destroyed`
+
+---
+
+### Re-Raising a Caught Error Requires `^` (Transfer)
+
+**❌ WRONG:** Re-raising without ownership transfer
+```mojo
+# nocompile - Demonstrates anti-pattern
+try:
+    risky_call()
+except e:
+    if some_condition:
+        handle(e)
+    else:
+        raise e  # Error: value of type 'Error' cannot be implicitly copied
+```
+
+**✅ CORRECT:** Use `^` to transfer the error
+```mojo
+try:
+    risky_call()
+except e:
+    if some_condition:
+        handle(e)
+    else:
+        raise e^  # Transfer ownership
+```
+
+**Why?** `Error` does not conform to `ImplicitlyCopyable`. Re-raising it with `raise e` would need a copy. The `^` transfer operator moves ownership into the `raise`, which is what you want anyway — you don't need `e` after raising it.
+
+**Symptoms:** `value of type 'Error' cannot be implicitly copied, it does not conform to 'ImplicitlyCopyable'`
+
+---
+
+## Testing & Benchmarks
+
+### Test Imports Must Be Top-Level with `TestSuite.discover_tests`
+
+**❌ WRONG:** Importing inside a test function body
+```mojo
+# nocompile - Demonstrates anti-pattern
+def test_connect():
+    from flare.ws import WsClient  # Import inside function body
+    var ws = WsClient.connect("ws://echo.example.com")
+    ...
+
+def main():
+    TestSuite.discover_tests[__functions_in_module()]().run()
+```
+
+**✅ CORRECT:** All imports at the top of the file
+```mojo
+from flare.ws import WsClient  # Top-level import
+
+def test_connect():
+    var ws = WsClient.connect("ws://echo.example.com")
+    ...
+
+def main():
+    TestSuite.discover_tests[__functions_in_module()]().run()
+```
+
+**Why?** `TestSuite.discover_tests[__functions_in_module()]` resolves all test functions at compile time. If a function-body import resolves to types with default arguments that call runtime syscalls (like `getenv`), Mojo tries to evaluate them at compile time and fails with `failed to compile-time evaluate function call`.
+
+---
+
+### Benchmark Functions Need `raises capturing` Signature
+
+**❌ WRONG:** Plain non-raising benchmark function
+```mojo
+# nocompile - Demonstrates anti-pattern
+fn my_bench() -> None:
+    keep(expensive_op())
+
+# Error: 'run' candidate not viable: value passed to 'func3' cannot be
+# converted from 'fn() -> None' to 'fn() raises capturing -> None'
+var r = run[my_bench]()
+```
+
+**✅ CORRECT:** Use the `Bench`/`Bencher` API with correct signature
+```mojo
+from benchmark import Bench, BenchConfig, Bencher, BenchId, keep
+
+fn my_bench(mut b: Bencher) raises capturing:
+    @parameter
+    @always_inline
+    fn call_fn() raises:
+        keep(expensive_op())
+    b.iter[call_fn]()
+
+fn main() raises:
+    var m = Bench(BenchConfig()^)
+    m.bench_function[my_bench](BenchId("my operation"))
+    m.dump_report()
+```
+
+**Why?** The `Bench.bench_function` API requires `fn(mut b: Bencher) raises capturing` as the function signature. The `run[fn]()` shorthand works only for `fn() raises capturing -> None` (closures). Use `@parameter @always_inline fn call_fn()` for the hot inner loop inside `b.iter[call_fn]()`.
+
+Also: `BenchConfig` is not `ImplicitlyCopyable` — pass to `Bench` with `^`: `Bench(BenchConfig()^)`.
 
 ---
 
@@ -460,6 +692,14 @@ alias SIZE = 64  # Works on stable and nightly
 | "would need to copy" / missing `^` | Missing transfer operator | [Missing Transfer](#missing--in-ownership-transfer) |
 | Slow GPU kernel | Uncoalesced access | [Uncoalesced Memory](#uncoalesced-memory-access) |
 | Nightly-only API error | Version mismatch | [Version-Specific](#version-specific) |
+| "invalid use of mutating method on rvalue" | `as_c_string_slice()` on String | [FFI String unsafe_ptr](#stringunsafe_ptr-for-ffi-not-as_c_string_sliceunsafe_ptr) |
+| `StringSlice` passed to `String` param | `.strip()` / slicing returns `StringSlice` | [StringSlice vs String](#stringslice-vs-string--conversions-required) |
+| `Span[Byte]` passed to `List[UInt8]` param | `as_bytes()` returns Span, not List | [List vs Span](#listuint8-vs-spanbyte-from-as_bytes) |
+| "failed to compile-time evaluate function call" | Default arg calls `getenv`/syscall | [Default Args Runtime](#default-arguments-must-not-call-runtime-functions) |
+| "field 'X.Y' destroyed out of the middle of a value" | Partial struct field move with `^` | [Partial Move](#partial-move-from-struct-fields) |
+| "value of type 'Error' cannot be implicitly copied" | `raise e` without `^` | [Re-Raise Error](#re-raising-a-caught-error-requires--transfer) |
+| TestSuite test fails with compile-time eval error | Import inside test function body | [Test Imports](#test-imports-must-be-top-level-with-testsuitediscover_tests) |
+| `run[fn]()` benchmark fails with "candidate not viable" | Wrong benchmark function signature | [Benchmark Signature](#benchmark-functions-need-raises-capturing-signature) |
 
 ---
 

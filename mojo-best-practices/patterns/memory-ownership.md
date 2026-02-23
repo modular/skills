@@ -361,6 +361,33 @@ struct OwnedPointer[T: Movable]:
 | `failed to infer parameter 'mut'` | UnsafePointer missing full type spec | Use `UnsafePointer[mut=True, type=T, origin=MutAnyOrigin]` |
 | `cannot borrow as mutable` | Multiple mutable references | Restructure to single mutable ref at a time |
 | `value borrowed after move` | Borrowed then transferred | Transfer ownership last, not mid-use |
+| `field 'X.Y' destroyed out of the middle of a value` | Partial struct field move via `result.field^` | Add `fn take_field(deinit self) -> FieldType` method |
+| `cannot transfer out of immutable reference` | `^` on `var` param field without `deinit self` | Change `fn f(var self)` parameter to `fn f(deinit self)` |
+
+### Partial Move from Struct Fields (Use `deinit self`)
+
+Moving a single field out of a struct with `result.field^` leaves the struct
+partially destroyed. Mojo refuses this unless the whole struct is consumed.
+The solution is a `deinit self` method that moves the desired field and lets the
+remainder be dropped implicitly.
+
+```mojo
+# nocompile
+struct ParseResult(Movable):
+    var value: MyValue   # non-trivial (has List payload)
+    var consumed: Int    # trivial
+
+    # CORRECT: consume self entirely, return the interesting field
+    fn take_value(deinit self) -> MyValue:
+        return self.value^   # OK: self is consumed, consumed (Int) is dropped
+
+fn example(var result: ParseResult) -> MyValue:
+    return result^.take_value()  # move result then extract
+
+    # WRONG — partial move:
+    # return result.value^
+    # Error: field 'result.value.X' destroyed out of the middle of a value
+```
 
 ---
 

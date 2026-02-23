@@ -712,6 +712,36 @@ mojo run --target-accelerator=nvidia:sm_80 test_gpu.mojo
 | `GPU test hangs` | Missing synchronize | Add `ctx.synchronize()` |
 | `MoveCounter shows too many moves` | Unexpected copies | Check container uses moves |
 | `property test flaky` | Non-deterministic seed | Set explicit seed |
+| `function instantiation failed` in TestSuite | Import inside test function body calls runtime fn at compile time | Move all imports to top-level of test file |
+| `failed to compile-time evaluate function call` | Test function body import resolves type with `getenv` default arg | Move imports to top-level; use overloads in source library |
+
+### Top-Level Imports with `discover_tests`
+
+`TestSuite.discover_tests[__functions_in_module()]` resolves all test functions
+at **compile time**. If a test function imports a module inside its body and that
+module's types have default arguments calling runtime functions (e.g., `getenv`),
+Mojo will attempt to evaluate them at compile time and fail.
+
+**❌ WRONG:** Import inside test function body
+```mojo
+# nocompile - Demonstrates anti-pattern
+def test_connect():
+    from mylib.tls import TlsClient   # Import inside body
+    var c = TlsClient.connect("...")  # TlsClient() default calls getenv
+```
+
+**✅ CORRECT:** Import at top of file
+```mojo
+from mylib.tls import TlsClient    # Top-level import
+
+def test_connect():
+    var c = TlsClient.connect("...")  # Safe
+```
+
+**Why?** Compile-time function discovery evaluates the function body metadata.
+Top-level imports are resolved once; function-body imports are re-resolved for
+each parametric instantiation, which can trigger compile-time evaluation of
+default argument expressions.
 
 ---
 

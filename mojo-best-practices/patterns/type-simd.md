@@ -40,7 +40,6 @@ SIMD types process multiple values in a single instruction, utilizing hardware v
 
 ```mojo
 from memory import UnsafePointer
-from memory import UnsafePointer
 from builtin.type_aliases import MutAnyOrigin
 
 # Type alias for cleaner code

@@ -441,6 +441,46 @@ fn benchmark_kernel_bw[
 
 ---
 
+## Using the `Bench` / `Bencher` API
+
+The standard `benchmark` module in Mojo nightly provides `Bench`, `BenchConfig`,
+`Bencher`, `BenchId`, and `keep`. This is the preferred API for structured benchmarks.
+
+```mojo
+# nocompile
+from benchmark import Bench, BenchConfig, Bencher, BenchId, keep
+
+fn bench_my_op(mut b: Bencher) raises capturing:
+    """Benchmark hot operation with proper signature."""
+    @parameter
+    @always_inline
+    fn call_fn() raises:
+        keep(my_expensive_op())
+
+    b.iter[call_fn]()
+
+fn main() raises:
+    # CORRECT: BenchConfig is not ImplicitlyCopyable, pass with ^
+    var m = Bench(BenchConfig()^)
+    m.bench_function[bench_my_op](BenchId("my operation"))
+    m.dump_report()
+```
+
+**Rules:**
+- Benchmark functions must have signature `fn(mut b: Bencher) raises capturing`
+- Inner callable for `b.iter[fn]()` must be `@parameter @always_inline fn call_fn() raises`
+- Pass `BenchConfig` to `Bench` with `^` — it is not implicitly copyable
+- `keep(result)` prevents the compiler from eliminating dead code
+
+**Common errors:**
+| Error | Fix |
+|-------|-----|
+| `'run' expects 0 positional parameters, but 1 was specified` | Use `Bench`/`Bencher` API instead of `run[fn]()` |
+| `value passed to 'func3' cannot be converted from 'fn() -> None'` | Use `fn(mut b: Bencher) raises capturing` signature |
+| `value of type 'BenchConfig' cannot be implicitly copied` | Pass `BenchConfig()^` to `Bench(...)` |
+
+---
+
 ## Version-Specific Features
 
 ### v26.1+ (Stable)
@@ -451,6 +491,7 @@ fn benchmark_kernel_bw[
 | **perf_counter_ns** | Returns `UInt` | Stable |
 | **QuickBench API** | Available | Stable |
 | **keep/clobber_memory** | Available | Stable |
+| **Bench/Bencher API** | Available | Preferred for structured benchmarks |
 
 **Example (v26.1+):**
 ```mojo

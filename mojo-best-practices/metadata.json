@@ -11,15 +11,15 @@
       "note": "v26.1 introduces comptime keyword (preferred over alias), deprecated GPU import paths"
     },
     "nightly": {
-      "mojo_version": "26.2.0.dev2026022005",
+      "mojo_version": "26.2.0.dev2026022305",
       "note": "Track latest at https://docs.modular.com/mojo/changelog/"
     }
   },
-  "last_verified": "2026-02-20",
+  "last_verified": "2026-02-23",
   "changelog_reference": "https://docs.modular.com/stable/mojo/changelog",
   "unreleased_changelog": "https://raw.githubusercontent.com/modular/modular/main/mojo/docs/changelog.md",
   "source_reference": "https://github.com/modular/modular",
-  "abstract": "Mojo programming best practices from the official modular/modular repository. Supports both stable (v26.1) and nightly. 40 patterns across 14 categories covering memory safety, GPU kernels (SM90/SM100), language porting, testing, and performance.",
+  "abstract": "Mojo programming best practices from the official modular/modular repository. Supports both stable (v26.1) and nightly. 40 patterns across 13 categories covering memory safety, GPU kernels (SM90/SM100), language porting, testing, and performance.",
   "patterns": {
     "total": 40,
     "categories": {

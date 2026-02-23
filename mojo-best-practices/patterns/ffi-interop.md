@@ -11,12 +11,18 @@ error_patterns:
   - "DLHandle"
   - "library not found"
   - "symbol not found"
+  - "execution crashed"
+  - "sockaddr"
+  - "platform_map"
 scenarios:
   - "Call C library from Mojo"
   - "Handle C strings safely"
   - "Fix linker error"
   - "Work with binary data"
   - "Fix integer size mismatch"
+  - "Load shared library at runtime"
+  - "Cross-platform socket struct layout"
+  - "Fix Linux CI crash before tests run"
 consolidates:
   - ffi-cstring-safety.md
   - ffi-libc-functions.md
@@ -81,6 +87,26 @@ Mojo's `Int` is 64-bit on most platforms, but C's `int` is 32-bit. This mismatch
 
 ## CString Safety Patterns
 
+### String to C Pointer — Use `unsafe_ptr()` Directly
+
+The correct way to pass a Mojo `String` to a C function is via `s.unsafe_ptr()`.
+Do **not** chain through `as_c_string_slice()` — it is a mutating method and cannot
+be called on an rvalue/temporary.
+
+```mojo
+# nocompile
+fn call_c_function(s: String):
+    # CORRECT: direct pointer to null-terminated buffer
+    external_call["c_func", NoneType](s.unsafe_ptr())
+
+    # WRONG — mutating method on rvalue:
+    # external_call["c_func", NoneType](s.as_c_string_slice().unsafe_ptr())
+    # Error: invalid use of mutating method on rvalue of type 'String'
+```
+
+**Rule:** Use `s.unsafe_ptr()` for any `String → C char*` pass. The pointer is valid
+for the lifetime of `s`.
+
 ### String to C String (for calling C functions)
 
 ```mojo
@@ -126,6 +152,47 @@ fn receive_c_string() -> String:
     external_call["free", NoneType](c_str)
 
     return s
+```
+
+### `StringSlice` vs `String` — String Method Return Types
+
+Many `String` methods return `StringSlice` (a non-owning view), not an owned `String`.
+This is a common FFI/API surprise in Mojo nightly.
+
+```mojo
+# nocompile
+fn example(line: String):
+    # These return StringSlice, NOT String:
+    var a = line[:10]         # StringSlice
+    var b = line.strip()      # StringSlice
+    var c = line.lstrip()     # StringSlice
+
+    # Wrap with String(...) to get owned String:
+    var owned_a = String(line[:10])
+    var owned_b = String(line.strip())
+
+    # Chaining: convert at each step
+    var header_key = String(String(line[:colon]).strip())  # slice → String → strip → String
+```
+
+**Rule:** Whenever you need to pass a string expression result (from slicing, `.strip()`,
+etc.) to a function declared with `s: String`, wrap it in `String(...)`.
+
+### `Span[Byte]` vs `List[UInt8]` — `as_bytes()` Return Type
+
+`String.as_bytes()` returns `Span[Byte]` (non-owning view), not `List[UInt8]` (owned buffer).
+
+```mojo
+# nocompile
+fn needs_list(body: List[UInt8]): ...
+
+fn example(s: String):
+    # WRONG — Span[Byte] cannot be passed as List[UInt8]:
+    # needs_list(s.as_bytes())
+
+    # CORRECT — copy into an owned List:
+    var body = List[UInt8](s.as_bytes())
+    needs_list(body^)
 ```
 
 ### StringSlice for Borrowed C Data
@@ -542,6 +609,152 @@ gcc -shared -fPIC -o libcustom.so custom.c
 clang -dynamiclib -o libcustom.dylib custom.c
 ```
 
+### CRITICAL: Never Import Inside a Function Body (Linux x86_64 Crash)
+
+`from module import X` inside a function body causes a Mojo **runtime crash**
+(`error: execution crashed`) on Linux x86_64 **before any code runs**, even
+if the function is never called. macOS arm64 does not crash. This is
+platform-specific Mojo runtime behavior, verified in production CI.
+
+```mojo
+# nocompile
+# BAD — crashes at startup on Linux x86_64:
+fn find_my_lib() -> String:
+    from pathlib import Path          # ← CRASH on Linux before any test runs
+    if Path("build/mylib.so").exists():
+        return "build/mylib.so"
+    return getenv("LIB_PATH", "mylib.so")
+
+# GOOD — all imports at the top of the file:
+from os import getenv
+# pathlib not needed; use env var or CONDA_PREFIX logic instead
+fn find_my_lib() -> String:
+    var explicit = getenv("MY_LIB", "")
+    if explicit:
+        return explicit
+    return "build/mylib.so"
+```
+
+**Rule:** Keep all `from X import Y` at module level. Never inside functions.
+
+### Resolving Library Path with Environment Variable (pixi/conda pattern)
+
+When a shared library is built by an activation script (e.g., pixi's
+`[activation].scripts`), export the library path as an env var. Since
+activation scripts are **sourced**, `export` persists to every `pixi run …`
+child process, eliminating any runtime filesystem check in Mojo.
+
+```bash
+# build.sh — sourced by pixi activation
+TARGET="$SCRIPT_DIR/../../../build/libmylib.so"
+# ... build steps ...
+export MY_LIB="$TARGET"  # persists to all `pixi run ...` child processes
+
+# Also export on the idempotency early-return path:
+if ! _needs_rebuild; then
+    export MY_LIB="$TARGET"
+    return 0
+fi
+```
+
+```mojo
+# nocompile
+# mylib.mojo — no filesystem check, no pathlib import
+from os import getenv
+
+fn find_my_lib() -> String:
+    """Resolve path to libmylib.so.
+
+    Search order:
+    1. $MY_LIB      — set by activation script (dev)
+    2. $CONDA_PREFIX/lib/  — installed conda package
+    3. build/        — bare checkout without conda
+    """
+    var explicit = getenv("MY_LIB", "")
+    if explicit:
+        return explicit
+    var prefix = getenv("CONDA_PREFIX", "")
+    if prefix:
+        return prefix + "/lib/libmylib.so"
+    return "build/libmylib.so"
+```
+
+### dlopen Path Sensitivity for Libraries with Global State
+
+`OwnedDLHandle` calls `dlopen`/`dlclose`. For libraries with global state
+(OpenSSL, CUDA contexts, etc.), loading an **identical binary from a different
+path** can produce different runtime behavior. This happens because `dlopen`
+tracks identity by (device, inode), so a copy at a new path is a separate
+library instance with independent global state.
+
+```mojo
+# nocompile
+# PROBLEM: copying libssl_wrapper.so to $CONDA_PREFIX/lib/ and loading it from
+# there vs loading from build/ causes different OpenSSL SSL_CTX behavior even
+# though the bytes are identical (same md5sum). TLS tests pass from build/,
+# fail from $CONDA_PREFIX/lib/.
+
+# SOLUTION: always load from the same canonical path (use env var pattern above).
+# Do NOT copy shared libs to a new path and load from there — keep a single path.
+```
+
+**Rule:** For any library with global state (`dlopen`/`dlclose` cycle), load
+from a single canonical path. Use an env var set at build time rather than
+copying the file to a new location at runtime.
+
+### Cross-Platform `sockaddr_in` Layout (macOS vs Linux)
+
+macOS (BSD) prepends a 1-byte `sin_len` field before `sin_family`; Linux
+does not. Passing a macOS-layout buffer to Linux's `connect()`/`bind()`
+silently connects to the wrong address. Use `CompilationTarget.is_macos()`
+to branch at compile time.
+
+```mojo
+# nocompile
+from sys.info import CompilationTarget
+
+fn _fill_sockaddr_in(
+    buf: UnsafePointer[UInt8], port: UInt16, ip_bytes: UnsafePointer[UInt8]
+):
+    """Populate a 16-byte IPv4 sockaddr_in buffer in-place."""
+    @parameter
+    if CompilationTarget.is_macos():
+        # BSD-style: byte 0 = sin_len (struct size), byte 1 = AF_INET
+        (buf + 0).init_pointee_copy(UInt8(16))  # sin_len
+        (buf + 1).init_pointee_copy(UInt8(2))   # AF_INET
+    else:
+        # Linux: sin_family as little-endian UInt16 → bytes [2, 0]
+        (buf + 0).init_pointee_copy(UInt8(2))   # family low byte
+        (buf + 1).init_pointee_copy(UInt8(0))   # family high byte
+
+    # Port big-endian (bytes 2-3), IP (bytes 4-7), padding (8-15 zeroed by caller)
+    (buf + 2).init_pointee_copy(UInt8(port >> 8))
+    (buf + 3).init_pointee_copy(UInt8(port & 0xFF))
+    for i in range(4):
+        (buf + 4 + i).init_pointee_copy((ip_bytes + i).load())
+```
+
+### `platform_map` for Compile-Time Platform Constants
+
+Socket/libc constants differ between macOS and Linux. Use `platform_map` from
+`sys.info` to select the right value at compile time — zero runtime overhead.
+
+```mojo
+# nocompile
+from sys.info import platform_map
+
+comptime _pm = platform_map[T=Int, ...]
+
+# Socket constants that differ between platforms:
+comptime AF_INET6: c_int  = c_int(_pm["AF_INET6", linux=10,     macos=30]())
+comptime SOL_SOCKET: c_int = c_int(_pm["SOL_SOCKET", linux=1,   macos=0xFFFF]())
+comptime SO_REUSEADDR: c_int = c_int(_pm["SO_REUSEADDR", linux=2, macos=4]())
+comptime SO_REUSEPORT: c_int = c_int(_pm["SO_REUSEPORT", linux=15, macos=0x0200]())
+comptime SO_KEEPALIVE: c_int = c_int(_pm["SO_KEEPALIVE", linux=9, macos=8]())
+comptime SO_RCVTIMEO: c_int = c_int(_pm["SO_RCVTIMEO",  linux=20, macos=0x1006]())
+comptime O_NONBLOCK: c_int  = c_int(_pm["O_NONBLOCK",   linux=2048, macos=4]())
+```
+
 ---
 
 ## Missing Math Functions
@@ -631,6 +844,9 @@ fn ipow(base: Int, exponent: Int) -> Int:
 | `CString use-after-free` | CString destroyed before C function returns | Keep CString alive until C call completes; use `with` block |
 | `Int vs c_int mismatch` | Mojo Int is 64-bit, C int is 32-bit | Use `Int32` or `c_int` alias for C function arguments |
 | `symbol not found` | Wrong symbol name or library | Check spelling; use `nm -gU libname` to list symbols |
+| `execution crashed` (Linux, before any test output) | `from X import Y` inside a function body; Linux x86_64-specific crash | Move all imports to module level; never import inside a function body |
+| Library with global state (TLS/OpenSSL) behaves differently despite identical binary | Same binary loaded via `dlopen` from two different paths creates independent global state | Load from a single canonical path; use the env-var path-resolution pattern |
+| Wrong connect address on Linux (works on macOS) | `sockaddr_in` has 1-byte `sin_len` prefix on macOS/BSD, absent on Linux | Use `@parameter if CompilationTarget.is_macos()` to branch buffer layout |
 
 ---
 

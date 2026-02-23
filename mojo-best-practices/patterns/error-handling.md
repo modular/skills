@@ -554,6 +554,22 @@ struct MyContextMgr:
 | `resource leaked on error` | No cleanup on exception path | Use `try/finally` or struct destructor for cleanup |
 | `Optional has no value` | Calling `.value()` on empty Optional | Check with `if opt:` before accessing, or use `.or_else(default)` |
 | `typed error not raised` (v26.1+) | Wrong error type in `raises` clause | Ensure error type matches declaration: `raises CustomError` |
+| `value of type 'Error' cannot be implicitly copied` | Re-raising caught error without `^` | Use `raise e^` to transfer ownership |
+
+### Re-Raising a Caught Error
+
+When you catch an error and want to re-raise it, you must use `^` to transfer
+ownership. `Error` does not conform to `ImplicitlyCopyable`.
+
+```mojo
+# nocompile
+try:
+    risky_call()
+except e:
+    log_error(e)      # Can still read e before transferring
+    raise e^           # Transfer ownership — e is consumed here
+    # raise e          # WRONG: Error cannot be implicitly copied
+```
 
 ---
 

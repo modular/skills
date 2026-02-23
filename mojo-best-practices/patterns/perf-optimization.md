@@ -589,7 +589,6 @@ fn copy_array[T: Copyable](
 
 ```mojo
 from memory import UnsafePointer
-from memory import UnsafePointer
 from builtin.type_aliases import MutAnyOrigin
 
 comptime Int64Ptr = UnsafePointer[mut=True, type=Int64, origin=MutAnyOrigin]
