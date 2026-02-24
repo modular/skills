@@ -11,13 +11,13 @@
       "note": "v26.1 aligned with Mojo 26.1 - comptime keyword preferred"
     },
     "nightly": {
-      "max_version": "26.2.0.dev2026022005",
+      "max_version": "26.2.0.dev2026022405",
       "note": "Track latest at https://docs.modular.com/max/changelog/"
     }
   },
-  "last_verified": "2026-02-20",
+  "last_verified": "2026-02-24",
   "changelog_reference": "https://docs.modular.com/stable/max/changelog/",
-  "unreleased_changelog": "https://docs.modular.com/max/changelog/",
+  "unreleased_changelog": "https://raw.githubusercontent.com/modular/modular/main/docs/max/changelog.md",
   "source_reference": "https://github.com/modular/modular",
   "abstract": "MAX AI inference framework best practices from Modular. Supports both stable (v26.1) and nightly. Covers MAX Serve deployment, MAX Graph API, multi-GPU inference, and performance optimization. 15 patterns across 7 categories.",
   "patterns": {
@@ -153,6 +153,14 @@
     {
       "title": "MAX GitHub",
       "url": "https://github.com/modular/modular/tree/main/max"
+    },
+    {
+      "title": "MAX Changelog (unreleased, raw)",
+      "url": "https://raw.githubusercontent.com/modular/modular/main/docs/max/changelog.md"
+    },
+    {
+      "title": "MAX Changelog (released, raw)",
+      "url": "https://raw.githubusercontent.com/modular/modular/main/docs/max/changelog-released.md"
     }
   ]
 }

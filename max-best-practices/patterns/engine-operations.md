@@ -489,7 +489,9 @@ from max.pipelines.kv_cache import KVCacheStrategy
 pipeline_config = PipelineConfig(
     model_path="modularai/Llama-3.1-8B-Instruct-GGUF",
     max_batch_size=32,
-    max_length=4096,
+    # Note: max_length moved to MAXModelConfig in v26.2+
+    # For nightly, set via config.model.max_length instead
+    max_length=4096,  # stable v26.1 only
     cache_strategy=KVCacheStrategy.PAGED,
     device_memory_utilization=0.85,
     enable_chunked_prefill=True,

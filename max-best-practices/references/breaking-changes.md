@@ -197,6 +197,7 @@
 | Large runtime layouts | Uses int64 indices for large tensor layouts |
 | SM100 kernels | Unified pipeline storage and naming for Blackwell |
 | `DeviceRef.from_device()` | **Deprecated** - still works but prefer `DeviceRef.CPU()` or `DeviceRef.GPU()` |
+| `PipelineConfig.max_length` | **Removed** - moved to `MAXModelConfig.max_length` (access via `config.model.max_length`) |
 | `ops.custom()` signature | `device` is now required positional arg: `ops.custom(name, device, values, out_types)` |
 | `TensorType` | Now requires `device` parameter: `TensorType(dtype, shape, device=DeviceRef.CPU())` |
 | Custom op kernel imports | Use `from tensor import InputTensor, OutputTensor, foreach` (not `from max.tensor`) |
@@ -358,6 +359,7 @@ pip uninstall max  # Remove global install
 
 | Old API | New API | Version |
 |---------|---------|---------|
+| `PipelineConfig.max_length` | `config.model.max_length` (via `MAXModelConfig`) | v26.2 |
 | `DeviceRef.from_device(device)` | `DeviceRef.CPU()` / `DeviceRef.GPU()` (deprecated, not removed) | v26.2 |
 | `ops.custom(name, values, ...)` | `ops.custom(name, device, values, ...)` | v26.2 |
 | `from max.tensor import InputTensor` | `from tensor import InputTensor` | v26.2 |
