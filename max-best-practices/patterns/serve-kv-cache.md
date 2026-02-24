@@ -333,4 +333,4 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 ## References
 
 - [MAX Serve Configuration](https://docs.modular.com/max/serve)
-- Source: `max/nn/legacy/kv_cache/cache_params.py`, `max/pipelines/lib/memory_estimation.py`
+- Source: `max/nn/kv_cache/cache_params.py`, `max/pipelines/lib/memory_estimation.py`

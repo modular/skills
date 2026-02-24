@@ -51,7 +51,7 @@ Float8 enables high-performance inference on NVIDIA Hopper GPUs (H100) with mini
 **Pattern - FBGEMM FP8 (Recommended for H100):**
 
 ```python
-from max.nn.legacy.float8_config import (
+from max.nn.float8_config import (
     Float8Config,
     Float8InputScaleSpec,
     Float8WeightScaleSpec,
@@ -120,7 +120,7 @@ GPTQ (Group-wise Post-Training Quantization) enables memory-efficient 4-bit infe
 
 ```python
 from max.graph.quantization import QuantizationConfig, QuantizationEncoding
-from max.nn.legacy import GPTQLinear
+from max.nn import GPTQLinear
 from max.dtype import DType
 
 # Standard GPTQ configuration
@@ -389,7 +389,7 @@ high_accuracy_config = QuantizationConfig(
 
 **Stable (v26.1):**
 ```python
-from max.nn.legacy.float8_config import (
+from max.nn.float8_config import (
     Float8Config,
     Float8InputScaleSpec,
     Float8WeightScaleSpec,
@@ -407,7 +407,7 @@ input_spec = Float8InputScaleSpec(
 
 **Nightly (v26.2+):**
 ```python
-from max.nn.legacy.float8_config import (
+from max.nn.float8_config import (
     Float8Config,
     Float8InputScaleSpec,
     Float8WeightScaleSpec,
@@ -445,4 +445,4 @@ input_spec = Float8InputScaleSpec(
 ## References
 
 - [MAX Documentation](https://docs.modular.com/max/)
-- Source: `max/nn/legacy/float8_config.py`, `max/graph/quantization.py`
+- Source: `max/nn/float8_config.py`, `max/graph/quantization.py`

@@ -299,7 +299,7 @@ pip uninstall max  # Remove global install
 | `custom_ops_path` in InferenceSession | Removed |
 | `foreach` callback signature | Requires `element_alignment: Int`: `fn[width: Int, element_alignment: Int](idx)` |
 | `max.driver.Buffer` | Use `max.driver.Tensor` (Buffer renamed to Tensor) |
-| `KVCacheStrategy` import | Import from `max.kv_cache.registry` or `max.nn.legacy.kv_cache` |
+| `KVCacheStrategy` import | Import from `max.kv_cache.registry` or `max.nn.kv_cache` |
 
 ## v25.6
 

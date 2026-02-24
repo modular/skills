@@ -386,7 +386,7 @@ Supported parameter types: `bool`, `int`, `str`, `DType`.
 ```python
 from max.graph.weights import WeightsFormat
 from max.interfaces import PipelineTask
-from max.nn.legacy.kv_cache import KVCacheStrategy
+from max.nn.kv_cache import KVCacheStrategy
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
     PIPELINE_REGISTRY,

@@ -55,9 +55,9 @@ from max.tensor import Tensor
 from max import functional as F  # F.lazy() context, @F.functional decorator
 
 # Legacy modules (for pipeline architectures)
-from max.nn.legacy.layer import Module as LegacyModule, LayerList
-from max.nn.legacy.linear import Linear as LegacyLinear, MLP, ColumnParallelLinear
-from max.nn.legacy.norm import RMSNorm as LegacyRMSNorm
+from max.nn.layer import Module as LegacyModule, LayerList
+from max.nn.linear import Linear as LegacyLinear, MLP, ColumnParallelLinear
+from max.nn.norm import RMSNorm as LegacyRMSNorm
 
 # Engine and execution
 from max.engine import InferenceSession
