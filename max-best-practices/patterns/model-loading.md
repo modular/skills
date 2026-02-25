@@ -379,7 +379,7 @@ The architecture list above reflects nightly. Stable versions may have fewer arc
 
 ## Related Patterns
 
-- [`deploy-deployment.md`](deploy-deployment.md) — Production deployment
+- [`deploy-production.md`](deploy-production.md) — Production deployment
 - [`multigpu-scaling.md`](multigpu-scaling.md) — Multi-GPU for large models
 - [`engine-operations.md`](engine-operations.md) — Custom architecture registration
 

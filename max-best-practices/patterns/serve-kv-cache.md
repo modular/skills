@@ -325,8 +325,8 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 ## Related Patterns
 
 - [`serve-configuration.md`](serve-configuration.md) — Batch configuration and scheduling
-- [`serve-request-lifecycle.md`](serve-request-lifecycle.md) — Preemption handling
-- [`serve-monitoring.md`](serve-monitoring.md) — Cache metrics and telemetry
+- [`serve-api.md`](serve-api.md) — Preemption handling
+- [`deploy-production.md`](deploy-production.md) — Cache metrics and telemetry
 
 ---
 

@@ -907,6 +907,6 @@ from gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 - [`gpu-fundamentals.md`](gpu-fundamentals.md) — Mojo GPU programming fundamentals
 - [`gpu-structured-kernels.md`](gpu-structured-kernels.md) — ScatterGather/RingBuffer/TileOp architecture
 - [`gpu-tensor-cores.md`](gpu-tensor-cores.md) — SM90/SM100 tensor core patterns in detail
-- [`gpu-synchronization.md`](gpu-synchronization.md) — Barriers, async transactions, pipeline stages
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) — Barriers, async transactions, pipeline stages
 - [`gpu-memory-access.md`](gpu-memory-access.md) — TMA, prefetch, swizzle patterns
-- [`gpu-warp.md`](gpu-warp.md) — Warp primitives, shuffle, ballot, reduction
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) — Warp primitives, shuffle, ballot, reduction

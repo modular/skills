@@ -6,49 +6,25 @@
 
 ## Table of Contents
 
-**40 patterns** across **13 categories**
+**36 patterns** across **11 categories**
 
-- [C Interoperability](#c-interoperability) (2 patterns)
-- [GPU Programming](#gpu-programming) (15 patterns)
+- [GPU Programming](#gpu-programming) (14 patterns)
 - [Memory Safety & Ownership](#memory-safety--ownership) (4 patterns)
 - [Type System](#type-system) (3 patterns)
 - [Debugging](#debugging) (1 patterns)
 - [Function Design](#function-design) (1 patterns)
 - [Struct Design](#struct-design) (1 patterns)
-- [Testing](#testing) (2 patterns)
 - [Error Handling](#error-handling) (1 patterns)
-- [Performance Optimization](#performance-optimization) (4 patterns)
+- [Performance Optimization](#performance-optimization) (3 patterns)
 - [Python Interoperability](#python-interoperability) (1 patterns)
+- [Other](#other) (5 patterns)
 - [Advanced Metaprogramming](#advanced-metaprogramming) (2 patterns)
-- [Other](#other) (3 patterns)
-
----
-
-## C Interoperability
-
-**Priority:** CRITICAL | **Patterns:** 2
-
-### FFI and C Interoperability
-
-**Pattern:** `ffi-interop` | **Impact:** CRITICAL
-
-Core FFI patterns including C strings, libc functions, binary data, integer type safety, string handling, and dynamic library loading
-
-See: [../patterns/ffi-interop.md](../patterns/ffi-interop.md)
-
-### FFI Vendor Library Integration
-
-**Pattern:** `ffi-vendor` | **Impact:** CRITICAL
-
-Patterns for integrating vendor libraries, GPU frameworks, Apple BLAS/AMX, dynamic loading, Python GIL management, and platform-specific FFI considerations
-
-See: [../patterns/ffi-vendor.md](../patterns/ffi-vendor.md)
 
 ---
 
 ## GPU Programming
 
-**Priority:** CRITICAL | **Patterns:** 15
+**Priority:** CRITICAL | **Patterns:** 14
 
 ### AMD GPU Programming
 
@@ -138,14 +114,6 @@ Three-component kernel pattern (ScatterGather, RingBuffer, TileOp) for maintaina
 
 See: [../patterns/gpu-structured-kernels.md](../patterns/gpu-structured-kernels.md)
 
-### GPU Synchronization and Async Operations
-
-**Pattern:** `gpu-synchronization` | **Impact:** HIGH
-
-Synchronization primitives including barriers, mbarriers, async transactions, and async copy patterns
-
-See: [../patterns/gpu-synchronization.md](../patterns/gpu-synchronization.md)
-
 ### Tensor Core Programming for SM90 and SM100
 
 **Pattern:** `gpu-tensor-cores` | **Impact:** CRITICAL
@@ -164,13 +132,13 @@ Systematic diagnosis of GPU build failures, performance issues, and integration 
 
 See: [../patterns/gpu-troubleshooting.md](../patterns/gpu-troubleshooting.md)
 
-### Warp Primitives and Reduction Patterns
+### Warp Primitives, Synchronization, and Async Operations
 
-**Pattern:** `gpu-warp` | **Impact:** HIGH
+**Pattern:** `gpu-warp-sync` | **Impact:** HIGH
 
-Warp shuffle operations, warp specialization, row reduction, and block reduction patterns
+Warp shuffle operations, reductions, barriers, mbarriers, async transactions, and async copy patterns
 
-See: [../patterns/gpu-warp.md](../patterns/gpu-warp.md)
+See: [../patterns/gpu-warp-sync.md](../patterns/gpu-warp-sync.md)
 
 ---
 
@@ -284,28 +252,6 @@ See: [../patterns/struct-design.md](../patterns/struct-design.md)
 
 ---
 
-## Testing
-
-**Priority:** HIGH | **Patterns:** 2
-
-### Mojo Benchmarking Patterns
-
-**Pattern:** `test-benchmarking` | **Impact:** HIGH
-
-Performance benchmarking patterns including QuickBench, proper timing methodology, and performance testing best practices
-
-See: [../patterns/test-benchmarking.md](../patterns/test-benchmarking.md)
-
-### Mojo Testing Patterns
-
-**Pattern:** `test-testing` | **Impact:** HIGH
-
-Unit testing patterns including test suites, assertions, lifecycle counters, property-based testing, and GPU test patterns
-
-See: [../patterns/test-testing.md](../patterns/test-testing.md)
-
----
-
 ## Error Handling
 
 **Priority:** MEDIUM-HIGH | **Patterns:** 1
@@ -322,21 +268,13 @@ See: [../patterns/error-handling.md](../patterns/error-handling.md)
 
 ## Performance Optimization
 
-**Priority:** MEDIUM | **Patterns:** 4
+**Priority:** MEDIUM | **Patterns:** 3
 
-### Memory Optimization Patterns
+### General Optimization & Memory Patterns
 
-**Pattern:** `perf-memory` | **Impact:** HIGH
+**Pattern:** `perf-optimization` | **Impact:** HIGH
 
-Comprehensive guide to memory alignment, data layout, prefetching, stack vs heap allocation, multiple accumulators, and tiled processing
-
-See: [../patterns/perf-memory.md](../patterns/perf-memory.md)
-
-### General Optimization Patterns
-
-**Pattern:** `perf-optimization` | **Impact:** MEDIUM
-
-Comprehensive guide to caching strategies, lazy loading, mmap patterns, compile-time computation, buffer management, and avoiding overhead
+Comprehensive guide to caching strategies, lazy loading, mmap patterns, compile-time computation, buffer management, memory alignment, data layout, prefetching, tiling, and avoiding overhead
 
 See: [../patterns/perf-optimization.md](../patterns/perf-optimization.md)
 
@@ -372,31 +310,17 @@ See: [../patterns/python-interop.md](../patterns/python-interop.md)
 
 ---
 
-## Advanced Metaprogramming
-
-**Priority:** LOW | **Patterns:** 2
-
-### API Canary Tests
-
-**Pattern:** `meta-canary-apis` | **Impact:** LOW
-
-Quick compilation tests for critical APIs - first to break when Mojo changes
-
-See: [../patterns/meta-canary-apis.md](../patterns/meta-canary-apis.md)
-
-### Mojo Metaprogramming Patterns
-
-**Pattern:** `meta-programming` | **Impact:** MEDIUM
-
-Compile-time parameters, variadic parameters, conditional conformance, and parameter unpacking for zero-cost generics
-
-See: [../patterns/meta-programming.md](../patterns/meta-programming.md)
-
----
-
 ## Other
 
-**Priority:** LOW | **Patterns:** 3
+**Priority:** LOW | **Patterns:** 5
+
+### FFI and C Interoperability
+
+**Pattern:** `ffi` | **Impact:** CRITICAL
+
+Core FFI patterns including C strings, libc functions, binary data, integer type safety, dynamic library loading, vendor library integration (BLAS, cuBLAS, MPS), Python GIL management, and GPU performance optimization
+
+See: [../patterns/ffi.md](../patterns/ffi.md)
 
 ### C++ to Mojo Porting Guide
 
@@ -421,5 +345,35 @@ See: [../patterns/porting-python.md](../patterns/porting-python.md)
 Side-by-side Rust→Mojo porting guide comparing ownership models, trait systems, SIMD, and GPU programming
 
 See: [../patterns/porting-rust.md](../patterns/porting-rust.md)
+
+### Mojo Testing & Benchmarking Patterns
+
+**Pattern:** `testing` | **Impact:** HIGH
+
+Unit testing, property-based testing, lifecycle counters, performance benchmarking with QuickBench, GPU test and benchmark patterns
+
+See: [../patterns/testing.md](../patterns/testing.md)
+
+---
+
+## Advanced Metaprogramming
+
+**Priority:** LOW | **Patterns:** 2
+
+### API Canary Tests
+
+**Pattern:** `meta-canary-apis` | **Impact:** LOW
+
+Quick compilation tests for critical APIs - first to break when Mojo changes
+
+See: [../patterns/meta-canary-apis.md](../patterns/meta-canary-apis.md)
+
+### Mojo Metaprogramming Patterns
+
+**Pattern:** `meta-programming` | **Impact:** MEDIUM
+
+Compile-time parameters, variadic parameters, conditional conformance, and parameter unpacking for zero-cost generics
+
+See: [../patterns/meta-programming.md](../patterns/meta-programming.md)
 
 ---

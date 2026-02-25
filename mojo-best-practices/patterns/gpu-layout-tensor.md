@@ -424,6 +424,6 @@ fn reshape_2d_to_3d[dtype: DType](
 
 - [`gpu-fundamentals.md`](gpu-fundamentals.md) -- Thread hierarchy, memory model, basic kernel patterns
 - [`gpu-memory-access.md`](gpu-memory-access.md) -- TMA loading, swizzling, bank conflict avoidance
-- [`gpu-synchronization.md`](gpu-synchronization.md) -- Barrier and synchronization patterns
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) -- Barrier and synchronization patterns
 - [`gpu-tensor-cores.md`](gpu-tensor-cores.md) -- Tensor core programming with LayoutTensor
 - [`memory-safety.md`](memory-safety.md) -- Safe pointer patterns and rebind caveats

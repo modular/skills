@@ -1,9 +1,9 @@
 ---
-title: General Optimization Patterns
-description: Comprehensive guide to caching strategies, lazy loading, mmap patterns, compile-time computation, buffer management, and avoiding overhead
-impact: MEDIUM
+title: General Optimization & Memory Patterns
+description: Comprehensive guide to caching strategies, lazy loading, mmap patterns, compile-time computation, buffer management, memory alignment, data layout, prefetching, tiling, and avoiding overhead
+impact: HIGH
 category: perf
-tags: [caching, mmap, compile-time, buffers, allocation, python-interop]
+tags: [caching, mmap, compile-time, buffers, allocation, python-interop, memory, alignment, layout, prefetch, cache, tiling, accumulators]
 error_patterns:
   - "slow startup"
   - "allocation overhead"
@@ -13,6 +13,14 @@ error_patterns:
   - "lazy loading"
   - "buffer"
   - "cache"
+  - "cache miss"
+  - "alignment"
+  - "unaligned"
+  - "memory bandwidth"
+  - "false sharing"
+  - "cache line"
+  - "slow memory access"
+  - "prefetch"
 scenarios:
   - "Implement caching strategy"
   - "Use memory-mapped files"
@@ -21,6 +29,13 @@ scenarios:
   - "Reduce startup overhead"
   - "Optimize model loading"
   - "Use zero-copy loading"
+  - "Optimize memory access pattern"
+  - "Align data for SIMD"
+  - "Use prefetching"
+  - "Choose stack vs heap"
+  - "Implement tiled processing"
+  - "Reduce cache misses"
+  - "Use multiple accumulators"
 consolidates:
   - perf-tokenizer-caching.md
   - perf-dimension-dependent-caching.md
@@ -40,13 +55,33 @@ consolidates:
   - perf-gpu-cache-preservation.md
   - perf-gpu-vs-cpu-tradeoffs.md
   - perf-mpsgraph-compilation-overhead.md
+  - perf-memory-alignment.md
+  - perf-memory-layout.md
+  - perf-memory-prefetch.md
+  - memory-borrow-vs-copy.md
+  - perf-multiple-accumulators.md
+  - perf-tiled-processing.md
+  - perf-memory.md
 ---
+<!-- PATTERN QUICK REF
+WHEN: Optimizing Mojo code performance, memory layout, cache efficiency, GPU/CPU tradeoffs
+KEY_TYPES: UnsafePointer, SIMD, StaticTuple, PrefetchOptions, LayoutTensor, Float32Ptr
+SYNTAX:
+  - comptime VALUE = expr (compile-time constants)
+  - @align(N) struct (cache-line / SIMD alignment)
+  - prefetch[PrefetchOptions().for_read().high_locality()](ptr)
+  - data.load[width=WIDTH](i) / data.store(i, vec)
+  - T.__copyinit__is_trivial (trivial type check)
+  - external_call["mmap", UInt8Ptr](...) (FFI mmap)
+PITFALLS: mmap leak (missing munmap), false sharing (unpadded parallel counters), prefetch too late, single accumulator dependency chain, GPU cache invalidation between phases, FFI overhead misattribution
+RELATED: perf-vectorization, perf-parallelization, memory-ownership
+-->
 
-# General Optimization Patterns
+# General Optimization & Memory Patterns
 
-**Category:** perf | **Impact:** MEDIUM
+**Category:** perf | **Impact:** HIGH
 
-This pattern covers essential optimization strategies beyond SIMD and parallelization: caching, lazy loading, memory-mapped files, compile-time computation, buffer management, and avoiding common overhead sources.
+This pattern covers essential optimization strategies: caching, lazy loading, memory-mapped files, compile-time computation, buffer management, memory alignment, data layout, prefetching, tiling, and avoiding common overhead sources.
 
 ---
 
@@ -61,6 +96,32 @@ This pattern covers essential optimization strategies beyond SIMD and paralleliz
 
 Always start from the top. A better algorithm beats micro-optimizations every time.
 
+### Memory Hierarchy Impact
+
+| Level | Latency | Size | Optimization |
+|-------|---------|------|--------------|
+| L1 Cache | ~1 ns | 32-64 KB | Sequential access, prefetch |
+| L2 Cache | ~4 ns | 256-512 KB | Tiling, blocking |
+| L3 Cache | ~10 ns | 4-32 MB | Data layout |
+| Main Memory | ~100 ns | GBs | Minimize access |
+
+### Cache Line Alignment
+
+Modern CPUs fetch memory in 64-byte cache lines. Proper alignment ensures:
+- Single cache line fetch for SIMD vectors
+- No false sharing in parallel code
+- Optimal prefetcher behavior
+
+```mojo
+# nocompile
+@align(64)  # Align to cache line (64 bytes)
+struct AlignedBuffer:
+    var data: SIMD[DType.float32, 16]
+
+    fn __init__(out self):
+        self.data = SIMD[DType.float32, 16]()
+```
+
 ---
 
 ## Common Patterns
@@ -72,7 +133,6 @@ Always start from the top. A better algorithm beats micro-optimizations every ti
 **Impact:** CRITICAL (20-50% speedup by mathematically eliminating work)
 
 **Benchmark (Mandelbrot 1920x1080):**
-
 - Without shortcuts: 11.2 ms
 - With cardioid/bulb skip: 3.9 ms (**65% faster**)
 
@@ -142,6 +202,11 @@ struct PipelineContext(Movable):
     fn __init__(out self):
         self.cached_tokenizer = Tokenizer()
         self.tokenizer_cached = False
+
+    fn __moveinit__(out self, deinit take: Self):
+        self.cached_tokenizer = take.cached_tokenizer^
+        self.tokenizer_cached = take.tokenizer_cached
+
 
 fn encode_text(mut ctx: Context, prompt: String) -> Embeddings:
     var tokenizer_path = ctx.model_dir + "/tokenizer/tokenizer.json"
@@ -242,7 +307,6 @@ struct SafetensorsFile:
 | Zero-copy (mmap) | 4GB |
 
 **mmap FFI bindings:**
-
 ```mojo
 # nocompile
 comptime PROT_READ: Int32 = 1
@@ -258,7 +322,6 @@ fn libc_munmap(addr: UInt8Ptr, length: Int) -> Int32:
 ```
 
 **Best practices:**
-
 - Track mmap state for correct cleanup
 - Handle MAP_FAILED
 - Close fd after mmap (mmap keeps internal reference)
@@ -273,7 +336,6 @@ fn libc_munmap(addr: UInt8Ptr, length: Int) -> Int32:
 **Impact:** CRITICAL (100-1000x speedup vs Python object operations)
 
 **Don't:**
-
 ```mojo
 # nocompile
 from python import Python
@@ -290,7 +352,6 @@ fn slow_sum() -> Float64:
 ```
 
 **Do (convert at boundaries, compute natively):**
-
 ```mojo
 # nocompile
 fn process_numpy_data(py_array: PythonObject) -> Float64:
@@ -350,7 +411,6 @@ comptime SQUARES = generate_squares[256]()
 ```
 
 **Use comptime for:**
-
 - Mathematical constants
 - Lookup tables with fixed values
 - Type definitions
@@ -366,7 +426,6 @@ comptime SQUARES = generate_squares[256]()
 **Impact:** HIGH (5-15% speedup by eliminating allocation overhead in hot loops)
 
 **Don't (allocate per call):**
-
 ```mojo
 fn layer_forward(mut model: Model, layer: Layer, seq_len: Int):
     # Allocates buffers every call - 36 layers = 36 allocations per forward
@@ -382,7 +441,6 @@ fn layer_forward(mut model: Model, layer: Layer, seq_len: Int):
 ```
 
 **Do (persistent buffers in struct):**
-
 ```mojo
 struct Model:
     # Persistent work buffers (allocated once)
@@ -408,7 +466,6 @@ fn layer_forward(mut model: Model, layer: Layer, seq_len: Int):
 ```
 
 **Buffer pool pattern:**
-
 ```mojo
 # nocompile
 @align(64)  # Cache-line alignment for SIMD
@@ -442,7 +499,6 @@ This eliminates ~7 allocations per layer x 36 layers = 252 malloc/free calls per
 **When:** Variable-size inputs on memory-constrained systems
 
 **Don't (pre-allocate for max):**
-
 ```mojo
 # nocompile
 struct Transformer:
@@ -456,7 +512,6 @@ fn load() -> Transformer:
 ```
 
 **Do (allocate based on actual size):**
-
 ```mojo
 fn forward(tf: Transformer, img_h: Int, img_w: Int, txt_seq: Int):
     var img_seq = img_h * img_w
@@ -477,7 +532,6 @@ fn forward(tf: Transformer, img_h: Int, img_w: Int, txt_seq: Int):
 **Impact:** HIGH (3-4 second savings by avoiding redundant warmup)
 
 **Don't (redundant explicit warming):**
-
 ```mojo
 fn load_model_gpu(model: Model, mps: MPSContext):
     # Explicit pre-warming: loops through ALL weights
@@ -492,7 +546,6 @@ fn load_model_gpu(model: Model, mps: MPSContext):
 ```
 
 **Do (rely on lazy caching):**
-
 ```mojo
 # nocompile
 fn load_model_gpu(model: Model, mps: MPSContext):
@@ -562,7 +615,7 @@ fn copy_array[T: Copyable](
     count: Int,
 ):
     @parameter
-    if T.__copy_ctor_is_trivial:
+    if T.__copyinit__is_trivial:
         # Trivial: single memcpy (uses SIMD, very fast)
         memcpy(dest=dest, src=src, count=count)
     else:
@@ -575,8 +628,8 @@ fn copy_array[T: Copyable](
 
 | Flag | Meaning | True For |
 |------|---------|----------|
-| `T.__move_ctor_is_trivial` | Move is bitwise copy | Int, Float32, SIMD, Pointer |
-| `T.__copy_ctor_is_trivial` | Copy is bitwise copy | Int, Float32, SIMD, Pointer |
+| `T.__moveinit__is_trivial` | Move is bitwise copy | Int, Float32, SIMD, Pointer |
+| `T.__copyinit__is_trivial` | Copy is bitwise copy | Int, Float32, SIMD, Pointer |
 | `T.__del__is_trivial` | Destructor is no-op | Int, Float32, SIMD, Pointer |
 
 ---
@@ -588,6 +641,7 @@ fn copy_array[T: Copyable](
 **Impact:** HIGH (2-3x faster than List-based operations)
 
 ```mojo
+from memory import UnsafePointer
 from memory import UnsafePointer
 from builtin.type_aliases import MutAnyOrigin
 
@@ -687,7 +741,6 @@ fn forward_gpu_ffi(...):
 **Optimization strategies (in order of effectiveness):**
 
 1. **Enable weight caching** (most important - 1.8x speedup):
-
 ```mojo
 # nocompile
 # Cache weights across inference steps
@@ -696,16 +749,14 @@ if not ctx.model_cached:
     ctx.model_cached = True
 ```
 
-1. **Batch/chain GPU operations** (reduce sync points):
-
+2. **Batch/chain GPU operations** (reduce sync points):
 ```mojo
 mps.gpu_batch_begin()
 # ... multiple operations ...
 mps.gpu_batch_end()  # Single sync
 ```
 
-1. **Fuse operations** (reduce FFI calls):
-
+3. **Fuse operations** (reduce FFI calls):
 ```mojo
 # nocompile
 # BAD: 3 separate FFI calls
@@ -735,7 +786,6 @@ qkv = mps.gpu_fused_qkv(input, qkv_weight)
 **Impact:** CRITICAL — Prevents 4+ second warmup overhead when GPU caches are invalidated
 
 **Don't (clears cache between phases):**
-
 ```mojo
 # nocompile
 fn run_pipeline(mut ctx: Context):
@@ -750,7 +800,6 @@ fn run_pipeline(mut ctx: Context):
 ```
 
 **Do (preserve cache when weights are shared):**
-
 ```mojo
 # nocompile
 fn run_pipeline(mut ctx: Context):
@@ -784,7 +833,6 @@ fn run_pipeline(mut ctx: Context):
 **Impact:** HIGH — GPU 10-100x faster than CPU even with FFI overhead
 
 **Anti-Pattern: Native CPU Path**
-
 ```mojo
 # "Native" path - eliminates FFI but uses CPU BLAS
 fn transformer_forward_native(...) raises:
@@ -792,7 +840,6 @@ fn transformer_forward_native(...) raises:
 ```
 
 **Correct: GPU FFI Path**
-
 ```mojo
 # FFI GPU path - has FFI overhead but uses GPU acceleration
 fn transformer_forward_gpu(...) raises:
@@ -807,7 +854,6 @@ fn transformer_forward_gpu(...) raises:
 | Concat/copy | 830ms overhead | 662ms | CPU (25% faster) |
 
 **Recommendation for Apple Silicon:**
-
 - Use GPU for compute-intensive ops (matmul, attention, convolution)
 - Use CPU for memory operations (concat, transpose, copy)
 - Always measure with timing to verify assumptions
@@ -823,7 +869,6 @@ fn transformer_forward_gpu(...) raises:
 MPSGraph caches compiled graphs per configuration. Each unique configuration compiles a new graph at first use (50-200ms).
 
 **Case Study (Image Decoder with ~30 unique configs):**
-
 ```
 GPU Path (first run):
 - Graph compilations: 30 × ~100ms = ~3000ms
@@ -836,7 +881,6 @@ CPU BLAS Path:
 ```
 
 **Solution: Pre-compile all configs at startup:**
-
 ```mojo
 # nocompile
 fn precompile_conv_graphs(mps: MPSContext, configs: List[ConvConfig]):
@@ -863,7 +907,6 @@ fn get_decoder_configs(max_resolution: Int) -> List[ConvConfig]:
 ```
 
 **Alternative: Adaptive GPU/CPU selection:**
-
 ```mojo
 # nocompile
 fn conv2d_adaptive(cfg: ConvConfig, mps: MPSContext) -> Bool:
@@ -878,22 +921,447 @@ fn conv2d_adaptive(cfg: ConvConfig, mps: MPSContext) -> Bool:
 
 ---
 
+## Memory Optimization
+
+This section covers memory-level optimizations: alignment, data layout, prefetching, multiple accumulators, tiled processing, and borrowing.
+
+### Pattern 18: Struct Alignment for SIMD
+
+**When:** Structs containing SIMD vectors or performance-critical data
+
+**Common alignment values:**
+
+| Alignment | Use Case |
+|-----------|----------|
+| 16 bytes | SSE vectors (128-bit) |
+| 32 bytes | AVX vectors (256-bit) |
+| 64 bytes | AVX-512 vectors, cache lines |
+| 128 bytes | Some GPU requirements |
+
+**Do:**
+```mojo
+# nocompile
+@align(32)
+struct GoodBuffer:
+    var data: SIMD[DType.float32, 8]  # 32 bytes, properly aligned
+    var header: Int8
+
+fn process(b: GoodBuffer):
+    # Aligned loads are fast and safe
+    pass
+```
+
+**Don't:**
+```mojo
+struct BadBuffer:
+    var header: Int8
+    var data: SIMD[DType.float32, 8]  # Likely unaligned
+
+fn process(b: BadBuffer):
+    # Unaligned loads are slower or may crash on some architectures
+    pass
+```
+
+**Prevent false sharing in parallel code:**
+```mojo
+# nocompile
+@align(64)  # Cache line alignment
+struct CacheAlignedCounter:
+    var count: Int
+    # Padding to fill cache line, prevent false sharing
+    var _padding: SIMD[DType.int64, 7]
+
+    fn __init__(out self):
+        self.count = 0
+        self._padding = SIMD[DType.int64, 7]()
+
+    fn increment(mut self):
+        self.count += 1
+```
+
+---
+
+### Pattern 19: Data Layout (AoS vs SoA)
+
+**When:** Batch operations on large datasets
+
+**Benchmark (particle simulation):**
+- AoS (Array of Structs): Poor cache utilization for single-field access
+- SoA (Struct of Arrays): 2-10x faster for batch field operations
+
+**Don't (AoS with strided access):**
+```mojo
+# nocompile
+struct ParticleAoS:
+    var x: Float64
+    var y: Float64
+    var z: Float64
+    var vx: Float64
+    var vy: Float64
+    var vz: Float64
+    var mass: Float64
+
+fn sum_x_aos(particles: List[ParticleAoS]) -> Float64:
+    var total: Float64 = 0.0
+    for p in particles:
+        # Accessing x values jumps 56 bytes between particles
+        # Cache lines (64 bytes) mostly wasted on unused fields
+        total += p[].x
+    return total
+```
+
+**Do (SoA for batch operations):**
+```mojo
+struct ParticlesSoA:
+    var x: List[Float64]
+    var y: List[Float64]
+    var z: List[Float64]
+    var vx: List[Float64]
+    var vy: List[Float64]
+    var vz: List[Float64]
+    var mass: List[Float64]
+
+fn sum_x_soa(particles: ParticlesSoA) -> Float64:
+    var total: Float64 = 0.0
+    # Sequential memory access - perfect cache utilization
+    for i in range(len(particles.x)):
+        total += particles.x[i]
+    return total
+```
+
+**Layout decision guide:**
+
+| Layout | Best For | Cache Behavior |
+|--------|----------|----------------|
+| AoS | Single particle operations, infrequent access | All fields of one item cached together |
+| SoA | Batch operations on single fields | Sequential access, perfect prefetching |
+| Hybrid | Mixed access patterns | Balance between both |
+
+---
+
+### Pattern 20: Matrix Transpose for Coalesced Access
+
+**When:** Matrix multiplication where B is accessed column-wise
+
+**Benchmark (1024x1024, Apple M-series):**
+- Without transpose: 2.4 GFLOP/s
+- With transpose + SIMD: 105 GFLOP/s (**44x faster**)
+- With transpose + SIMD + parallel + unroll: **117 GFLOP/s**
+
+```mojo
+# nocompile
+# SLOW: Column-wise access to B causes cache misses
+fn matmul_slow(C: Matrix, A: Matrix, B: Matrix):
+    for m in range(M):
+        for n in range(N):
+            var acc: Float64 = 0.0
+            for k in range(K):
+                acc += A.get(m, k) * B.get(k, n)  # B[k,n] is strided!
+            C.set(m, n, acc)
+
+# FAST: Transpose B, then both accesses are row-wise
+fn transpose(B: Matrix) -> Matrix:
+    var BT = Matrix(B.cols, B.rows)
+    for i in range(B.rows):
+        for j in range(B.cols):
+            BT.set(j, i, B.get(i, j))
+    return BT^
+
+fn matmul_fast(C: Matrix, A: Matrix, B: Matrix):
+    var BT = transpose(B)  # One-time O(n^2) cost
+    for m in range(M):
+        var a_row = A.data + m * K
+        for n in range(N):
+            var bt_row = BT.data + n * K  # Now coalesced!
+            # SIMD dot product - both accesses sequential
+            var acc = SIMD[DType.float64, 8]()
+            var k = 0
+            while k + 8 <= K:
+                acc += (a_row + k).load[width=8]() * (bt_row + k).load[width=8]()
+                k += 8
+            C.set(m, n, acc.reduce_add())
+```
+
+---
+
+### Pattern 21: Memory Prefetching
+
+**When:** Large sequential or strided array traversals
+
+**Benchmark (100M element traversal):**
+- Without prefetch: 8.5 ms
+- With prefetch: 6.2 ms (**27% faster**)
+
+```mojo
+# nocompile
+from memory import prefetch, PrefetchOptions
+
+fn sum_with_prefetch(data: UnsafePointer[Float64], size: Int) -> Float64:
+    comptime WIDTH: Int = 8
+    comptime PREFETCH_DISTANCE: Int = 256  # Elements ahead to prefetch
+
+    var acc = SIMD[DType.float64, WIDTH]()
+    var i = 0
+
+    while i + WIDTH <= size:
+        # Prefetch data that will be needed in future iterations
+        if i + PREFETCH_DISTANCE < size:
+            prefetch[PrefetchOptions().for_read().high_locality()](
+                data.offset(i + PREFETCH_DISTANCE)
+            )
+
+        acc += data.load[width=WIDTH](i)
+        i += WIDTH
+
+    return acc.reduce_add()
+```
+
+**Prefetch options:**
+```mojo
+# nocompile
+# Read prefetch (most common)
+prefetch[PrefetchOptions().for_read().high_locality()](ptr)
+
+# Write prefetch (when you'll write to memory soon)
+prefetch[PrefetchOptions().for_write().high_locality()](ptr)
+
+# Low locality (data used once, don't pollute cache)
+prefetch[PrefetchOptions().for_read().low_locality()](ptr)
+```
+
+**Prefetch distance guidelines:**
+
+| Access Pattern | Recommended Distance | Reasoning |
+|----------------|---------------------|-----------|
+| Sequential read | 256-512 elements | ~2-4 cache lines ahead |
+| Strided access | 128-256 elements | Account for stride |
+| Random access | Don't prefetch | Unpredictable, may hurt |
+
+---
+
+### Pattern 22: Multiple Accumulators for ILP
+
+**When:** Reduction operations with independent iterations
+
+Modern CPUs can execute multiple independent instructions simultaneously. Using a single accumulator creates a dependency chain that limits throughput.
+
+**Benchmark (100M element sum):**
+- Single accumulator: 12.0 ms
+- 4 accumulators: 8.2 ms (**1.5x faster**)
+- 8 accumulators: 7.0 ms (**1.7x faster**)
+
+**Don't (single accumulator creates dependency chain):**
+```mojo
+fn sum_single_acc(data: UnsafePointer[Float64], size: Int) -> Float64:
+    comptime WIDTH: Int = 8
+    var acc = SIMD[DType.float64, WIDTH]()
+
+    var i = 0
+    while i + WIDTH <= size:
+        acc += data.load[width=WIDTH](i)  # Must wait for previous acc update
+        i += WIDTH
+
+    return acc.reduce_add()
+```
+
+**Do (multiple accumulators enable parallel execution):**
+```mojo
+fn sum_multi_acc(data: UnsafePointer[Float64], size: Int) -> Float64:
+    comptime WIDTH: Int = 8
+
+    # 8 independent accumulators for maximum ILP
+    var acc0 = SIMD[DType.float64, WIDTH]()
+    var acc1 = SIMD[DType.float64, WIDTH]()
+    var acc2 = SIMD[DType.float64, WIDTH]()
+    var acc3 = SIMD[DType.float64, WIDTH]()
+    var acc4 = SIMD[DType.float64, WIDTH]()
+    var acc5 = SIMD[DType.float64, WIDTH]()
+    var acc6 = SIMD[DType.float64, WIDTH]()
+    var acc7 = SIMD[DType.float64, WIDTH]()
+
+    var i = 0
+    # Process 8 SIMD vectors per iteration (64 elements)
+    while i + WIDTH * 8 <= size:
+        acc0 += data.load[width=WIDTH](i)
+        acc1 += data.load[width=WIDTH](i + WIDTH)
+        acc2 += data.load[width=WIDTH](i + WIDTH * 2)
+        acc3 += data.load[width=WIDTH](i + WIDTH * 3)
+        acc4 += data.load[width=WIDTH](i + WIDTH * 4)
+        acc5 += data.load[width=WIDTH](i + WIDTH * 5)
+        acc6 += data.load[width=WIDTH](i + WIDTH * 6)
+        acc7 += data.load[width=WIDTH](i + WIDTH * 7)
+        i += WIDTH * 8
+
+    # Combine accumulators
+    acc0 = acc0 + acc1 + acc2 + acc3 + acc4 + acc5 + acc6 + acc7
+
+    # Handle remaining elements
+    while i + WIDTH <= size:
+        acc0 += data.load[width=WIDTH](i)
+        i += WIDTH
+
+    var sum = acc0.reduce_add()
+    while i < size:
+        sum += data[i]
+        i += 1
+
+    return sum
+```
+
+**Accumulator count guidelines:**
+
+| CPU Type | Recommended Accumulators | Reasoning |
+|----------|-------------------------|-----------|
+| Apple M-series | 4-8 | Wide execution units |
+| Intel/AMD x86 | 4-8 | Multiple ALUs per core |
+| Memory-bound ops | 2-4 | Diminishing returns |
+
+---
+
+### Pattern 23: Tiled Processing for Large Data
+
+**When:** Large image/tensor processing that exceeds cache or GPU memory
+
+**Impact:** 75% memory reduction for large image processing (1024x1024+)
+
+```mojo
+# nocompile
+@fieldwise_init
+struct TiledConfig(Copyable, Movable):
+    var tile_size: Int      # Tile size (e.g., 512 pixels)
+    var overlap: Int        # Overlap between tiles (e.g., 64 pixels)
+    var enabled: Bool
+
+fn compute_blend_weight(y: Int, x: Int, h: Int, w: Int, overlap: Int) -> Float32:
+    """Linear falloff weight at tile edges."""
+    var wt: Float32 = 1.0
+
+    # Top edge
+    if y < overlap:
+        wt *= Float32(y) / Float32(overlap)
+    # Bottom edge
+    if y >= h - overlap:
+        wt *= Float32(h - 1 - y) / Float32(overlap)
+    # Left edge
+    if x < overlap:
+        wt *= Float32(x) / Float32(overlap)
+    # Right edge
+    if x >= w - overlap:
+        wt *= Float32(w - 1 - x) / Float32(overlap)
+
+    return wt
+
+fn process_tiled(input: Float32Ptr, h: Int, w: Int, config: TiledConfig) -> Float32Ptr:
+    """Process input in overlapping tiles."""
+    var stride = config.tile_size - config.overlap
+    var output = alloc[Float32](h * w)
+    var weight_sum = alloc[Float32](h * w)
+
+    # Initialize accumulators
+    for i in range(h * w):
+        output[i] = 0.0
+        weight_sum[i] = 0.0
+
+    # Process tiles
+    var y = 0
+    while y < h:
+        var tile_h = min(config.tile_size, h - y)
+        var x = 0
+        while x < w:
+            var tile_w = min(config.tile_size, w - x)
+
+            # Extract and process tile
+            var tile = extract_tile(input, y, x, tile_h, tile_w, w)
+            var processed = process_single_tile(tile, tile_h, tile_w)
+
+            # Accumulate with blending
+            for ty in range(tile_h):
+                for tx in range(tile_w):
+                    var wt = compute_blend_weight(ty, tx, tile_h, tile_w, config.overlap)
+                    var oy = y + ty
+                    var ox = x + tx
+                    var idx = oy * w + ox
+                    output[idx] += wt * processed[ty * tile_w + tx]
+                    weight_sum[idx] += wt
+
+            x += stride
+        y += stride
+
+    # Normalize
+    for i in range(h * w):
+        if weight_sum[i] > 0:
+            output[i] /= weight_sum[i]
+
+    weight_sum.free()
+    return output
+```
+
+**Recommended tiling settings:**
+
+| Resolution | tile_size | overlap | Memory |
+|------------|-----------|---------|--------|
+| 512x512 | No tiling needed | - | - |
+| 1024x1024 | 512 | 64 | ~128MB |
+| 2048x2048 | 512 | 64 | ~128MB |
+
+---
+
+### Pattern 24: Prefer Borrowing Over Copying
+
+**When:** Passing large data structures to functions
+
+**Impact:** 10-100x faster for large data structures
+
+```mojo
+fn analyze(data: List[Float64]) -> Float64:
+    # data is borrowed immutably - no copy occurs
+    # This is the default behavior with 'read' convention
+    var sum: Float64 = 0.0
+    for item in data:
+        sum += item
+    return sum / len(data)
+
+fn main():
+    var measurements = List[Float64]()
+    for i in range(1000000):
+        measurements.append(Float64(i))
+
+    var avg = analyze(measurements)  # Borrowed, not copied
+    print(avg)
+    print(measurements[0])  # Still valid - we only borrowed
+```
+
+**When copying is appropriate:**
+- Small types that fit in registers (Int, Float64, Bool)
+- When you need an independent copy to modify
+- Types conforming to `TrivialRegisterType` trait
+
+---
+
 ## Decision Guide
 
 | Scenario | Approach | See Also |
 |----------|----------|----------|
-| Mathematically skip-able work | Algorithm shortcuts | - |
-| Expensive resource loading | Cache in context struct | - |
-| Values depending on dimensions | Dimension-dependent caching | - |
-| Large file access (100MB+) | mmap with zero-copy | - |
-| Python in hot paths | Convert at boundary, use native | - |
-| Fixed constants | comptime | - |
-| Repeated function calls | Persistent buffers | - |
-| Memory-constrained | Dynamic allocation based on actual size | - |
+| Mathematically skip-able work | Algorithm shortcuts | Pattern 1 |
+| Expensive resource loading | Cache in context struct | Pattern 2 |
+| Values depending on dimensions | Dimension-dependent caching | Pattern 3 |
+| Large file access (100MB+) | mmap with zero-copy | Pattern 4 |
+| Python in hot paths | Convert at boundary, use native | Pattern 5 |
+| Fixed constants | comptime | Pattern 6 |
+| Repeated function calls | Persistent buffers | Pattern 7 |
+| Memory-constrained | Dynamic allocation based on actual size | Pattern 8 |
 | GPU vs CPU choice | GPU for compute, CPU for memory ops | Pattern 16 |
 | FFI overhead in hot paths | Batch/fuse operations, cache weights | Pattern 14 |
 | Multi-phase GPU pipelines | Preserve cache between phases | Pattern 15 |
 | MPSGraph varying configs | Pre-compile or use adaptive selection | Pattern 17 |
+| SIMD data structures | @align(32) or @align(64) | Pattern 18 |
+| Batch field operations | SoA layout | Pattern 19 |
+| Matrix multiply | Transpose B for coalesced access | Pattern 20 |
+| Large sequential scans | Prefetch 256-512 elements ahead | Pattern 21 |
+| Reduction operations | Multiple accumulators (4-8) | Pattern 22 |
+| Large images (1024+) | Tiled processing with overlap | Pattern 23 |
+| Parallel counters | Cache-line aligned to prevent false sharing | Pattern 18 |
+| Large data to functions | Borrow instead of copy | Pattern 24 |
 
 ---
 
@@ -902,8 +1370,14 @@ fn conv2d_adaptive(cfg: ConvConfig, mps: MPSContext) -> Bool:
 - **Caching pattern**: Check flag, load if miss, return cached
 - **mmap cleanup**: Track is_mmapped, use munmap vs free appropriately
 - **Compile-time**: Use `comptime` (alias is deprecated)
-- **Trivial check**: `T.__copy_ctor_is_trivial`
+- **Trivial check**: `T.__copyinit__is_trivial`
 - **Benchmark**: Warmup + best of 10, separate setup
+- **Cache line size**: 64 bytes (typical)
+- **AVX alignment**: 32 bytes
+- **AVX-512 alignment**: 64 bytes
+- **Prefetch distance**: 256-512 elements for sequential
+- **Accumulator count**: 4-8 for modern CPUs
+- **Tile overlap**: At least 1/8 of tile size
 
 ---
 
@@ -916,7 +1390,13 @@ fn conv2d_adaptive(cfg: ConvConfig, mps: MPSContext) -> Bool:
 | `buffer pool exhaustion` | All buffers in use | Increase pool size; add blocking wait for buffer |
 | `mmap leak` | Missing munmap | Track is_mmapped flag; call munmap in destructor |
 | `benchmark variance too high` | Cold cache or background work | Add warmup iterations; isolate benchmark process |
-| `trivial copy check wrong` | Using wrong trait check | Use `T.__copy_ctor_is_trivial` for trivial copy detection |
+| `trivial copy check wrong` | Using wrong trait check | Use `T.__copyinit__is_trivial` for trivial copy detection |
+| `unaligned access crash` | Pointer not aligned for operation | Use `@align(N)` on struct; use aligned allocation |
+| `cache thrashing` | Stride matches cache line size | Change array layout; add padding to break stride |
+| `prefetch no effect` | Prefetch too late or wrong distance | Prefetch 256-512 elements ahead for sequential access |
+| `false sharing` | Different threads modify same cache line | Pad data to 64-byte boundaries between threads |
+| `stack overflow` | Large stack allocation | Use heap for large buffers; reduce local array sizes |
+| `memory bandwidth saturated` | Too many concurrent memory streams | Reduce active streams; improve data locality |
 
 ---
 
@@ -930,36 +1410,35 @@ fn conv2d_adaptive(cfg: ConvConfig, mps: MPSContext) -> Bool:
 | **Heap allocation** | `from memory import alloc; alloc[T](n)` | v26.1+ |
 | **mmap** | `mmap.mmap()` | Stable |
 | **FFI** | `external_call[]` | Stable |
+| **Prefetch** | `prefetch[PrefetchOptions()]` | Stable |
+| **Struct alignment** | `@align(64)` | v26.2+ nightly |
 
 **Example (v26.1+):**
-
 ```mojo
 # nocompile
-from memory import alloc
+from memory import alloc, prefetch, PrefetchOptions
 
 comptime CACHE_LINE = 64
 comptime POOL_SIZE = 16
+comptime SIMD_WIDTH = 8
 
 fn allocate_buffer(size: Int) -> UnsafePointer[Float32]:
     return alloc[Float32](size)
 ```
 
 **Notes:**
-
 - Both `alias` and `comptime` work for compile-time constants in v26.1+
 - `alloc()` is available in v26.1+ (not nightly-only)
-- Caching strategies and patterns are stable across versions
-- Memory-mapped file patterns are stable
-- Buffer pooling and reuse patterns are stable
-- Compile-time computation patterns are stable
+- `@align(N)` decorator is v26.2+ nightly
+- Prefetching APIs (`prefetch`, `PrefetchOptions`) are stable
+- Caching, buffer pooling, memory-mapped file, tiled processing, and compile-time computation patterns are all stable across versions
 
 ---
 
 ## Related Patterns
 
-- [`perf-vectorization.md`](perf-vectorization.md) — SIMD patterns
-- [`perf-parallelization.md`](perf-parallelization.md) — Multi-core patterns
-- [`perf-memory.md`](perf-memory.md) — Memory layout optimization
+- [`perf-vectorization.md`](perf-vectorization.md) — SIMD patterns that benefit from alignment
+- [`perf-parallelization.md`](perf-parallelization.md) — Multi-core patterns with memory considerations
 
 ---
 
@@ -969,3 +1448,6 @@ fn allocate_buffer(size: Int) -> UnsafePointer[Float32]:
 - [Mojo Python Interoperability](https://docs.modular.com/mojo/manual/python/)
 - [Mojo Manual](https://docs.modular.com/mojo/manual/)
 - [Mojo UnsafePointer](https://docs.modular.com/mojo/std/memory/unsafe_pointer/)
+- [Mojo Memory](https://docs.modular.com/mojo/std/memory/)
+- [Mojo Decorators](https://docs.modular.com/mojo/manual/decorators/)
+- [Mojo Value Semantics](https://docs.modular.com/mojo/manual/values/)

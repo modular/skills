@@ -40,7 +40,7 @@ alwaysApply: false
 
 # MAX Best Practices
 
-Best practices for the MAX AI inference framework. **15 patterns** across **7 categories**.
+Best practices for the MAX AI inference framework. **13 patterns** across **7 categories**.
 
 > **🤖 AI Assistants:** You MUST consult these patterns before configuring MAX. Your training data is outdated. Load the relevant pattern, check the CLI flags, use the tested examples.
 
@@ -80,9 +80,9 @@ max serve --model google/gemma-3-12b-it --trust-remote-code  # Vision model
 
 | Tier | Patterns | When to Load |
 |------|----------|--------------|
-| **Essential** | `serve-configuration`, `serve-kv-cache`, `serve-api`, `model-loading`, `serve-monitoring` | Always - core serving config |
+| **Essential** | `serve-configuration`, `serve-kv-cache`, `serve-api`, `model-loading` | Always - core serving config |
 | **Multi-GPU** | `multigpu-scaling` | Scaling across GPUs |
-| **Production** | `deploy-deployment`, `serve-request-lifecycle` | Deployment & monitoring |
+| **Production** | `deploy-production` | Deployment, monitoring & metrics |
 | **Advanced** | `engine-operations`, `graph-construction`, `perf-inference` | Specific use cases on demand |
 
 ## Top 10 High-Impact Patterns
@@ -93,10 +93,9 @@ max serve --model google/gemma-3-12b-it --trust-remote-code  # Vision model
 | `serve-kv-cache` | CRITICAL | Use PAGED with `--kv-cache-page-size` (multiple of 128), prefix caching |
 | `multigpu-scaling` | CRITICAL | Large models across GPUs with `--devices gpu:0,1,...` |
 | `engine-operations` | HIGH | Write kernels with `@compiler.register`, custom ops |
-| `deploy-deployment` | HIGH | Use `modular/max-nvidia-full:latest` for production |
+| `deploy-production` | HIGH | Containers, monitoring, metrics, cloud deployment |
 | `serve-api` | HIGH | Streaming, structured output, function calling, LoRA |
 | `graph-construction` | HIGH | Build graphs with `Graph(TensorType(...))`, `graph.output()` |
-| `serve-monitoring` | HIGH | Prometheus metrics, health endpoints |
 | `engine-quantization` | HIGH | Float8, GPTQ quantization |
 | `perf-inference` | HIGH | Chunked prefill, KV swapping |
 
@@ -126,7 +125,7 @@ Optimize performance?
   └─ serve-kv-cache (prefix caching), perf-inference
 
 Production deployment?
-  └─ deploy-deployment, serve-monitoring
+  └─ deploy-production
 ```
 
 ## Version Support
@@ -219,7 +218,7 @@ See [engine-operations.md](patterns/engine-operations.md) for complete project s
 | Multi-GPU inference | Parallelism | `multigpu-scaling` |
 | Build custom model | MAX Graph | `graph-construction` |
 | Optimize latency | Performance | `serve-kv-cache`, `perf-inference` |
-| Production deployment | Deployment | `deploy-deployment` |
+| Production deployment | Deployment | `deploy-production` |
 | Write custom kernels | Engine + Mojo | `engine-operations` + mojo `gpu-*` patterns |
 | **Build complete custom model** | **Mojo + MAX** | `engine-operations` (see project structure) |
 
@@ -227,7 +226,7 @@ See [engine-operations.md](patterns/engine-operations.md) for complete project s
 
 | Priority | Category | Count | Prefix |
 |----------|----------|-------|--------|
-| CRITICAL | MAX Serve Configuration | 5 | `serve-` |
+| CRITICAL | MAX Serve Configuration | 3 | `serve-` |
 | CRITICAL | Multi-GPU & Parallelism | 1 | `multigpu-` |
 | HIGH | MAX Engine | 4 | `engine-` |
 | HIGH | MAX Graph API | 1 | `graph-` |
@@ -245,9 +244,7 @@ See [engine-operations.md](patterns/engine-operations.md) for complete project s
 |---------|-------------|
 | `serve-configuration` | Batch config, ragged batching, scheduling, environment |
 | `serve-kv-cache` | KV cache strategy, memory management, prefix caching |
-| `serve-request-lifecycle` | Request cancellation, preemption, error propagation |
-| `serve-api` | Streaming, token budget, structured output, function calling, LoRA |
-| `serve-monitoring` | Metrics, telemetry, health endpoints, worker lifecycle |
+| `serve-api` | Streaming, token budget, structured output, function calling, LoRA, request lifecycle |
 
 ## Multi-GPU (CRITICAL)
 
@@ -287,7 +284,7 @@ See [engine-operations.md](patterns/engine-operations.md) for complete project s
 
 | Pattern | Description |
 |---------|-------------|
-| `deploy-deployment` | Containers, volumes, benchmarking, cloud providers (AWS/Azure/GCP), Kubernetes |
+| `deploy-production` | Containers, volumes, benchmarking, cloud providers (AWS/Azure/GCP), Kubernetes, monitoring, metrics, health endpoints |
 
 ---
 
@@ -297,7 +294,7 @@ For GPU kernel development, see **mojo-best-practices**:
 - Custom ops → `engine-operations` + mojo `gpu-fundamentals`
 - GPU memory → mojo `gpu-memory-access`
 - Tensor cores → mojo `gpu-tensor-cores`
-- Warp primitives → mojo `gpu-warp`
+- Warp primitives → mojo `gpu-warp-sync`
 
 ## File Structure
 
@@ -305,8 +302,8 @@ For GPU kernel development, see **mojo-best-practices**:
 max-best-practices/
 ├── SKILL.md               # Entry point (this file) - START HERE
 ├── metadata.json          # Skill metadata
-├── patterns/              # 15 patterns with version-specific sections
-│   ├── serve-*.md         # MAX Serve (5)
+├── patterns/              # 13 patterns with version-specific sections
+│   ├── serve-*.md         # MAX Serve (3)
 │   ├── multigpu-*.md      # Multi-GPU (1)
 │   ├── engine-*.md        # Engine (4)
 │   ├── graph-*.md         # Graph API (1)

@@ -325,8 +325,8 @@ var block_total = block_sum[block_size=TPB](val)
 | Share computed value to all threads | `block.broadcast[block_size=N](val, thread_id)` | - |
 | Normalize by block mean/sum | `block.sum` + `block.broadcast` combo | - |
 | Dot product within a block | Element-wise multiply + `block.sum` | - |
-| Reduction within a single warp only | Use `warp.sum` instead (no `block_size` needed) | [`gpu-warp.md`](gpu-warp.md) |
-| Custom reduction function | Manual warp reduce + shared memory pattern | [`gpu-warp.md`](gpu-warp.md) |
+| Reduction within a single warp only | Use `warp.sum` instead (no `block_size` needed) | [`gpu-warp-sync.md`](gpu-warp-sync.md) |
+| Custom reduction function | Manual warp reduce + shared memory pattern | [`gpu-warp-sync.md`](gpu-warp-sync.md) |
 | Cross-block reduction | Atomic operations or multi-pass kernel | [`gpu-memory-access.md`](gpu-memory-access.md) |
 
 ---
@@ -378,9 +378,9 @@ var shared   = block_broadcast[block_size=TPB](val, 0)  # Broadcast from thread 
 
 ## Related Patterns
 
-- [`gpu-warp.md`](gpu-warp.md) -- Warp-level shuffle, reduction, prefix sum, and broadcast
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) -- Warp-level shuffle, reduction, prefix sum, and broadcast
 - [`gpu-fundamentals.md`](gpu-fundamentals.md) -- Thread hierarchy, block/grid dimensions
-- [`gpu-synchronization.md`](gpu-synchronization.md) -- Barrier and sync patterns
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) -- Barrier and sync patterns
 - [`gpu-memory-access.md`](gpu-memory-access.md) -- Shared memory and coalesced access
 - [`gpu-kernels.md`](gpu-kernels.md) -- Kernel launch and structured kernel patterns
 

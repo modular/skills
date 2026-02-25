@@ -6,7 +6,7 @@ When an error message matches multiple patterns, use this guide to determine whi
 
 ## "latency" errors
 
-**Priority 1: Check [`serve-monitoring.md`](../patterns/serve-monitoring.md) if:**
+**Priority 1: Check [`deploy-production.md`](../patterns/deploy-production.md) if:**
 - You're investigating response time in production
 - Monitoring or observability tools report high latency
 - You need to identify slow endpoints or request phases
@@ -34,7 +34,7 @@ When an error message matches multiple patterns, use this guide to determine whi
 
 ## "throughput" errors
 
-**Priority 1: Check [`serve-monitoring.md`](../patterns/serve-monitoring.md) if:**
+**Priority 1: Check [`deploy-production.md`](../patterns/deploy-production.md) if:**
 - You're measuring requests per second
 - Monitoring shows throughput below expectations
 - You need to identify bottlenecks in the serving pipeline

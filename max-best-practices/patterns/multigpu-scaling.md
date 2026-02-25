@@ -417,7 +417,7 @@ max serve --model meta-llama/Llama-3.3-70B-Instruct \
 
 ## Related Patterns
 
-- [`deploy-deployment.md`](deploy-deployment.md) — Container and cloud deployment
+- [`deploy-production.md`](deploy-production.md) — Container and cloud deployment
 - [`perf-inference.md`](perf-inference.md) — Performance optimization
 - [`engine-operations.md`](engine-operations.md) — Session configuration
 

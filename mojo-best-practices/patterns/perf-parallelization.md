@@ -96,6 +96,7 @@ fn add_arrays_parallel(mut result: List[Int], a: List[Int], b: List[Int]):
 from algorithm import parallelize
 from sys import num_physical_cores
 from memory import UnsafePointer
+from memory import UnsafePointer
 from builtin.type_aliases import MutAnyOrigin
 
 comptime Int64Ptr = UnsafePointer[mut=True, type=Int64, origin=MutAnyOrigin]
@@ -331,7 +332,7 @@ fn matmul_ultimate(C: Matrix, A: Matrix, B: Matrix):
 | Large arrays (>10K elements) | parallelize + SIMD | [`perf-vectorization.md`](perf-vectorization.md) |
 | Reduction (sum, max, min) | Partial sums per core | - |
 | Multi-head attention | Per-head buffers | - |
-| Matrix multiply | Transpose B + tile + parallel | [`perf-memory.md`](perf-memory.md) |
+| Matrix multiply | Transpose B + tile + parallel | [`perf-optimization.md`](perf-optimization.md) |
 | Small arrays (<10K) | SIMD only (parallelize overhead exceeds benefit) | - |
 
 ---
@@ -505,7 +506,7 @@ This is functionally similar to `parallelize` but may have different synchroniza
 ## Related Patterns
 
 - [`perf-vectorization.md`](perf-vectorization.md) — SIMD patterns to combine with parallel
-- [`perf-memory.md`](perf-memory.md) — Memory layout for parallel efficiency
+- [`perf-optimization.md`](perf-optimization.md) — Memory layout for parallel efficiency
 - [`perf-optimization.md`](perf-optimization.md) — General optimization strategies
 
 ---

@@ -564,7 +564,7 @@ fn transfer_numpy_array(py_arr: PythonObject) -> List[Float64]:
 - **Convert early**: Transform Python objects to Mojo types before loops
 - **Handle errors**: Wrap Python calls in try/except blocks
 - **10-1000x speedup**: Achievable by moving computation to pure Mojo
-- **GIL**: Release during long Mojo computations (see [`ffi-interop.md`](ffi-interop.md))
+- **GIL**: Release during long Mojo computations (see [`ffi.md`](ffi.md))
 
 ---
 
@@ -617,7 +617,7 @@ fn process_data() raises:
 
 ## Related Patterns
 
-- [`ffi-interop.md`](ffi-interop.md) — GIL management and C FFI patterns
+- [`ffi.md`](ffi.md) — GIL management and C FFI patterns
 - [`perf-vectorization.md`](perf-vectorization.md) — Fast Mojo alternatives to numpy
 
 ---

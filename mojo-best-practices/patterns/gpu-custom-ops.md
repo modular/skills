@@ -402,7 +402,7 @@ fn gpu_impl(output: OutputTensor[rank=1], input: InputTensor[rank=1], ctx: Devic
 - [`gpu-kernels.md`](gpu-kernels.md) -- Kernel fusion, producer-consumer pipelines, double-buffering
 - [`gpu-memory-access.md`](gpu-memory-access.md) -- TMA, shared memory, and coalescing patterns
 - [`gpu-structured-kernels.md`](gpu-structured-kernels.md) -- ScatterGather/RingBuffer/TileOp architecture
-- [`gpu-synchronization.md`](gpu-synchronization.md) -- Barriers and async operations
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) -- Barriers and async operations
 
 ---
 

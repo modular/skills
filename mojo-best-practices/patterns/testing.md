@@ -1,9 +1,9 @@
 ---
-title: Mojo Testing Patterns
-description: Unit testing patterns including test suites, assertions, lifecycle counters, property-based testing, and GPU test patterns
+title: Mojo Testing & Benchmarking Patterns
+description: Unit testing, property-based testing, lifecycle counters, performance benchmarking with QuickBench, GPU test and benchmark patterns
 impact: HIGH
 category: test
-tags: [testing, unit-test, property-based, lifecycle, assertions]
+tags: [testing, unit-test, property-based, lifecycle, assertions, benchmark, performance, timing, quickbench, profiling, gpu, bandwidth]
 error_patterns:
   - "test failed"
   - "assertion failed"
@@ -12,6 +12,11 @@ error_patterns:
   - "assert_false"
   - "TestSuite"
   - "expected .* but got"
+  - "benchmark"
+  - "QuickBench"
+  - "perf_counter"
+  - "timing"
+  - "throughput"
 scenarios:
   - "Write unit tests for Mojo code"
   - "Create test suite"
@@ -19,30 +24,46 @@ scenarios:
   - "Property-based testing"
   - "Fix failing test"
   - "Test GPU kernel correctness"
+  - "Benchmark function performance"
+  - "Compare algorithm implementations"
+  - "Measure SIMD speedup"
+  - "Create performance regression tests"
+  - "Measure throughput metrics"
+  - "Benchmark GPU kernel bandwidth"
 consolidates:
   - test-suite-patterns.md
   - test-lifecycle-counters.md
   - test-unit-patterns.md
   - test-property-based.md
+  - benchmark-patterns.md
+  - quickbench-patterns.md
+  - perf-testing.md
 ---
+<!-- PATTERN QUICK REF
+WHEN: Writing tests, benchmarking, test assertions, measuring performance in Mojo
+KEY_TYPES: TestSuite, QuickBench, BenchId, BenchMetric, ThroughputMeasure, MoveCounter, CopyCounter, DelCounter, PropTest, PropTestConfig
+SYNTAX:
+  - TestSuite.discover_tests[__functions_in_module()]().run()
+  - assert_equal(a, b) / assert_almost_equal(a, b, atol=1e-6) / assert_true(cond) / assert_false(cond)
+  - QuickBench().run(fn, input, bench_id=BenchId("name"), measures=[ThroughputMeasure(...)])
+  - keep(result) / clobber_memory() to prevent dead code elimination
+  - perf_counter_ns() returns UInt (not Int)
+  - PropTest().test[properties](strategy)
+PITFALLS: perf_counter_ns returns UInt not Int; missing keep() causes 0ns measurements; no warmup gives cold-cache results; missing ctx.synchronize() in GPU benchmarks; assert functions can raise so test fns need `raises`
+RELATED: debug-debugging, error-handling, perf-vectorization, perf-parallelization, memory-ownership
+-->
 
-# Mojo Testing Patterns
+# Mojo Testing & Benchmarking Patterns
 
 **Category:** test | **Impact:** HIGH
 
-Comprehensive testing is essential for reliable Mojo code. This pattern covers test organization with TestSuite, unit testing with assertions, lifecycle verification with counter types, and property-based testing for comprehensive coverage.
-
-> **Note:** For performance benchmarking, see [`test-benchmarking.md`](test-benchmarking.md).
+Comprehensive testing and proper benchmarking are essential for reliable, performant Mojo code. This pattern covers test organization with TestSuite, unit testing with assertions, lifecycle verification, property-based testing, and structured benchmarking with QuickBench.
 
 ---
 
-## Core Concepts
-
-### TestSuite Discovery and Organization
+## TestSuite Discovery and Organization
 
 The Mojo testing module provides `TestSuite` for organizing and running tests with automatic discovery.
-
-**Pattern:**
 
 ```mojo
 from testing import TestSuite, assert_equal, assert_true
@@ -64,8 +85,6 @@ def main():
 
 ### Manual Test Registration
 
-**Pattern:**
-
 ```mojo
 from testing import TestSuite, assert_equal
 
@@ -84,13 +103,10 @@ def main():
 
 ### Test Filtering
 
-**Pattern:**
-
 ```mojo
 # nocompile
 # Skip specific tests
 def test_slow_integration():
-    # This test takes a long time
     ...
 
 def test_fast_unit():
@@ -113,8 +129,6 @@ def main():
 ### Basic Test Structure
 
 Test functions must be marked `raises` since assertion functions can raise errors.
-
-**Pattern:**
 
 ```mojo
 from testing import assert_equal, assert_true, assert_false, assert_almost_equal
@@ -153,8 +167,6 @@ fn main() raises:
 
 ### Testing Structs
 
-**Pattern:**
-
 ```mojo
 from testing import assert_equal, assert_true
 
@@ -185,8 +197,6 @@ fn main() raises:
 ```
 
 ### Testing Error Conditions
-
-**Pattern:**
 
 ```mojo
 from testing import assert_true, assert_equal
@@ -219,8 +229,6 @@ fn main() raises:
 
 ### Test Fixtures
 
-**Pattern:**
-
 ```mojo
 from testing import assert_equal
 
@@ -234,13 +242,11 @@ struct TestFixture:
             self.data.append(i * 2)
 
     fn teardown(mut self):
-        # Cleanup: clear data
         self.data.clear()
 
 fn test_with_fixture() raises:
     var fixture = TestFixture()
 
-    # Test using fixture data
     assert_equal(len(fixture.data), 10)
     assert_equal(fixture.data[0], 0)
     assert_equal(fixture.data[5], 10)
@@ -261,8 +267,6 @@ fn main() raises:
 
 Use `MoveCounter` to verify that your code performs the expected number of moves.
 
-**Pattern:**
-
 ```mojo
 # nocompile
 struct MoveCounter[T: Copyable & ImplicitlyDestructible](Copyable):
@@ -275,12 +279,16 @@ struct MoveCounter[T: Copyable & ImplicitlyDestructible](Copyable):
         self.value = value^
         self.move_count = 0
 
-    fn __init__(out self, *, deinit take: Self):
-        self.value = take.value^
-        self.move_count = take.move_count + 1
+    fn __moveinit__(out self, deinit existing: Self):
+        self.value = existing.value^
+        self.move_count = existing.move_count + 1
+
+    fn __copyinit__(out self, existing: Self):
+        self.value = existing.value
+        self.move_count = existing.move_count
 ```
 
-**Usage - verify List doesn't copy unnecessarily:**
+**Usage — verify List doesn't copy unnecessarily:**
 
 ```mojo
 # nocompile
@@ -292,21 +300,15 @@ def test_list_reverse_move_count():
     list.append(MoveCounter(4))
     list.append(MoveCounter(5))
 
-    # Each item moved once into list
     assert_equal(list[0].move_count, 1)
 
     list.reverse()
 
-    # After reverse:
-    # - First 2 elements: temp = a; a = b^; b = temp^ (2 moves each)
-    # - Last 2 elements: same (3 moves total: initial + 2 in reverse)
     assert_equal(list[0].move_count, 2)  # Was at end, now at start
     assert_equal(list[4].move_count, 3)  # Was at start, now at end
 ```
 
 ### CopyCounter - Track Copy Operations
-
-**Pattern:**
 
 ```mojo
 # nocompile
@@ -321,12 +323,12 @@ struct CopyCounter[T: ImplicitlyCopyable & Writable & Defaultable = NoneType](
         self.value = value
         self.copy_count = 0
 
-    fn __init__(out self, *, copy: Self):
-        self.value = copy.value
-        self.copy_count = copy.copy_count + 1
+    fn __copyinit__(out self, existing: Self):
+        self.value = existing.value
+        self.copy_count = existing.copy_count + 1
 ```
 
-**Usage - verify function doesn't copy when borrowing:**
+**Usage — verify function doesn't copy when borrowing:**
 
 ```mojo
 # nocompile
@@ -334,25 +336,20 @@ def test_no_copy_on_borrow():
     var item = CopyCounter[Int](42)
     assert_equal(item.copy_count, 0)
 
-    # Function that borrows (should not copy)
     fn read_value(ref x: CopyCounter[Int]) -> Int:
         return x.value
 
     var val = read_value(item)
     assert_equal(item.copy_count, 0)  # Still 0 - no copy
 
-    # Function that takes by value (should copy)
     fn take_value(x: CopyCounter[Int]) -> Int:
         return x.value
 
     val = take_value(item)
     assert_equal(item.copy_count, 0)  # Original unchanged
-    # The copy inside take_value had copy_count = 1
 ```
 
 ### DelCounter - Track Destructor Calls
-
-**Pattern:**
 
 ```mojo
 # nocompile
@@ -365,7 +362,7 @@ struct DelCounter[counter_origin: ImmutOrigin](ImplicitlyCopyable, Writable):
         self.counter.unsafe_mut_cast[True]()[] += 1
 ```
 
-**Usage - verify destructors run correctly:**
+**Usage — verify destructors run correctly:**
 
 ```mojo
 # nocompile
@@ -387,8 +384,6 @@ def test_list_destructor_count():
 
 ### AbortOnCopy - Catch Unexpected Copies
 
-**Pattern:**
-
 ```mojo
 # nocompile
 @fieldwise_init
@@ -396,13 +391,11 @@ struct AbortOnCopy(ImplicitlyCopyable):
     """Type that aborts if copied - for testing move-only code paths."""
     var value: Int
 
-    fn __init__(out self, *, other: Self):
+    fn __copyinit__(out self, other: Self):
         abort("Unexpected copy of AbortOnCopy!")
 ```
 
 ### Testing Optimal Container Operations
-
-**Pattern:**
 
 ```mojo
 # nocompile
@@ -416,11 +409,9 @@ def test_extend_moves_not_copies():
     v2.append(MoveCounter("Foo"))
     v2.append(MoveCounter("Bar"))
 
-    # Extend should move from v2, not copy
     v1.extend(v2^)  # Transfer ownership of v2
 
     assert_equal(len(v1), 4)
-    # Items from v2 should have 2 moves: into v2, then into v1
     assert_equal(v1[2].move_count, 2)
     assert_equal(v1[3].move_count, 2)
 ```
@@ -429,27 +420,7 @@ def test_extend_moves_not_copies():
 
 ## Property-Based Testing
 
-### Basic Property-Based Testing
-
-Property-based testing generates random inputs to verify that invariants hold for all cases, catching edge cases that example-based tests miss.
-
-**Example-based testing (limited coverage):**
-
-```mojo
-# nocompile
-def test_list_reverse_examples():
-    # Only tests specific cases
-    var list1 = [1, 2, 3]
-    list1.reverse()
-    assert_equal(list1, [3, 2, 1])
-
-    var list2 = [1]
-    list2.reverse()
-    assert_equal(list2, [1])
-    # What about empty lists? Large lists? Negative numbers?
-```
-
-**Property-based testing (comprehensive):**
+Property-based testing generates random inputs to verify invariants hold for all cases, catching edge cases that example-based tests miss.
 
 ```mojo
 # nocompile
@@ -484,8 +455,6 @@ def test_list_reverse_property():
 
 ### Custom Strategies
 
-**Pattern:**
-
 ```mojo
 # nocompile
 from testing.prop import Strategy, Rng
@@ -505,8 +474,6 @@ PropTest().test[properties](PositiveIntStrategy(max_value=1000))
 
 ### Deterministic Tests with Seeds
 
-**Pattern:**
-
 ```mojo
 # nocompile
 def test_deterministic_with_seed():
@@ -520,7 +487,6 @@ def test_deterministic_with_seed():
     var results1 = List[Int]()
     var results2 = List[Int]()
 
-    # Recording strategy captures values
     PropTest(config=config.copy()).test[properties](
         RecordingStrategy(UnsafePointer(to=results1))
     )
@@ -556,11 +522,9 @@ var config = PropTestConfig(
 
 ## GPU Testing Patterns
 
-### Basic GPU Kernel Testing
+### GPU Kernel Correctness Testing
 
-Testing GPU kernels requires special consideration for numerical correctness, determinism, and error handling.
-
-**Pattern:**
+Testing GPU kernels requires comparison against a CPU reference with appropriate tolerance.
 
 ```mojo
 # nocompile
@@ -585,7 +549,7 @@ fn test_gpu_kernel_correctness() raises:
     # Run CPU reference
     var expected = List[Float32](capacity=SIZE)
     for i in range(SIZE):
-        expected.append(h_input[i] * 2.0)  # Reference computation
+        expected.append(h_input[i] * 2.0)
 
     # Run GPU kernel
     var d_input = ctx.enqueue_create_buffer[DType.float32](SIZE)
@@ -605,14 +569,11 @@ fn test_gpu_kernel_correctness() raises:
     ctx.enqueue_copy(h_output.unsafe_ptr(), d_output, SIZE)
     ctx.synchronize()
 
-    # Compare with tolerance for floating-point
     for i in range(SIZE):
         assert_almost_equal(h_output[i], expected[i], atol=1e-5)
 ```
 
 ### GPU Test Fixture
-
-**Pattern:**
 
 ```mojo
 # nocompile
@@ -646,6 +607,338 @@ fn test_with_fixture() raises:
 
 ---
 
+## Benchmarking
+
+### Basic Benchmark Structure
+
+Use proper methodology with warmup iterations, multiple samples, and appropriate timing. Note: `perf_counter_ns()` returns `UInt`.
+
+```mojo
+from time import perf_counter_ns
+
+fn operation_to_benchmark() -> Int:
+    var sum = 0
+    for i in range(1000):
+        sum += i
+    return sum
+
+fn benchmark_operation() -> Float64:
+    """Benchmark with warmup and multiple iterations."""
+    comptime WARMUP_ITERS: Int = 5
+    comptime BENCH_ITERS: Int = 100
+
+    # Warmup - don't measure these
+    for _ in range(WARMUP_ITERS):
+        _ = operation_to_benchmark()
+
+    var total_ns: UInt = 0
+    for _ in range(BENCH_ITERS):
+        var start = perf_counter_ns()
+        _ = operation_to_benchmark()
+        var end = perf_counter_ns()
+        total_ns += end - start
+
+    return Float64(total_ns) / Float64(BENCH_ITERS) / 1_000_000.0
+
+fn main():
+    var avg_ms = benchmark_operation()
+    print("Average time:", avg_ms, "ms")
+```
+
+### Best-of-N Pattern
+
+```mojo
+from time import perf_counter_ns
+
+fn operation_to_benchmark() -> Int:
+    var sum = 0
+    for i in range(1000):
+        sum += i
+    return sum
+
+fn benchmark_best_of_n[N: Int]() -> UInt:
+    """Return the best (minimum) time from N runs."""
+    comptime WARMUP: Int = 3
+
+    for _ in range(WARMUP):
+        _ = operation_to_benchmark()
+
+    var best_ns: UInt = UInt.MAX
+    for _ in range(N):
+        var start = perf_counter_ns()
+        _ = operation_to_benchmark()
+        var elapsed = perf_counter_ns() - start
+        if elapsed < best_ns:
+            best_ns = elapsed
+
+    return best_ns
+
+fn main():
+    var best_ns = benchmark_best_of_n[10]()
+    print("Best time:", best_ns, "ns")
+```
+
+### Preventing Compiler Optimization
+
+Use `keep()` and `clobber_memory()` to prevent dead code elimination.
+
+```mojo
+# nocompile
+from benchmark import keep, clobber_memory
+
+fn benchmark_kernel():
+    var result = expensive_computation()
+
+    # CRITICAL: Prevent optimizer from eliminating result
+    keep(result)
+
+    # CRITICAL: Prevent optimizer from reordering memory ops
+    clobber_memory()
+```
+
+### Benchmarking SIMD Operations
+
+```mojo
+from time import perf_counter_ns
+from benchmark import keep
+
+fn benchmark_simd_vs_scalar():
+    comptime SIZE: Int = 1024 * 1024
+    comptime ITERS: Int = 100
+
+    var data = List[Float32](capacity=SIZE)
+    for i in range(SIZE):
+        data.append(Float32(i))
+
+    # Scalar benchmark
+    var scalar_start = perf_counter_ns()
+    for _ in range(ITERS):
+        var sum: Float32 = 0.0
+        for i in range(SIZE):
+            sum += data[i]
+        keep(sum)
+    var scalar_ns = perf_counter_ns() - scalar_start
+
+    # SIMD benchmark
+    var simd_start = perf_counter_ns()
+    for _ in range(ITERS):
+        var ptr = data.unsafe_ptr()
+        var sum = SIMD[DType.float32, 8](0.0)
+        for i in range(0, SIZE, 8):
+            sum += ptr.offset(i).load[width=8]()
+        keep(sum.reduce_add())
+    var simd_ns = perf_counter_ns() - simd_start
+
+    print("Scalar:", scalar_ns / ITERS, "ns")
+    print("SIMD:", simd_ns / ITERS, "ns")
+    print("Speedup:", Float64(scalar_ns) / Float64(simd_ns), "x")
+```
+
+---
+
+## QuickBench Structured Benchmarking
+
+### Basic QuickBench Usage
+
+The `QuickBench` API provides structured benchmarking with throughput metrics and proper methodology.
+
+**Incorrect (naive timing):**
+
+```mojo
+# nocompile
+# BAD: Susceptible to optimizer, no warmup, single sample
+from time import now
+
+def bad_benchmark():
+    var start = now()
+    var result = my_function()  # Might be optimized away!
+    var elapsed = now() - start
+    print("Time:", elapsed)
+```
+
+**Correct (QuickBench):**
+
+```mojo
+from benchmark import QuickBench, BenchId, BenchMetric, ThroughputMeasure
+from benchmark import keep, clobber_memory
+
+fn my_function(x: SIMD[DType.float32, 4]) -> SIMD[DType.float32, 4]:
+    return x * x + x
+
+def main():
+    var qb = QuickBench()
+
+    var input = SIMD[DType.float32, 4](1.0, 2.0, 3.0, 4.0)
+
+    qb.run(
+        my_function,
+        input,
+        bench_id=BenchId("my_function"),
+        measures=[
+            ThroughputMeasure(BenchMetric.elements, 4),
+        ],
+    )
+
+    qb.dump_report()
+```
+
+### Using the `run[]` Function
+
+```mojo
+# nocompile
+from benchmark import run
+
+fn my_kernel():
+    var data = compute_something()
+    keep(data)
+    clobber_memory()
+
+def main():
+    var report = run[func2=my_kernel](
+        min_runtime_secs=0.1,
+        max_runtime_secs=1.0,
+        max_iters=10000,
+    )
+
+    print("Mean time:", report.mean(), "s")
+    print("Mean time:", report.mean("ms"), "ms")
+    print("Mean time:", report.mean("us"), "us")
+    print("Iterations:", report.iters())
+    print(report.as_string())
+```
+
+### Multiple Benchmark Comparison
+
+```mojo
+from benchmark import QuickBench, BenchId, BenchMetric, ThroughputMeasure
+import math
+
+@always_inline
+fn exp_simd(x: SIMD[DType.float32, 4]) -> SIMD[DType.float32, 4]:
+    return math.exp(x)
+
+@always_inline
+fn tanh_simd(x: SIMD[DType.float32, 4]) -> SIMD[DType.float32, 4]:
+    return math.tanh(x)
+
+@always_inline
+fn manual_exp(x: SIMD[DType.float32, 4]) -> SIMD[DType.float32, 4]:
+    return 1.0 + x + x*x/2.0 + x*x*x/6.0
+
+def main():
+    var qb = QuickBench()
+    var input = SIMD[DType.float32, 4](0.5)
+
+    qb.run(exp_simd, input, bench_id=BenchId("math.exp"))
+    qb.run(tanh_simd, input, bench_id=BenchId("math.tanh"))
+    qb.run(manual_exp, input, bench_id=BenchId("manual_exp"))
+
+    qb.dump_report()
+```
+
+### Throughput Metrics
+
+```mojo
+# nocompile
+measures = [
+    ThroughputMeasure(BenchMetric.elements, 1024),    # 1024 elements
+    ThroughputMeasure(BenchMetric.bytes, 1024 * 4),   # 4KB
+    ThroughputMeasure(BenchMetric.flops, 1024 * 2),   # 2 FLOPS per element
+]
+```
+
+| Metric | Use Case |
+|--------|----------|
+| `BenchMetric.elements` | Array processing |
+| `BenchMetric.bytes` | Memory bandwidth |
+| `BenchMetric.flops` | Compute throughput |
+
+---
+
+## GPU Kernel Benchmarking
+
+Raw execution time is less useful than bandwidth efficiency — the percentage of theoretical peak memory bandwidth achieved.
+
+### Bandwidth Efficiency Formula
+
+```
+actual_GB_s = bytes_moved / (time_ns / 1e9) / 1e9
+efficiency = actual_GB_s / peak_GB_s * 100
+```
+
+### Peak Memory Bandwidth Reference
+
+| GPU | Architecture | Peak BW (GB/s) |
+|---|---|---|
+| H100 SXM | SM90 | 3350 |
+| H100 PCIe | SM90 | 2000 |
+| A100 80GB | SM80 | 2000 |
+| L40S | SM89 | 864 |
+| MI300X | CDNA3 | 5300 |
+| Apple M3 Max | Apple GPU | ~400 |
+
+### Efficiency Verdicts
+
+| Efficiency | Assessment | Action |
+|---|---|---|
+| >60% | Excellent | Memory-bound kernel well-optimized |
+| 30-60% | Good | Check coalescing and bank conflicts |
+| 10-30% | Needs work | Profile for uncoalesced access, bank conflicts |
+| <10% | Compute-bound or broken | Check if compute-bound (expected) or severely uncoalesced |
+
+### Amdahl's Law Warning
+
+A 2.67x kernel speedup sounds impressive, but if the kernel is only 2.3% of total pipeline time, the end-to-end improvement is ~1.5%. Always measure the kernel's contribution to total runtime before optimizing.
+
+### A/B Benchmarking Methodology
+
+- **Warmup:** 5 iterations (discard) — stabilizes GPU clocks and caches
+- **Measurement:** 100 iterations
+- **Report:** mean, median, p99, and min (min = best achievable)
+- Use `keep()` to prevent dead code elimination
+
+### GPU Bandwidth Benchmark Pattern
+
+```mojo
+# nocompile
+
+from time import perf_counter_ns
+from gpu.host import DeviceContext
+
+fn benchmark_kernel_bw[
+    kernel_fn: fn(...) capturing -> None,
+](
+    ctx: DeviceContext,
+    bytes_moved: Int,
+    peak_bw_gb_s: Float64,
+) raises -> Float64:
+    """Benchmark GPU kernel and return bandwidth efficiency percentage."""
+    comptime WARMUP: Int = 5
+    comptime ITERS: Int = 100
+
+    # Warmup
+    for _ in range(WARMUP):
+        kernel_fn(...)
+        ctx.synchronize()
+
+    # Measure
+    var total_ns: UInt = 0
+    for _ in range(ITERS):
+        var start = perf_counter_ns()
+        kernel_fn(...)
+        ctx.synchronize()
+        total_ns += perf_counter_ns() - start
+
+    var avg_ns = Float64(total_ns) / Float64(ITERS)
+    var actual_gb_s = Float64(bytes_moved) / avg_ns  # bytes/ns = GB/s
+    var efficiency = actual_gb_s / peak_bw_gb_s * 100.0
+    return efficiency
+```
+
+**Key difference from CPU benchmarks:** Always call `ctx.synchronize()` after each kernel launch to ensure timing captures actual GPU execution, not just launch overhead.
+
+---
+
 ## Decision Guide
 
 | Scenario | Approach |
@@ -656,31 +949,26 @@ fn test_with_fixture() raises:
 | Edge case discovery | Property-based testing |
 | Destructor verification | DelCounter |
 | GPU kernel correctness | GPU test with CPU reference |
+| Quick one-off timing | Basic benchmark with warmup |
+| Structured comparison | QuickBench with multiple benchmarks |
+| Algorithm comparison | Best-of-N pattern |
+| Throughput measurement | QuickBench with ThroughputMeasure |
+| CI regression testing | Benchmark report to JSON |
+| GPU kernel bandwidth | Bandwidth efficiency benchmark |
 
 ---
 
-## When to Apply
+## Best Practices
 
-### Use TestSuite for
-
-- All unit test files
-- Integration tests
-- Module-level testing
-- CI/CD test suites
-
-### Use Lifecycle Counters for
-
-- Testing container implementations
-- Verifying move-only operations
-- Debugging unexpected performance (too many copies)
-- Ensuring destructors are called correctly
-
-### Use Property-Based Testing for
-
-- Testing data structure invariants
-- Verifying mathematical properties
-- Encode/decode roundtrip tests
-- Finding edge cases in algorithms
+| Practice | Rationale |
+|----------|-----------|
+| **Warmup iterations (3-10)** | Stabilize caches, JIT, memory |
+| **Multiple samples (10-100)** | Statistical significance |
+| **Report best/avg/worst** | Understand variance |
+| **Use perf_counter_ns()** | Nanosecond precision |
+| **Prevent dead code elimination** | `keep()` or return results |
+| **Isolate the operation** | Exclude setup/teardown from timing |
+| **GPU: ctx.synchronize()** | Time actual execution, not launch |
 
 ---
 
@@ -691,7 +979,6 @@ fn test_with_fixture() raises:
 mojo run test_my_module.mojo
 
 # For tests with BLAS/FFI dependencies
-# Use mojo run for automatic dynamic linking
 mojo run test_blas.mojo
 
 # Run with GPU target
@@ -712,70 +999,31 @@ mojo run --target-accelerator=nvidia:sm_80 test_gpu.mojo
 | `GPU test hangs` | Missing synchronize | Add `ctx.synchronize()` |
 | `MoveCounter shows too many moves` | Unexpected copies | Check container uses moves |
 | `property test flaky` | Non-deterministic seed | Set explicit seed |
-| `function instantiation failed` in TestSuite | Import inside test function body calls runtime fn at compile time | Move all imports to top-level of test file |
-| `failed to compile-time evaluate function call` | Test function body import resolves type with `getenv` default arg | Move imports to top-level; use overloads in source library |
-
-### Top-Level Imports with `discover_tests`
-
-`TestSuite.discover_tests[__functions_in_module()]` resolves all test functions
-at **compile time**. If a test function imports a module inside its body and that
-module's types have default arguments calling runtime functions (e.g., `getenv`),
-Mojo will attempt to evaluate them at compile time and fail.
-
-**❌ WRONG:** Import inside test function body
-```mojo
-# nocompile - Demonstrates anti-pattern
-def test_connect():
-    from mylib.tls import TlsClient   # Import inside body
-    var c = TlsClient.connect("...")  # TlsClient() default calls getenv
-```
-
-**✅ CORRECT:** Import at top of file
-```mojo
-from mylib.tls import TlsClient    # Top-level import
-
-def test_connect():
-    var c = TlsClient.connect("...")  # Safe
-```
-
-**Why?** Compile-time function discovery evaluates the function body metadata.
-Top-level imports are resolved once; function-body imports are re-resolved for
-each parametric instantiation, which can trigger compile-time evaluation of
-default argument expressions.
+| 0ns benchmark measurements | Compiler optimized away code | Use `keep()` or return values |
+| Inconsistent benchmark results | No warmup | Add 3-10 warmup iterations |
+| Misleading benchmark | Setup included in timing | Time only the operation |
 
 ---
 
-## Version-Specific Features
-
-### v26.1+ (Stable)
+## Version-Specific Features (v26.1+)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | **TestSuite** | `TestSuite.discover_tests[...]` | Stable |
 | **Assertions** | `assert_equal`, `assert_true` | Stable |
 | **Constants** | `alias` or `comptime` | Both work in v26.1+ |
-
-**Example (v26.1+):**
-
-```mojo
-from testing import TestSuite, assert_equal
-
-comptime MAX_ITEMS = 100
-
-def test_basic():
-    assert_equal(1 + 1, 2)
-
-def main():
-    TestSuite.discover_tests[__functions_in_module()]().run()
-```
+| **perf_counter_ns** | Returns `UInt` | Stable |
+| **QuickBench API** | Available | Stable |
+| **keep/clobber_memory** | Available | Stable |
 
 ---
 
 ## Related Patterns
 
-- [`test-benchmarking.md`](test-benchmarking.md) — Performance benchmarking
 - [`meta-programming.md`](meta-programming.md) — Parameterized test utilities
 - [`memory-ownership.md`](memory-ownership.md) — Lifecycle methods being tested
+- [`perf-vectorization.md`](perf-vectorization.md) — SIMD code to benchmark
+- [`perf-parallelization.md`](perf-parallelization.md) — Parallel code benchmarking
 
 ---
 
@@ -783,3 +1031,5 @@ def main():
 
 - [Mojo Testing Module](https://github.com/modular/modular/blob/main/mojo/stdlib/std/testing/suite.mojo)
 - [Mojo Stdlib Test Utils](https://github.com/modular/modular/blob/main/mojo/stdlib/test/test_utils/types.mojo)
+- [Mojo Benchmark Module](https://github.com/modular/modular/blob/main/mojo/stdlib/std/benchmark/)
+- [QuickBench API](https://github.com/modular/modular/blob/main/mojo/stdlib/std/benchmark/quick_bench.mojo)

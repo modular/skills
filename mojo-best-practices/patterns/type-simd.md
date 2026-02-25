@@ -40,6 +40,7 @@ SIMD types process multiple values in a single instruction, utilizing hardware v
 
 ```mojo
 from memory import UnsafePointer
+from memory import UnsafePointer
 from builtin.type_aliases import MutAnyOrigin
 
 # Type alias for cleaner code
@@ -141,8 +142,8 @@ struct Int(
 
     # Trivial flags (compiler infers these for trivial types)
     comptime __del__is_trivial: Bool = True
-    comptime __move_ctor_is_trivial: Bool = True
-    comptime __copy_ctor_is_trivial: Bool = True
+    comptime __moveinit__is_trivial: Bool = True
+    comptime __copyinit__is_trivial: Bool = True
 ```
 
 ---
@@ -668,7 +669,7 @@ fn compute_distances(x: SIMD[DType.float32, 8], y: SIMD[DType.float32, 8]) -> SI
 | Array processing | Use SIMD with WIDTH=8 default | [`perf-parallelization.md`](perf-parallelization.md) |
 | Unknown memory alignment | Use `alignment=1` in load/store | [`memory-safety.md`](memory-safety.md) |
 | Transcendental functions | Benchmark scalar vs SIMD | - |
-| Matrix operations | Use SIMD dot product with transposed B | [`ffi-vendor.md`](ffi-vendor.md) |
+| Matrix operations | Use SIMD dot product with transposed B | [`ffi.md`](ffi.md) |
 
 ---
 

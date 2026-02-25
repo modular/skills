@@ -520,7 +520,7 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 ## Related Patterns
 
 - [`serve-kv-cache.md`](serve-kv-cache.md) — KV cache strategies and memory management
-- [`serve-monitoring.md`](serve-monitoring.md) — Metrics and telemetry configuration
+- [`deploy-production.md`](deploy-production.md) — Metrics and telemetry configuration
 - [`serve-api.md`](serve-api.md) — API features including streaming and token budgets
 
 ---

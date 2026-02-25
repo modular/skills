@@ -313,7 +313,7 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 ## Related Patterns
 
 - [`multigpu-scaling.md`](multigpu-scaling.md) — Multi-GPU for larger models
-- [`deploy-deployment.md`](deploy-deployment.md) — Production container setup
+- [`deploy-production.md`](deploy-production.md) — Production container setup
 - [`engine-operations.md`](engine-operations.md) — Offline inference for batch jobs
 
 ---

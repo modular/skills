@@ -6,7 +6,7 @@ When an error message matches multiple patterns, use this guide to determine whi
 
 ## "alignment" errors
 
-**Priority 1: Check [`perf-memory.md`](../patterns/perf-memory.md) if:**
+**Priority 1: Check [`perf-optimization.md`](../patterns/perf-optimization.md) if:**
 - Error mentions "memory alignment" or "pointer alignment"
 - You're working with raw memory operations or `UnsafePointer`
 - The error occurs during allocation or pointer arithmetic
@@ -67,7 +67,7 @@ When an error message matches multiple patterns, use this guide to determine whi
 - You're passing wrong argument types
 - Error occurs in generic code or trait implementations
 
-**Priority 2: Check [`test-testing.md`](../patterns/test-testing.md) if:**
+**Priority 2: Check [`testing.md`](../patterns/testing.md) if:**
 - Error comes from `assert_equal` or `assert_almost_equal`
 - You're writing or running tests
 - The message format matches test assertion output
@@ -95,7 +95,7 @@ When an error message matches multiple patterns, use this guide to determine whi
 - You're accessing global or shared memory
 - The error mentions coalescing or memory transactions
 
-**Priority 2: Check [`gpu-synchronization.md`](../patterns/gpu-synchronization.md) if:**
+**Priority 2: Check [`gpu-warp-sync.md`](../patterns/gpu-warp-sync.md) if:**
 - Error occurs after a barrier or sync point
 - Multiple threads access the same memory location
 - The error involves `barrier()` or `fence()` operations

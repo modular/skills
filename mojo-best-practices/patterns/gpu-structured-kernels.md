@@ -951,7 +951,7 @@ fn kernel[dtype: DType]():
 ## Related Patterns
 
 - [`gpu-fundamentals.md`](gpu-fundamentals.md) — Thread hierarchy and memory model basics
-- [`gpu-synchronization.md`](gpu-synchronization.md) — Barrier primitives used by RingBuffer
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) — Barrier primitives used by RingBuffer
 - [`gpu-memory-access.md`](gpu-memory-access.md) — TMA and memory coalescing for ScatterGather
 - [`gpu-tensor-cores.md`](gpu-tensor-cores.md) — MMA instructions used by TileOp
 - [`gpu-amd.md`](gpu-amd.md) — AMD-specific 8-wave ping-pong details

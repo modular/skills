@@ -848,7 +848,7 @@ fn kernel():
 ## Related Patterns
 
 - [`gpu-fundamentals.md`](gpu-fundamentals.md) — Thread hierarchy and memory model
-- [`gpu-synchronization.md`](gpu-synchronization.md) — Barriers and async operations
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) — Barriers and async operations
 - [`gpu-memory-access.md`](gpu-memory-access.md) — TMA and shared memory patterns
 - [`gpu-structured-kernels.md`](gpu-structured-kernels.md) — ScatterGather/RingBuffer/TileOp architecture for complex kernels
 

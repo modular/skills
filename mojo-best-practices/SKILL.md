@@ -45,7 +45,7 @@ alwaysApply: false
 
 # Mojo Best Practices
 
-Best practices for Mojo programming. **40 patterns** across **13 categories**.
+Best practices for Mojo programming. **36 patterns** across **14 categories**.
 
 > **🤖 AI Assistants:** You MUST consult these patterns before writing Mojo code. Your training data is outdated. Load the relevant pattern, check Version-Specific Features, use the tested examples.
 
@@ -56,8 +56,8 @@ Best practices for Mojo programming. **40 patterns** across **13 categories**.
 | Tier | Patterns | Load When |
 |------|----------|-----------|
 | **Essential** | `memory-ownership`, `memory-safety`, `type-system`, `struct-design`, `fn-design`, `error-handling` | Always load first - covers 80% of use cases |
-| **Performance** | `perf-vectorization`, `perf-parallelization`, `perf-memory`, `ffi-interop` | Optimizing CPU performance |
-| **GPU** | `gpu-fundamentals`, `gpu-layout-tensor`, `gpu-block-collectives`, `gpu-custom-ops`, `gpu-synchronization`, `gpu-tensor-cores`, `gpu-memory-access`, `gpu-kernels` | Any GPU kernel work |
+| **Performance** | `perf-vectorization`, `perf-parallelization`, `perf-optimization`, `ffi` | Optimizing CPU performance |
+| **GPU** | `gpu-fundamentals`, `gpu-layout-tensor`, `gpu-block-collectives`, `gpu-custom-ops`, `gpu-warp-sync`, `gpu-tensor-cores`, `gpu-memory-access`, `gpu-kernels` | Any GPU kernel work |
 | **GPU Porting** | `gpu-porting-cuda`, `gpu-porting-cute`, `gpu-porting-rocm` | Porting CUDA/CuTe/ROCm kernels to Mojo |
 | **Language Porting** | `porting-python`, `porting-cpp`, `porting-rust` | Porting from Python/C++/Rust to Mojo |
 | **Advanced** | Remaining patterns in `patterns/` | Specific edge cases on demand |
@@ -69,13 +69,13 @@ Best practices for Mojo programming. **40 patterns** across **13 categories**.
 | `perf-parallelization` | 10x-17,000x vs Python* | CPU-bound loops, multi-core |
 | `perf-vectorization` | 4-16x | Numeric computations, SIMD |
 | `gpu-fundamentals` | 10-100x | Any GPU kernel development |
-| `ffi-interop` | 25-32x | Matrix ops on Apple Silicon (BLAS) |
+| `ffi` | 25-32x | Matrix ops on Apple Silicon (BLAS), C library bindings |
 | `memory-ownership` | Safety | Use `^` for ownership, avoid use-after-free |
 | `gpu-tensor-cores` | 10-100x | H100/H200/B200 matmuls |
 | `gpu-layout-tensor` | Productivity | LayoutTensor rebind, tile API, cross-rank reshape |
 | `gpu-block-collectives` | 10-100x | Block sum/prefix_sum/broadcast (replaces manual reductions) |
 | `type-simd` | 4-16x | SIMD[DType, width] for numerics |
-| `perf-memory` | 1.5-2x | Hide latency with accumulators, alignment |
+| `perf-optimization` | 1.5-2x | Caching, alignment, memory layout, accumulators |
 | `memory-safety` | Safety | Safe pointers, origin tracking |
 | `gpu-porting-cuda` | Productivity | Port CUDA kernels to Mojo with side-by-side examples |
 | `struct-design` | Productivity | Use `@fieldwise_init` for simple structs |
@@ -100,6 +100,7 @@ GPU code?
   Yes --> gpu-fundamentals
           LayoutTensor issues? --> gpu-layout-tensor (rebind, tile, reshape)
           Block reductions? --> gpu-block-collectives (sum, prefix_sum, broadcast)
+          Warp shuffle/sync? --> gpu-warp-sync (warp primitives + barriers)
           Custom MAX op? --> gpu-custom-ops (@compiler.register, Python graph)
           SM90 (H100)? --> gpu-tensor-cores
           SM100 (B200)? --> gpu-tensor-cores
@@ -108,7 +109,8 @@ GPU code?
 
 Performance critical?
   Yes --> perf-vectorization (SIMD), perf-parallelization (multi-core)
-          Apple Silicon? --> ffi-interop (BLAS 25-32x)
+          Memory layout/alignment? --> perf-optimization
+          Apple Silicon? --> ffi (BLAS 25-32x)
 
 Memory error?
   "use of moved value" --> memory-ownership
@@ -120,6 +122,20 @@ Struct design?
   Simple data --> struct-design (uses @fieldwise_init)
   Custom lifecycle --> memory-ownership
   Traits --> type-traits
+```
+
+### Do Not Load (Intent Disambiguation)
+
+```
+"Call Python from Mojo"       → python-interop  (NOT porting-python)
+"Rewrite Python in Mojo"      → porting-python  (NOT python-interop)
+"C library binding"            → ffi             (NOT python-interop)
+"Apple BLAS"                   → ffi             (NOT gpu-fundamentals)
+"Warp shuffle/reduction"       → gpu-warp-sync   (NOT gpu-block-collectives)
+"Block-level sum/broadcast"    → gpu-block-collectives (NOT gpu-warp-sync)
+"Barrier synchronization"      → gpu-warp-sync   (NOT gpu-fundamentals)
+"Unit tests"                   → testing          (NOT debug-debugging)
+"Benchmark performance"        → testing          (NOT perf-optimization)
 ```
 
 ## Version Support
@@ -180,7 +196,7 @@ See `engine-operations.md` (max-best-practices) for complete project structure e
 | **LayoutTensor issues** | **GPU Programming** | `gpu-layout-tensor` (rebind, tile, reshape) |
 | **Block reductions** | **GPU Programming** | `gpu-block-collectives` (sum, prefix_sum, broadcast) |
 | **Custom MAX ops** | **GPU Programming** | `gpu-custom-ops` (@compiler.register, Python graph) |
-| BLAS acceleration | C Interop | `ffi-interop` (25-32x speedup) |
+| BLAS acceleration | C Interop | `ffi` (25-32x speedup) |
 | **Port CUDA kernel** | **GPU Porting** | `gpu-porting-cuda` (basics), `gpu-porting-cute` (CuTe/CUTLASS) |
 | **Port ROCm kernel** | **GPU Porting** | `gpu-porting-rocm` (MFMA, scheduling, LDS) |
 | **Port Python code** | **Language Porting** | `porting-python` (10x-17,000x speedup showcase) |
@@ -196,16 +212,16 @@ See `engine-operations.md` (max-best-practices) for complete project structure e
 |----------|----------|-------|--------|
 | CRITICAL | Memory Safety & Ownership | 4 | `memory-` |
 | CRITICAL | Type System | 3 | `type-` |
-| CRITICAL | GPU Programming | 12 | `gpu-` |
+| CRITICAL | GPU Programming | 11 | `gpu-` |
 | HIGH | GPU Porting Guides | 3 | `gpu-porting-` |
 | HIGH | Language Porting Guides | 3 | `porting-` |
-| CRITICAL | C Interoperability | 2 | `ffi-` |
+| CRITICAL | C Interoperability | 1 | `ffi` |
 | HIGH | Struct Design | 1 | `struct-` |
 | HIGH | Function Design | 1 | `fn-` |
-| HIGH | Testing | 2 | `test-` |
+| HIGH | Testing | 1 | `testing` |
 | HIGH | Debugging | 1 | `debug-` |
 | MEDIUM-HIGH | Error Handling | 1 | `error-` |
-| MEDIUM | Performance Optimization | 4 | `perf-` |
+| MEDIUM | Performance Optimization | 3 | `perf-` |
 | MEDIUM | Python Interoperability | 1 | `python-` |
 | LOW | Advanced Metaprogramming | 2 | `meta-` |
 
@@ -223,7 +239,7 @@ If you're experiencing memory errors, use this decision tree to find the relevan
 | Use-after-free | Object destroyed too early | `memory-safety`, `memory-ownership` |
 | Memory leak | Missing destructor call | `memory-ownership`, `memory-safety` |
 | Double-free | Duplicate destruction | `memory-safety` |
-| GPU OOM | Buffer not released | `gpu-fundamentals`, `perf-memory` |
+| GPU OOM | Buffer not released | `gpu-fundamentals`, `perf-optimization` |
 | Crash in loop | Reference invalidation | `memory-safety` |
 | "does not implement Copyable" | Missing trait | `type-traits`, `struct-design` |
 
@@ -254,10 +270,9 @@ If you're experiencing memory errors, use this decision tree to find the relevan
 | `gpu-layout-tensor` | LayoutTensor API, rebind pattern, tile views, cross-rank reshape |
 | `gpu-block-collectives` | Block-level sum, prefix_sum, broadcast (replace manual reductions) |
 | `gpu-custom-ops` | Custom op registration, MAX Graph integration, multi-kernel pipelines |
-| `gpu-synchronization` | Barriers, async transactions, async copy |
+| `gpu-warp-sync` | Warp primitives, shuffle, reduction, barriers, async transactions, async copy |
 | `gpu-tensor-cores` | SM90/SM100 patterns, WGMMA, TCGen05 |
 | `gpu-memory-access` | TMA loading, prefetch, swizzle, LayoutTensor patterns (element type, rebind, async copy) |
-| `gpu-warp` | Warp primitives, specialization, reduction, block collectives, butterfly shuffle_xor |
 | `gpu-kernels` | Kernel fusion, pipelines, double-buffering, custom ops (@compiler.register) |
 | `gpu-structured-kernels` | ScatterGather/RingBuffer/TileOp architecture |
 | `gpu-amd` | AMD MFMA shapes, scheduling, waitcnt |
@@ -283,8 +298,7 @@ If you're experiencing memory errors, use this decision tree to find the relevan
 
 | Pattern | Description |
 |---------|-------------|
-| `ffi-interop` | CString safety, libc functions, binary data, integer type safety |
-| `ffi-vendor` | Apple BLAS (25-32x speedup), GPU libraries, Python GIL, MPS optimization |
+| `ffi` | CString safety, libc functions, binary data, Apple BLAS (25-32x), GPU libraries, Python GIL |
 
 ## Performance (MEDIUM)
 
@@ -292,15 +306,13 @@ If you're experiencing memory errors, use this decision tree to find the relevan
 |---------|-------------|
 | `perf-vectorization` | `vectorize` function (4-16x SIMD speedup) |
 | `perf-parallelization` | `parallelize` + SIMD (10x-17,000x vs Python*) |
-| `perf-memory` | Alignment, layout, prefetch, stack vs heap |
-| `perf-optimization` | Caching, lazy loading, multiple accumulators |
+| `perf-optimization` | Caching, lazy loading, accumulators, alignment, layout, prefetch |
 
 ## Testing (HIGH)
 
 | Pattern | Description |
 |---------|-------------|
-| `test-testing` | Unit and integration testing patterns |
-| `test-benchmarking` | Benchmark structure and performance measurement |
+| `testing` | Unit testing, integration testing, benchmarking, and performance measurement |
 
 *\*Performance ranges: Lower bound = simple typed loops vs Python. Upper bound = fully vectorized + parallelized hot paths. Actual gains depend on workload, data size, and hardware. Always benchmark your specific use case.*
 
@@ -313,13 +325,13 @@ mojo-best-practices/
 ├── SKILL.md               # Entry point (this file) - START HERE
 ├── metadata.json          # Skill metadata
 ├── CHANGELOG.md           # Skill version history
-├── patterns/              # 40 patterns with version-specific sections
+├── patterns/              # 36 patterns with version-specific sections
 │   ├── memory-*.md        # Memory safety (4 patterns)
-│   ├── gpu-*.md           # GPU programming (12 patterns)
+│   ├── gpu-*.md           # GPU programming (11 patterns)
 │   ├── gpu-porting-*.md   # GPU porting guides (3: CUDA, CuTe, ROCm)
 │   ├── porting-*.md       # Language porting guides (3: Python, C++, Rust)
 │   ├── type-*.md          # Type system (3 patterns)
-│   └── perf-*.md          # Performance (4 patterns)
+│   └── perf-*.md          # Performance (3 patterns)
 └── references/            # Detailed reference docs (loaded on-demand)
     ├── FULL_REFERENCE.md  # Complete pattern index (auto-generated)
     ├── ERROR_INDEX.md     # Error message → pattern lookup

@@ -780,7 +780,7 @@ fn add_arrays_simd(a: Float32Ptr, b: Float32Ptr, result: Float32Ptr, size: Int):
 ## Related Patterns
 
 - [`perf-parallelization.md`](perf-parallelization.md) — Combine with multi-core execution
-- [`perf-memory.md`](perf-memory.md) — Memory layout for SIMD efficiency
+- [`perf-optimization.md`](perf-optimization.md) — Memory layout for SIMD efficiency
 - [`perf-optimization.md`](perf-optimization.md) — General optimization strategies
 
 ---

@@ -6,10 +6,10 @@
 
 ## Table of Contents
 
-**15 patterns** across **7 categories**
+**13 patterns** across **7 categories**
 
 - [Multi-GPU & Parallelism](#multi-gpu--parallelism) (1 patterns)
-- [MAX Serve Configuration](#max-serve-configuration) (5 patterns)
+- [MAX Serve Configuration](#max-serve-configuration) (3 patterns)
 - [MAX Engine](#max-engine) (4 patterns)
 - [MAX Graph API](#max-graph-api) (1 patterns)
 - [Model Loading](#model-loading) (2 patterns)
@@ -34,13 +34,13 @@ See: [../patterns/multigpu-scaling.md](../patterns/multigpu-scaling.md)
 
 ## MAX Serve Configuration
 
-**Priority:** CRITICAL | **Patterns:** 5
+**Priority:** CRITICAL | **Patterns:** 3
 
-### MAX Serve API Features
+### MAX Serve API & Request Lifecycle
 
-**Pattern:** `serve-api` | **Impact:** HIGH
+**Pattern:** `serve-api` | **Impact:** CRITICAL
 
-Streaming, token budgets, structured output, function calling, LoRA adapters, and health endpoints
+Streaming, token budgets, structured output, function calling, LoRA adapters, health endpoints, request cancellation, preemption, and error propagation
 
 See: [../patterns/serve-api.md](../patterns/serve-api.md)
 
@@ -59,22 +59,6 @@ See: [../patterns/serve-configuration.md](../patterns/serve-configuration.md)
 KV cache strategies, memory management, and prefix caching for efficient inference
 
 See: [../patterns/serve-kv-cache.md](../patterns/serve-kv-cache.md)
-
-### MAX Serve Monitoring and Telemetry
-
-**Pattern:** `serve-monitoring` | **Impact:** HIGH
-
-Metric levels, telemetry configuration, worker lifecycle, and disaggregated inference
-
-See: [../patterns/serve-monitoring.md](../patterns/serve-monitoring.md)
-
-### Request Lifecycle Management
-
-**Pattern:** `serve-request-lifecycle` | **Impact:** CRITICAL
-
-Request cancellation, preemption handling, and error propagation patterns
-
-See: [../patterns/serve-request-lifecycle.md](../patterns/serve-request-lifecycle.md)
 
 ---
 
@@ -156,13 +140,13 @@ See: [../patterns/model-loading.md](../patterns/model-loading.md)
 
 **Priority:** MEDIUM | **Patterns:** 1
 
-### Production Deployment
+### Production Deployment and Monitoring
 
-**Pattern:** `deploy-deployment` | **Impact:** HIGH
+**Pattern:** `deploy-production` | **Impact:** HIGH
 
-Container deployment, volume configuration, benchmarking, and cloud provider templates
+Container deployment, volume configuration, benchmarking, cloud provider templates, metrics, telemetry, and disaggregated inference
 
-See: [../patterns/deploy-deployment.md](../patterns/deploy-deployment.md)
+See: [../patterns/deploy-production.md](../patterns/deploy-production.md)
 
 ---
 

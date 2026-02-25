@@ -452,7 +452,7 @@ comptime WARP_GROUP_SIZE = 128  # 4 warps
 ## Related Patterns
 
 - [`gpu-memory-access.md`](gpu-memory-access.md) — TMA loading and shared memory swizzling
-- [`gpu-synchronization.md`](gpu-synchronization.md) — Mbarrier patterns for async operations
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) — Mbarrier patterns for async operations
 - [`gpu-kernels.md`](gpu-kernels.md) — Cluster programming and warp specialization
 - [`gpu-amd.md`](gpu-amd.md) — AMD MFMA tensor core patterns
 - [`gpu-structured-kernels.md`](gpu-structured-kernels.md) — TileOp abstraction for tensor core operations

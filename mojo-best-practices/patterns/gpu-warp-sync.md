@@ -1,9 +1,9 @@
 ---
-title: Warp Primitives and Reduction Patterns
-description: Warp shuffle operations, warp specialization, row reduction, and block reduction patterns
+title: Warp Primitives, Synchronization, and Async Operations
+description: Warp shuffle operations, reductions, barriers, mbarriers, async transactions, and async copy patterns
 impact: HIGH
 category: gpu
-tags: [gpu, warp, shuffle, reduction, specialization]
+tags: [gpu, warp, shuffle, reduction, specialization, synchronization, barrier, mbarrier, async, tma, sm90]
 error_patterns:
   - "warp divergence"
   - "shuffle error"
@@ -12,6 +12,12 @@ error_patterns:
   - "vote mask"
   - "block_size required"
   - "shuffle_xor"
+  - "barrier deadlock"
+  - "race condition"
+  - "sync error"
+  - "mbarrier"
+  - "illegal memory access"
+  - "misaligned address"
 scenarios:
   - "Implement warp-level reduction"
   - "Use shuffle for fast communication"
@@ -21,35 +27,77 @@ scenarios:
   - "Implement butterfly all-reduce"
   - "Normalize values across a block"
   - "Use shuffle_xor for pair communication"
+  - "Synchronize threads in block"
+  - "Use mbarrier for TMA operations"
+  - "Fix race condition in shared memory"
+  - "Implement async copy pipeline"
 consolidates:
   - gpu-warp-primitives.md
   - gpu-warp-specialization.md
   - gpu-row-reduction.md
   - gpu-block-reduction.md
+  - gpu-synchronization.md
+  - gpu-mbarrier.md
+  - gpu-async-transaction.md
+  - gpu-async-copy.md
 ---
+<!-- PATTERN QUICK REF
+WHEN: Warp-level programming, thread synchronization, shared memory coordination, async TMA pipelines
+KEY_TYPES: shuffle_idx, shuffle_down, shuffle_xor, shuffle_up, vote, broadcast, barrier, syncwarp, mbarrier, SharedMemBarrier, async_copy, cluster_sync
+SYNTAX:
+  - shuffle_down(val, UInt32(offset)) — tree reduction within warp
+  - shuffle_xor(val, UInt32(offset)) — butterfly all-reduce (all lanes get result)
+  - vote[DType.uint32](predicate) — warp-wide ballot bitmask
+  - barrier() — block-level sync (all threads must reach)
+  - syncwarp() — warp-level sync (~1 cycle)
+  - mbarrier_init(mbar, count) / mbar.expect_bytes(N) — SM90+ async tracking
+  - sum[block_size=N](val) — block collective from gpu.primitives.block
+PITFALLS: barrier inside conditional → deadlock; missing expect_bytes → TMA hang; shuffle across warp boundary → wrong values; phase mismatch in mbarrier loops
+RELATED: gpu-fundamentals, gpu-block-collectives, gpu-memory-access, gpu-kernels, gpu-tensor-cores
+-->
 
-# Warp Primitives and Reduction Patterns
+# Warp Primitives, Synchronization, and Async Operations
 
 **Category:** gpu | **Impact:** HIGH
 
-Warp shuffle operations enable direct register-to-register communication (5-10x faster than shared memory). Combined with warp specialization and efficient reduction patterns, these primitives are essential for high-performance GPU kernels.
+Warp shuffle operations enable direct register-to-register communication (5-10x faster than shared memory). Combined with proper synchronization at warp, block, and cluster levels, plus async pipelines for latency hiding, these primitives are essential for high-performance GPU kernels.
 
 ## API Availability
 
-| API | Import Path | Availability | Notes |
-|-----|-------------|--------------|-------|
-| `lane_id`, `warp_id` | `from gpu import lane_id, warp_id` | PUBLIC | Re-exported from `gpu.primitives.id` |
-| `WARP_SIZE` | `from gpu import WARP_SIZE` | PUBLIC | Re-exported from `gpu.globals` |
-| `shuffle_idx`, `shuffle_up`, `shuffle_down`, `shuffle_xor` | `from gpu.primitives.warp import ...` | PUBLIC | Warp shuffle operations |
-| `vote[ret_type](val: Bool)` | `from gpu.primitives.warp import vote` | PUBLIC | Creates warp-wide bitmask from boolean votes |
-| `sum`, `max`, `min`, `prefix_sum` | `from gpu.primitives.warp import ...` | PUBLIC | Warp-wide reduction builtins |
-| `broadcast` | `from gpu.primitives.warp import broadcast` | PUBLIC | Broadcast lane 0 value to all lanes |
-| `lane_group_sum`, `lane_group_max`, `lane_group_min` | `from gpu.primitives.warp import ...` | PUBLIC | Lane-group reductions (partial warp) |
-| `lane_group_reduce`, `reduce` | `from gpu.primitives.warp import ...` | PUBLIC | Generic reduction with custom functions |
-| `elect_one_sync` | `from gpu.primitives.cluster import elect_one_sync` | PUBLIC | Cluster-level (NOT warp), SM90+ |
-| `stack_allocation[N, T, address_space=AddressSpace.SHARED]()` | `from gpu.memory import ...` | PUBLIC | Shared memory allocation |
+> **Note:** All APIs listed below are available in the Mojo nightly toolchain (v26.2+). Code examples are documentation snippets — adapt import paths and parameters for your use case.
 
-> **Note:** All warp APIs listed above are available in the Mojo nightly toolchain (v26.2+). Code examples below are documentation snippets — adapt import paths and parameters for your use case.
+### Warp APIs
+
+| API | Import Path | Notes |
+|-----|-------------|-------|
+| `lane_id`, `warp_id` | `from gpu import lane_id, warp_id` | Re-exported from `gpu.primitives.id` |
+| `WARP_SIZE` | `from gpu import WARP_SIZE` | Re-exported from `gpu.globals` |
+| `shuffle_idx`, `shuffle_up`, `shuffle_down`, `shuffle_xor` | `from gpu.primitives.warp import ...` | Warp shuffle operations |
+| `vote[ret_type](val: Bool)` | `from gpu.primitives.warp import vote` | Warp-wide bitmask from boolean votes |
+| `sum`, `max`, `min`, `prefix_sum` | `from gpu.primitives.warp import ...` | Warp-wide reduction builtins |
+| `broadcast` | `from gpu.primitives.warp import broadcast` | Broadcast lane 0 value to all lanes |
+| `lane_group_sum`, `lane_group_max`, `lane_group_min` | `from gpu.primitives.warp import ...` | Lane-group reductions (partial warp) |
+| `lane_group_reduce`, `reduce` | `from gpu.primitives.warp import ...` | Generic reduction with custom functions |
+
+### Synchronization APIs
+
+| API | Import Path | Notes |
+|-----|-------------|-------|
+| `barrier` | `from gpu import barrier` (or `from gpu.sync import barrier`) | Block-level barrier (both paths work) |
+| `syncwarp` | `from gpu.sync import syncwarp` (or `from gpu import syncwarp`) | Warp-level synchronization |
+| `mbarrier_init`, `mbarrier_arrive`, `mbarrier_try_wait_parity_shared` | `from gpu.sync import ...` | SM90+ mbarrier primitives |
+| `SharedMemBarrier` | `from gpu.sync import SharedMemBarrier` (or `from layout.tma_async import SharedMemBarrier`) | Shared memory barrier wrapper |
+| `fence_mbarrier_init`, `cluster_sync`, `cluster_sync_relaxed` | `from gpu.sync import ...` | SM90+ cluster operations |
+
+### Memory & Async APIs
+
+| API | Import Path | Notes |
+|-----|-------------|-------|
+| `stack_allocation` | `from memory import stack_allocation` | Shared memory allocation |
+| `AddressSpace` | `from gpu.memory import AddressSpace` | Address space enum (SHARED, GENERIC, etc.) |
+| `LayoutTensor`, `Layout` | `from layout import LayoutTensor, Layout` | Type-safe tensor with compile-time layout |
+| `async_copy`, `async_copy_commit_group`, `async_copy_wait_group` | `from gpu.memory import ...` | Async copy primitives |
+| `elect_one_sync` | `from gpu.primitives.cluster import elect_one_sync` | Cluster-level (NOT warp), SM90+ |
 
 ---
 
@@ -76,6 +124,20 @@ var wid = warp_id()
 # Get warp size (32 on NVIDIA, 64 on AMD)
 var wsize = WARP_SIZE
 ```
+
+### Synchronization Levels
+
+| Level | Function | Scope | Latency | Use Case |
+|-------|----------|-------|---------|----------|
+| Warp | `syncwarp()` | 32/64 threads | ~1 cycle | Warp-level algorithms |
+| Block | `barrier()` | All block threads | ~20-50 cycles | Shared memory access |
+| Named | `named_barrier[N]()` | Subset of threads | ~20-50 cycles | Partial sync (SM90+) |
+| Cluster | `cluster_sync()` | All cluster blocks | ~100-200 cycles | Cross-block cooperation |
+| Device | `ctx.synchronize()` | All GPU work | ~microseconds | Host-device sync |
+
+---
+
+## Warp-Level Primitives
 
 ### Shuffle Operations
 
@@ -124,7 +186,7 @@ fn shuffle_idx[dtype: DType, simd_width: Int](mask: UInt, val: SIMD[dtype, simd_
 
 ### Vote Operation (Ballot)
 
-The `vote` function creates a warp-wide bitmask from per-thread boolean predicates. This is the Mojo equivalent of CUDA's `__ballot_sync`:
+The `vote` function creates a warp-wide bitmask from per-thread boolean predicates (equivalent to CUDA's `__ballot_sync`):
 
 ```mojo
 # nocompile
@@ -162,9 +224,27 @@ fn vote[ret_type: DType](val: Bool) -> Scalar[ret_type]
 
 > **Note:** `vote` is only supported on NVIDIA and AMD GPUs. NVIDIA only supports `DType.uint32` return type. AMD supports both `DType.uint32` and `DType.uint64`.
 
+### Broadcast from Lane 0
+
+**When:** One thread computes a value and all threads need it
+
+```mojo
+# nocompile
+
+from gpu.primitives.warp import broadcast
+
+# Broadcast a SIMD value from lane 0 to all lanes
+var shared_val = broadcast(my_val)
+
+# Broadcast an Int from lane 0
+var shared_int = broadcast(my_int)
+```
+
+> **Note:** The single-argument `broadcast(val)` always broadcasts from lane 0. When the value comes from a LayoutTensor read, use `broadcast(rebind[Scalar[dtype]](val))` to ensure a concrete scalar type.
+
 ---
 
-## Common Patterns
+## Warp Synchronization
 
 ### Warp Reduction (Shuffle)
 
@@ -200,32 +280,6 @@ from gpu.primitives.warp import sum as warp_sum, max as warp_max, min as warp_mi
 var total = warp_sum(val)      # Warp-wide sum
 var max_val = warp_max(val)    # Warp-wide maximum
 var min_val = warp_min(val)    # Warp-wide minimum
-```
-
-**Don't:**
-```mojo
-# nocompile
-
-from gpu.memory import AddressSpace, stack_allocation
-
-fn warp_sum_slow(val: Scalar[DType.float32]) -> Scalar[DType.float32]:
-    """Slow: Uses shared memory for warp communication."""
-    # Even with correct API, this is slow compared to shuffles
-    var shared = stack_allocation[32, DType.float32, address_space=AddressSpace.SHARED]()
-    var lid = thread_idx.x % 32
-
-    # Write to shared memory (slow)
-    shared[lid] = val
-    barrier()
-
-    # Read and accumulate (many memory accesses)
-    var sum: Scalar[DType.float32] = 0.0
-    if lid == 0:
-        for i in range(32):
-            sum += shared[i]
-
-    barrier()
-    return sum
 ```
 
 ### Butterfly Sum (All-Reduce)
@@ -283,25 +337,6 @@ var val = my_value
 for offset in List(1, 2, 4, 8, 16):
     val = max(val, shuffle_xor(val, offset))
 # val is now the max across all 32 lanes — in EVERY lane
-```
-
-**Butterfly prefix sum — conditional add based on lane position:**
-```mojo
-# nocompile
-var val = my_value
-var lid = lane_id()
-for offset in List(1, 2, 4, 8, 16):
-    var other = shuffle_xor(val, offset)
-    if lid >= offset:
-        val += other
-# Each lane now holds the prefix sum up to its position
-```
-
-**Warp partition via `shuffle_xor`:**
-```mojo
-# nocompile
-# Split warp into groups of 4, each group exchanges within itself
-var partner = shuffle_xor(my_val, UInt32(3))  # XOR with 0b11 → pairs within groups of 4
 ```
 
 **When to use `shuffle_xor` vs `shuffle_down`:**
@@ -370,6 +405,102 @@ var result = reduce[shuffle_down, _reduce_add](val)
 var partial = lane_group_reduce[shuffle_down, _reduce_add, num_lanes=16](val)
 ```
 
+### Prefix Sum (Scan)
+
+**When:** Each thread needs the cumulative sum of all preceding threads
+
+```mojo
+# nocompile
+
+from gpu.primitives.warp import prefix_sum
+
+# Inclusive prefix sum (each thread gets sum of all threads up to and including itself)
+var inclusive_scan = prefix_sum(my_val)
+
+# Exclusive prefix sum (each thread gets sum of all threads before it)
+var exclusive_scan = prefix_sum[exclusive=True](my_val)
+```
+
+---
+
+## Block-Level Synchronization
+
+### Block Barrier Pattern
+
+**When:** Threads need to coordinate shared memory access
+
+**Public API pattern using `stack_allocation`:**
+```mojo
+# nocompile
+
+from gpu import thread_idx, block_idx, block_dim, barrier
+from gpu.memory import AddressSpace
+from memory import stack_allocation
+
+fn reduce_kernel_correct(
+    data: UnsafePointer[Float32],
+    result: UnsafePointer[Float32],
+    size: Int
+):
+    # Allocate shared memory using stack_allocation with AddressSpace.SHARED
+    var shared = stack_allocation[256, Float32, address_space=AddressSpace.SHARED]()
+
+    var tid = thread_idx.x
+    var gid = block_idx.x * block_dim.x + tid
+
+    # Load to shared memory
+    if gid < size:
+        shared[tid] = data[gid]
+    else:
+        shared[tid] = 0.0
+
+    # CRITICAL: Wait for ALL threads to complete their writes
+    barrier()
+
+    # Tree reduction pattern
+    var stride = block_dim.x // 2
+    while stride > 0:
+        if tid < stride:
+            shared[tid] += shared[tid + stride]
+        barrier()  # Sync after each reduction step
+        stride //= 2
+
+    # Thread 0 writes final result
+    if tid == 0:
+        result[block_idx.x] = shared[0]
+```
+
+**LayoutTensor variant** — use `LayoutTensor[..., address_space=AddressSpace.SHARED].stack_allocation()` for type-safe shared memory with the same barrier pattern.
+
+### Avoiding Deadlocks
+
+**When:** Any use of barriers in conditional code
+
+**Do:**
+```mojo
+fn safe_kernel(data: UnsafePointer[Float32], size: Int):
+    var tid = block_idx.x * block_dim.x + thread_idx.x
+
+    # ALL threads reach barrier (even those outside bounds)
+    barrier()
+
+    # Now safely do conditional work
+    if tid < size:
+        # ... do work
+        pass
+```
+
+**Don't:**
+```mojo
+fn deadlock_kernel(data: UnsafePointer[Float32], size: Int):
+    var tid = block_idx.x * block_dim.x + thread_idx.x
+
+    if tid < size:
+        # DEADLOCK: Threads outside bounds never arrive!
+        barrier()
+        # ... do work
+```
+
 ### Block-Level Reduction
 
 **When:** Reducing across all threads in a block (>32 threads)
@@ -427,22 +558,6 @@ fn block_reduce[
         final_accum = reduce[shuffle_down, reduce_fn](final_accum)
 
     return final_accum
-```
-
-### Prefix Sum (Scan)
-
-**When:** Each thread needs the cumulative sum of all preceding threads
-
-```mojo
-# nocompile
-
-from gpu.primitives.warp import prefix_sum
-
-# Inclusive prefix sum (each thread gets sum of all threads up to and including itself)
-var inclusive_scan = prefix_sum(my_val)
-
-# Exclusive prefix sum (each thread gets sum of all threads before it)
-var exclusive_scan = prefix_sum[exclusive=True](my_val)
 ```
 
 ### Block-Level Collectives
@@ -505,50 +620,13 @@ fn block_normalize[dtype: DType](
 | Shared memory | None needed | Used internally |
 | Best for | Single-warp kernels, partial reductions | Cross-warp operations, full-block reductions |
 | Performance | Minimal latency (register-only) | Slightly higher (shared mem + barriers) |
-| Custom reduce fn | `reduce[shuffle_down, my_fn]` | Use manual pattern (below Block-Level Reduction) |
+| Custom reduce fn | `reduce[shuffle_down, my_fn]` | Use manual pattern (above Block-Level Reduction) |
 
 **Performance:** Block collectives produce the same result as the manual warp+shared memory pattern with identical performance characteristics, but require significantly less code.
 
 ### Row-Wise Reduction (Softmax, LayerNorm)
 
-**When:** Each block processes one row for normalization operations
-
-```mojo
-# nocompile
-
-fn row_reduce[
-    BLOCK_SIZE: Int,
-    input_fn: fn[dtype: DType, width: Int, rank: Int](IndexList[rank]) -> SIMD[dtype, width],
-    reduce_fn: fn[dtype: DType, width: Int](SIMD[dtype, width], SIMD[dtype, width]) -> SIMD[dtype, width],
-    dtype: DType,
-    simd_width: Int,
-](
-    row_coords: IndexList[rank],
-    axis: Int,
-    init: Scalar[dtype],
-    row_size: Int,
-) -> Scalar[dtype]:
-    """Reduce a single row, called by one block."""
-
-    var tid = thread_idx.x
-    var accum = init
-
-    # Main loop: vectorized with grid-stride pattern
-    for offset in range(0, row_size, BLOCK_SIZE * simd_width):
-        var idx = (tid + offset) * simd_width
-        if idx < row_size:
-            row_coords[axis] = Int(idx)
-            var val = input_fn[dtype, simd_width, rank](row_coords)
-            accum = reduce_fn(val, accum)
-
-    # Reduce SIMD vector to scalar
-    var scalar_accum = accum.reduce_add()
-
-    # Block reduction across threads
-    return block_reduce[BLOCK_SIZE, reduce_fn](scalar_accum, init)
-```
-
-### Softmax Two-Pass Pattern
+**When:** Each block processes one row for normalization operations. Pattern: one block per row, vectorized grid-stride loop + `block_reduce`. Two-pass for softmax: (1) find max, (2) compute sum of `exp(x - max)`, then normalize.
 
 ```mojo
 # nocompile
@@ -560,7 +638,7 @@ fn softmax_kernel[dtype: DType, BLOCK_SIZE: Int](
 ):
     var row_idx = block_idx.x
 
-    # Pass 1: Find max value in row
+    # Pass 1: Find max value in row (use row_reduce with max_fn)
     var max_val = row_reduce[BLOCK_SIZE, load_input, max_fn, dtype, 4](
         IndexList[2](row_idx, 0), axis=1,
         init=Scalar[dtype].MIN, row_size=row_size,
@@ -595,7 +673,174 @@ fn softmax_kernel[dtype: DType, BLOCK_SIZE: Int](
         output[row_idx, col] = exp(input[row_idx, col] - max_val) * inv_sum
 ```
 
-### Warp Specialization
+---
+
+## Cross-Block & Async Patterns (SM90+)
+
+### Mbarrier for Async TMA
+
+**When:** Using TMA hardware loads on Hopper/Blackwell
+
+Mbarriers track both thread arrivals AND expected bytes from async memory operations.
+
+```mojo
+# nocompile
+
+from gpu.sync import mbarrier_init, mbarrier_arrive, mbarrier_try_wait_parity_shared
+from gpu.memory import AddressSpace
+from memory import stack_allocation
+
+fn tma_with_mbarrier():
+    var mbar = stack_allocation[1, Int64, address_space=AddressSpace.SHARED]()
+
+    if thread_idx.x == 0:
+        # Initialize with expected arrival count
+        mbarrier_init(mbar, arrival_count=1)
+        # Set expected bytes from TMA
+        mbar[0].expect_bytes(256)  # Expect 256 bytes
+
+        # Launch TMA operation
+        tma_op.async_load(smem_ptr, mbar, coords)
+
+    barrier()  # Sync so all threads see initialized mbarrier
+
+    # All threads wait for TMA to complete
+    mbarrier_try_wait_parity_shared(mbar, phase=0, timeout=10_000_000)
+
+    # Now shared memory is ready
+    process(smem_ptr)
+```
+
+### Async Transaction Barriers
+
+**When:** TMA operations require exact byte counting to prevent hangs
+
+**Do:**
+```mojo
+# nocompile
+
+from layout.tma_async import SharedMemBarrier
+from sys import size_of
+
+fn correct_tma_load[dtype: DType, BM: Int, BK: Int]():
+    var mbar_ptr = stack_allocation[
+        1, SharedMemBarrier, address_space=AddressSpace.SHARED
+    ]()
+
+    # Calculate exact byte count from tile dimensions
+    comptime expected_bytes = BM * BK * size_of[dtype]()
+
+    if thread_idx.x == 0:
+        mbar_ptr[].init(num_threads=1)
+        # Set expected bytes BEFORE issuing TMA
+        mbar_ptr[].expect_bytes(expected_bytes)
+        # Issue TMA - barrier tracks completion automatically
+        tma_op.async_copy(smem_tile, mbar_ptr[], coords)
+
+    barrier()
+    mbar_ptr[].wait(phase=0)
+```
+
+**Don't:**
+```mojo
+# nocompile
+
+fn bad_tma_load():
+    var mbar = stack_allocation[1, Int64, address_space=AddressSpace.SHARED]()
+
+    if thread_idx.x == 0:
+        mbarrier_init(mbar, arrival_count=1)
+        # MISSING: mbar.expect_bytes(tile_size_bytes)!
+        tma_op.async_copy(smem_tile, mbar, coords)
+
+    # DEADLOCK: Barrier doesn't know how many bytes to expect
+    mbar.wait(phase=0)
+```
+
+For multi-tile loads, sum all tile byte counts: `total = cta_group * (a_bytes + b_bytes) * k_group_size`.
+
+**Common TMA hang causes:**
+- Missing `expect_bytes()` - barrier never completes
+- Wrong byte count - mismatch with actual TMA size
+- Missing TMA issue after `expect_bytes()`
+- Phase mismatch in multi-iteration loops
+
+### Async Copy for Latency Hiding
+
+**When:** Overlapping memory loads with computation
+
+```mojo
+# nocompile
+
+from gpu.memory import async_copy, async_copy_commit_group, async_copy_wait_group
+
+# NOTE: On Apple Silicon, async_copy may execute as synchronous copy internally.
+# If you encounter issues, the fallback is regular LayoutTensor indexing + barrier():
+#   shared[tid] = rebind[Scalar[dtype]](global[global_id])
+#   barrier()
+
+fn pipelined_kernel():
+    # Stage 0: Start loading first tile
+    async_copy[dtype, 16](global_ptr, shared_buf_0)
+    async_copy_commit_group()
+
+    for i in range(num_tiles - 1):
+        # Start loading next tile (group 1)
+        async_copy[dtype, 16](global_ptr + (i + 1) * 16, shared_buf_1)
+        async_copy_commit_group()
+
+        # Wait for current tile (group 0) to complete
+        async_copy_wait_group[1]()  # Wait until 1 group remaining
+        barrier()
+
+        # Compute on current tile while next loads
+        compute(shared_buf_0)
+
+        # Swap buffers
+        swap(shared_buf_0, shared_buf_1)
+
+    # Process final tile
+    async_copy_wait_group[0]()
+    barrier()
+    compute(shared_buf_0)
+```
+
+### Phase-Based Mbarrier Pipeline
+
+**When:** Multi-iteration loops with async operations. Init mbarrier with `arrival_count=BLOCK_SIZE`, then in each iteration: `mbarrier_arrive(mbar)` → `mbarrier_try_wait_parity_shared(mbar, phase, timeout)` → `phase ^= 1`.
+
+### Producer-Consumer with Mbarriers
+
+**When:** Warp-specialized kernels with async loads. Use double-buffered mbarriers (`mbar_full[2]` + `mbar_empty[2]`): producer waits on empty, loads data, signals full; consumer waits on full, processes, signals empty. Toggle `phase ^= 1` after each full buffer cycle.
+
+### Cluster Synchronization (SM90+)
+
+**When:** Multi-block clusters need coordination
+
+```mojo
+from gpu.sync import fence_mbarrier_init, cluster_sync, cluster_sync_relaxed
+
+fn clustered_kernel():
+    # Initialize barriers across cluster (once at start)
+    @parameter
+    if CLUSTER_SIZE > 1:
+        fence_mbarrier_init()
+        cluster_sync_relaxed()  # Ensure all blocks see init
+
+    # ... do work ...
+
+    # Full cluster barrier (strong ordering)
+    cluster_sync()
+
+    # Relaxed cluster sync (weaker, faster)
+    cluster_sync_relaxed()
+```
+
+---
+
+## Warp Specialization
+
+### Basic Warp Specialization
 
 **When:** Overlapping memory and compute for maximum throughput (SM90/SM100)
 
@@ -654,23 +899,13 @@ fn warp_group_kernel():
         consumer_loop()
 ```
 
-### Broadcast from Lane 0
+### Warp Specialization Benefits
 
-**When:** One thread computes a value and all threads need it
-
-```mojo
-# nocompile
-
-from gpu.primitives.warp import broadcast
-
-# Broadcast a SIMD value from lane 0 to all lanes
-var shared_val = broadcast(my_val)
-
-# Broadcast an Int from lane 0
-var shared_int = broadcast(my_int)
-```
-
-> **Note:** The single-argument `broadcast(val)` always broadcasts from lane 0. When the value comes from a LayoutTensor read, use `broadcast(rebind[Scalar[dtype]](val))` to ensure a concrete scalar type.
+| Aspect | Monolithic | Warp-Specialized |
+|--------|------------|------------------|
+| Memory latency | Fully exposed | Hidden by overlap |
+| Register pressure | Uniform | Optimized per role |
+| Warp divergence | High | None (separate paths) |
 
 ---
 
@@ -687,6 +922,13 @@ var shared_int = broadcast(my_int)
 | High-perf matmul (SM90+) | Use warp specialization | [`gpu-kernels.md`](gpu-kernels.md) |
 | Boolean predicate across warp | Use `vote[DType.uint32](predicate)` | - |
 | Prefix sum / scan | Use `prefix_sum(val)` or `prefix_sum[exclusive=True](val)` | - |
+| Shared memory access | Use `barrier()` after writes | - |
+| Warp-level sync | Use `syncwarp()` or shuffle ops | - |
+| TMA loads (SM90+) | Use mbarrier with expect_bytes | [`gpu-memory-access.md`](gpu-memory-access.md) |
+| Latency hiding | Use async_copy pipeline | [`gpu-kernels.md`](gpu-kernels.md) |
+| Partial thread sync | Use named_barrier (SM90+) | - |
+| Cross-block sync | Use cluster_sync (SM90+) | [`gpu-kernels.md`](gpu-kernels.md) |
+| Host-device sync | Use ctx.synchronize() | [`gpu-fundamentals.md`](gpu-fundamentals.md) |
 
 ---
 
@@ -700,7 +942,7 @@ var shared_int = broadcast(my_int)
 | Shuffle reduction | ~10-20 cycles | 0 (register only) |
 | Built-in collective | ~10-15 cycles | 0 (optimized) |
 
-### Built-in Collectives
+### Built-in Warp Collectives
 
 ```mojo
 # nocompile
@@ -714,13 +956,31 @@ var prefix = prefix_sum(val)  # Inclusive prefix sum
 var shared = broadcast(val)   # Broadcast lane 0 to all lanes
 ```
 
-### Warp Specialization Benefits
+### Mbarrier Operations
 
-| Aspect | Monolithic | Warp-Specialized |
-|--------|------------|------------------|
-| Memory latency | Fully exposed | Hidden by overlap |
-| Register pressure | Uniform | Optimized per role |
-| Warp divergence | High | None (separate paths) |
+| Function | Purpose |
+|----------|---------|
+| `mbarrier_init(mbar, count)` | Initialize with arrival count |
+| `mbarrier_arrive(mbar)` | Signal arrival (decrement count) |
+| `mbar.expect_bytes(bytes)` | Set expected bytes for async ops |
+| `mbarrier_try_wait_parity_shared(mbar, phase, timeout)` | Wait until phase complete (with timeout) |
+| `SharedMemBarrier.wait(phase)` | Object-oriented wait |
+| `mbarrier_invalidate(mbar)` | Reset for reuse |
+
+### Barrier Rules
+
+1. **All threads must reach the same barrier** - No barriers inside thread-dependent conditionals
+2. **Same number of barriers on all paths** - Count barriers carefully
+3. **No early returns before barriers** - Would cause deadlock
+4. **Phase toggle for reuse** - `phase ^= 1` after each wait
+
+### Debugging Hung Kernels
+
+Common causes:
+- Missing `expect_bytes()` before TMA
+- Wrong byte count (mismatch with actual TMA size)
+- Phase mismatch in multi-iteration loops
+- Barrier inside conditional that not all threads reach
 
 ---
 
@@ -734,6 +994,12 @@ var shared = broadcast(val)   # Broadcast lane 0 to all lanes
 | `shuffle across warp boundary` | Trying to shuffle beyond warp | Shuffle only works within WARP_SIZE-thread warp |
 | `Unsupported return type` with vote | Wrong ret_type for vote on NVIDIA | NVIDIA only supports `DType.uint32` for `vote` |
 | `UnsupportedTarget` error | Using vote/shuffle on unsupported target | `vote` only works on NVIDIA and AMD GPUs |
+| `barrier deadlock` | Not all threads reach barrier | Ensure barrier is outside conditionals or all threads take same path |
+| `mbarrier phase mismatch` | Wrong phase in multi-stage pipeline | Alternate phases (0,1,0,1) for double-buffering |
+| `expect_bytes mismatch` | Wrong byte count for TMA | Calculate exact bytes: `elements * sizeof(dtype)` |
+| `missing fence before barrier` | Memory operations not visible | Add `fence_mbarrier_init()` before first arrive |
+| `warpgroup_fence missing` | WGMMA results not committed | Call `warpgroup_fence()` after WGMMA, before reading accumulator |
+| `async copy not waited` | Using data before copy completes | Call appropriate wait: `cp_async_wait_all()` or `mbarrier_try_wait()` |
 
 ---
 
@@ -769,30 +1035,36 @@ from gpu.primitives.warp import vote
 # Synchronization (barrier available from both gpu and gpu.sync)
 from gpu import barrier
 from gpu.sync import syncwarp  # Also available as: from gpu import syncwarp
+
+# SM90+ mbarrier
+from gpu.sync import mbarrier_init, mbarrier_arrive, mbarrier_try_wait_parity_shared
+from gpu.sync import SharedMemBarrier  # or: from layout.tma_async import SharedMemBarrier
+from gpu.sync import fence_mbarrier_init, cluster_sync, cluster_sync_relaxed
+
+# Async copy
+from gpu.memory import async_copy, async_copy_commit_group, async_copy_wait_group
+
+# Shared memory
+from gpu.memory import AddressSpace
+from memory import stack_allocation
 ```
+
+---
+
+## Version Notes
+
+All APIs in this document are stable in **v26.1+**. Both `alias` and `comptime` work for compile-time constants. Mbarrier, cluster sync, and async copy APIs are available in nightly (v26.2+).
 
 ---
 
 ## Related Patterns
 
 - [`gpu-fundamentals.md`](gpu-fundamentals.md) — Thread hierarchy and basics
-- [`gpu-synchronization.md`](gpu-synchronization.md) — Barrier and sync patterns
-- [`gpu-kernels.md`](gpu-kernels.md) — Producer-consumer pipelines
+- [`gpu-block-collectives.md`](gpu-block-collectives.md) — Block-level collective operations
+- [`gpu-memory-access.md`](gpu-memory-access.md) — TMA loading and prefetch patterns
+- [`gpu-kernels.md`](gpu-kernels.md) — Producer-consumer pipelines and double buffering
 - [`gpu-tensor-cores.md`](gpu-tensor-cores.md) — WGMMA warp group patterns
-
----
-
-## Version-Specific Features
-
-### v26.1+ (Stable)
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| **`gpu.primitives.warp`** | Stable | `vote`, `shuffle_idx`, `shuffle_down`, `broadcast` |
-| **Warp reductions** | Stable | `sum`, `max`, `min`, `prefix_sum` |
-| **SIMD warp operations** | Stable | Full SIMD width support |
-| **`gpu` module** | Stable | `lane_id()`, `warp_id()`, `WARP_SIZE` (imported from `gpu`) |
-| **`gpu.primitives.block`** | Stable | Block-level `sum`, `max`, `min`, `broadcast`, `prefix_sum` |
+- [`gpu-structured-kernels.md`](gpu-structured-kernels.md) — RingBuffer pattern for pipeline coordination
 
 ---
 
@@ -800,3 +1072,4 @@ from gpu.sync import syncwarp  # Also available as: from gpu import syncwarp
 
 - [Mojo GPU Block and Warp](https://docs.modular.com/mojo/manual/gpu/block-and-warp/)
 - [MAX Kernels](https://github.com/modular/modular/tree/main/max/kernels)
+- [MAX Kernels TMA](https://github.com/modular/modular/blob/main/max/kernels/src/layout/tma_async.mojo)

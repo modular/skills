@@ -565,7 +565,7 @@ barrier()              # Ensure all threads see the data
 # Now compute on shared_tile
 ```
 
-**See also:** [`gpu-synchronization.md`](gpu-synchronization.md) for SM90+ TMA async pipeline patterns.
+**See also:** [`gpu-warp-sync.md`](gpu-warp-sync.md) for SM90+ TMA async pipeline patterns.
 
 ---
 
@@ -578,7 +578,7 @@ barrier()              # Ensure all threads see the data
 | Column access in shared memory | Use swizzled layout | - |
 | Multiple blocks need same data | Use TMA multicast | [`gpu-kernels.md`](gpu-kernels.md) |
 | Dynamic per-iteration data | Never cache by pointer address | - |
-| SM80 and earlier | Use async_copy pipeline | [`gpu-synchronization.md`](gpu-synchronization.md) |
+| SM80 and earlier | Use async_copy pipeline | [`gpu-warp-sync.md`](gpu-warp-sync.md) |
 
 ---
 
@@ -731,7 +731,7 @@ barrier()
 ## Related Patterns
 
 - [`gpu-fundamentals.md`](gpu-fundamentals.md) — Memory hierarchy and coalescing basics
-- [`gpu-synchronization.md`](gpu-synchronization.md) — Mbarrier patterns for TMA
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) — Mbarrier patterns for TMA
 - [`gpu-tensor-cores.md`](gpu-tensor-cores.md) — Memory layouts for tensor cores
 - [`gpu-kernels.md`](gpu-kernels.md) — Double buffering and pipelines
 - [`gpu-structured-kernels.md`](gpu-structured-kernels.md) — ScatterGather abstraction for data movement

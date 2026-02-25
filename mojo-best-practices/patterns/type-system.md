@@ -423,7 +423,7 @@ struct MyKey(Hashable, Equatable, Copyable):
 | Custom Dict keys | Implement KeyElement traits | [`type-traits.md`](type-traits.md) |
 | Lossless conversions | Use `@implicit` decorator | [`fn-design.md`](fn-design.md) |
 | Graphics/ML workloads | Use Float32/BFloat16 | [`type-simd.md`](type-simd.md) |
-| Scientific computing | Use Float64 | [`perf-memory.md`](perf-memory.md) |
+| Scientific computing | Use Float64 | [`perf-optimization.md`](perf-optimization.md) |
 
 ---
 

@@ -856,10 +856,10 @@ var scan = prefix_sum[block_size=TPB](my_val)     # Inclusive prefix sum across 
 
 ## Related Patterns
 
-- [`gpu-synchronization.md`](gpu-synchronization.md) — Barrier and synchronization patterns
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) — Barrier and synchronization patterns
 - [`gpu-memory-access.md`](gpu-memory-access.md) — TMA, prefetch, and swizzle patterns
 - [`gpu-tensor-cores.md`](gpu-tensor-cores.md) — Tensor core programming for SM90/SM100
-- [`gpu-warp.md`](gpu-warp.md) — Warp primitives and reduction patterns
+- [`gpu-warp-sync.md`](gpu-warp-sync.md) — Warp primitives and reduction patterns
 
 
 ---
