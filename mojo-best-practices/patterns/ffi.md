@@ -17,6 +17,11 @@ error_patterns:
   - "GIL deadlock"
   - "MPS error"
   - "BF16"
+  - "dlclose"
+  - "ASAP"
+  - "JIT crash"
+  - "libKGENCompilerRTShared"
+  - "get_function"
 scenarios:
   - "Call C library from Mojo"
   - "Handle C strings safely"
@@ -28,6 +33,8 @@ scenarios:
   - "Manage Python GIL"
   - "Handle BF16/F16 conversion"
   - "Optimize MPS performance"
+  - "Fix OwnedDLHandle crash after get_function on macOS"
+  - "Prevent ASAP destruction of dynamic library handle"
 consolidates:
   - ffi-cstring-safety.md
   - ffi-libc-functions.md
@@ -52,7 +59,7 @@ SYNTAX:
   - UnsafePointer[T].alloc(n) / .free()
   - OwnedDLHandle("lib.so", RTLD.NOW).get_function[FnType]("symbol")
   - s.unsafe_cstr_ptr() for String -> C string
-PITFALLS: Must free manually, no RAII for C pointers, Int is 64-bit but C int is 32-bit, CString lifetime tied to String, BF16+F32 not supported on MPS
+PITFALLS: Must free manually, no RAII for C pointers, Int is 64-bit but C int is 32-bit, CString lifetime tied to String, BF16+F32 not supported on MPS, ASAP destroys OwnedDLHandle after get_function() — pass lib as `read` parameter to helper to keep alive
 RELATED: memory-ownership (lifecycle), memory-safety (origins), python-interop, gpu-fundamentals
 -->
 
@@ -444,6 +451,7 @@ var success = mps_gpu_flash_attention(output, q, k, v, mask32, ...)
 ### Debugging This Issue
 
 Symptoms:
+
 - GPU kernel produces wrong results but compiles without errors
 - Every other element in the array appears to be zero
 - Results look "randomly wrong" but are deterministically incorrect
@@ -548,6 +556,89 @@ fn main() raises:
     destroy_ctx(ctx)
 ```
 
+### CRITICAL: ASAP Destruction — Keep `lib` Alive Across FFI Calls
+
+Mojo's **ASAP (As-Soon-As-Possible)** destruction policy destroys an `OwnedDLHandle` immediately after its last **Mojo-visible** use — which is the `get_function()` call. The compiler inserts `dlclose()` right after `get_function()` returns, **before** the function pointer is ever invoked, unmapping the library and causing a JIT crash.
+
+**The bug (crashes on macOS ARM64 and Linux):**
+
+```mojo
+# nocompile — WRONG: lib is destroyed before fn_echo is called
+fn broken() raises:
+    var lib = OwnedDLHandle("./libecho.so", RTLD.NOW)
+    var fn_echo = lib.get_function[fn (Int) -> Int]("echo_int")
+    # ASAP inserts dlclose() here — fn_echo is now a dangling pointer
+    print(fn_echo(42))   # CRASH
+```
+
+**Disassembly confirms the bug:**
+
+```asm
+bl   _dlopen    ; OwnedDLHandle.__init__
+bl   _dlsym     ; get_function
+bl   _dlclose   ; ← ASAP destroys lib (WRONG: fn pointer not yet called)
+blr  x19        ; ← call fn_echo — crashes, library is unmapped
+```
+
+**The fix: pass `lib` as a `read` (borrowed) parameter to a helper.**
+A borrow cannot be ASAP-destroyed — it keeps the library mapped for the entire helper body:
+
+```mojo
+# nocompile — CORRECT
+from ffi import OwnedDLHandle, RTLD
+
+fn _call_echo(
+    f:        fn (Int) -> Int,
+    arg:      Int,
+    read lib: OwnedDLHandle,   # borrow: prevents ASAP dlclose
+) -> Int:
+    return f(arg)   # lib is alive for this entire call
+
+fn fixed() raises:
+    var lib = OwnedDLHandle("./libecho.so", RTLD.NOW)
+    var fn_echo = lib.get_function[fn (Int) -> Int]("echo_int")
+    print(_call_echo(fn_echo, 42, lib))   # prints 42 ✓
+```
+
+**General helper pattern for multi-arg FFI functions:**
+
+```mojo
+# nocompile
+fn _do_decompress(
+    read lib:    OwnedDLHandle,          # borrow keeps library mapped
+    data:        Span[UInt8],
+    window_bits: Int32,
+) raises -> List[UInt8]:
+    var fn_decomp = lib.get_function[
+        fn (Int, Int32, Int, Int32, Int32) -> Int32
+    ]("flare_decompress")
+
+    var cap = max(len(data) * 4, 4096)
+    while True:
+        var out = List[UInt8](capacity=cap)
+        out.resize(cap, 0)
+        var written = fn_decomp(
+            Int(data.unsafe_ptr()), Int32(len(data)),
+            Int(out.unsafe_ptr()), Int32(cap), window_bits,
+        )
+        if Int(written) < 0:
+            raise Error("decompress failed: " + String(written))
+        if Int(written) < cap:
+            out.resize(Int(written), 0)
+            return out^
+        cap *= 2
+
+fn decompress(data: Span[UInt8]) raises -> List[UInt8]:
+    var lib = OwnedDLHandle("./libwrap.so", RTLD.NOW)
+    return _do_decompress(lib, data, 47)
+```
+
+> **Platforms affected:** macOS ARM64 (always crashes), Linux (masked by `LD_PRELOAD` pre-mapping — but the bug is still present and will surface without `LD_PRELOAD`).
+>
+> **Root cause:** ASAP does not model the transitive liveness dependency between a function pointer returned by `get_function()` and the `OwnedDLHandle` it came from.
+
+---
+
 ### Platform-Specific Loading
 
 ```mojo
@@ -619,11 +710,13 @@ fn ipow(base: Int, exponent: Int) -> Int:
 ### Available vs Missing Functions
 
 **Available in `from math import`:**
+
 - `sqrt`, `exp`, `log`, `log2`, `log10`
 - `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`
 - `floor`, `ceil`, `abs`
 
 **Not available (implement yourself):**
+
 | Function | Implementation |
 |----------|----------------|
 | `pow(a, b)` | `exp(b * log(a))` |
@@ -722,6 +815,7 @@ fn blas_sgemm(M: Int, N: Int, K: Int, alpha: Float32,
 ### Using BLAS with Mojo
 
 **With `mojo run` (uses dynamic linking - recommended):**
+
 ```bash
 # mojo run handles dynamic linking automatically
 mojo run main.mojo
@@ -730,6 +824,7 @@ mojo run main.mojo
 BLAS functions from Apple Accelerate are available automatically via `external_call` when using `mojo run`.
 
 **With `mojo build` (static linking - has limitations):**
+
 ```bash
 # mojo build does not support -Xlinker flags for framework linking
 # FFI with external libraries works best with mojo run
@@ -813,6 +908,7 @@ fn linear_layer_blas(
 | Linux | Intel MKL | Install via Intel oneAPI |
 
 **Runtime library loading (for `mojo build` builds):**
+
 ```mojo
 # nocompile
 from ffi import OwnedDLHandle, RTLD
@@ -1072,6 +1168,7 @@ Critical learnings from optimizing transformer inference on Apple Silicon with M
 | CPU (Accelerate) | 12133ms | **6.6x slower** |
 
 **Why:**
+
 - Apple's MPS is highly optimized even for small matrices
 - CPU BLAS has function call overhead and cache misses
 - BF16->F32 weight conversion adds CPU latency
@@ -1084,12 +1181,14 @@ Critical learnings from optimizing transformer inference on Apple Silicon with M
 At small resolutions, dispatch overhead dominates compute time.
 
 **Key Numbers (FLUX.2 transformer):**
+
 - 310 GPU operations per denoising step
 - ~1.5ms overhead per operation = 465ms fixed overhead
 - At 64x64: actual compute ~75ms, overhead ~465ms
 - At 512x512: compute dominates, overhead negligible
 
 **Per-operation overhead sources:**
+
 1. MPSGraphTensorData wrapper creation (3 per linear op)
 2. NSDictionary creation for feeds/results (2 per linear op)
 3. `encodeToCommandBuffer` call
@@ -1142,6 +1241,7 @@ At small resolutions, dispatch overhead dominates compute time.
 **Solution:** Pre-compile graphs for target resolution only (not all possible resolutions).
 
 **Trade-off:**
+
 - Pre-compile everything: +3s startup, faster first inference
 - JIT on demand: Fast startup, slower first inference
 
@@ -1152,6 +1252,7 @@ At small resolutions, dispatch overhead dominates compute time.
 MPSGraph caches compiled graphs by input shapes. At small sizes, cache eviction causes re-compilation.
 
 **Recommended cache sizes:**
+
 - SDPA graphs: 16 (up from 8)
 - Linear graphs: 64 (up from 32)
 - Threshold for MPSGraph vs custom: seq_len >= 8
@@ -1166,6 +1267,7 @@ MPSGraph caches compiled graphs by input shapes. At small sizes, cache eviction 
 | Large (512+) | **Negative** | Split kernel overhead exceeds dispatch savings |
 
 **Pattern:**
+
 ```mojo
 # nocompile
 # Fused (faster at small resolutions, slower at large)
@@ -1184,6 +1286,7 @@ _ = gpu_linear(input, up, up_weight, seq, hidden, mlp)
 MPSGraph has ~1.0-1.6ms overhead per operation. Direct MPS has ~0.3-0.5ms.
 
 **Optimal threshold (FLOPS-based):**
+
 ```c
 static int use_mpsgraph(int seq, int in_dim, int out_dim) {
     long long flops = (long long)seq * in_dim * out_dim;
@@ -1324,6 +1427,7 @@ vendor_matmul(f32_input, f32_weights, f32_output)
 | **Python GIL** | Same API | Stable |
 
 **Example (v26.1+):**
+
 ```mojo
 from memory import memcpy, stack_allocation
 
@@ -1338,6 +1442,7 @@ fn example():
 ```
 
 **Notes:**
+
 - Both `alias` and `comptime` work for compile-time constants in v26.1+
 - FFI core APIs (`external_call`, `OwnedDLHandle`) are stable across versions
 - `memcpy` named parameters recommended in v26.1+
