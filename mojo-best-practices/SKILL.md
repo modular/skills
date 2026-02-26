@@ -1,7 +1,7 @@
 ---
 name: mojo-best-practices
 description: "Mojo programming best practices from the official modular/modular repository. Use when writing, reviewing, or optimizing Mojo code. Covers memory safety, ownership patterns, GPU kernels (SM90/SM100 tensor cores), BLAS integration, testing patterns, and performance optimization. Supports both stable (v26.1.0.0.0) and nightly."
-license: MIT
+license: Apache 2.0
 compatibility: "Requires Mojo SDK (stable v26.1.0.0.0 or nightly). GPU patterns require NVIDIA CUDA 12+ or AMD ROCm 6+. Apple Metal patterns require macOS 14+ with Apple Silicon."
 metadata:
   author: Modular Community

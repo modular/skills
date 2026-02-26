@@ -1,7 +1,7 @@
 ---
 name: max-best-practices
 description: "MAX AI inference framework best practices from Modular. Use when deploying models with MAX Serve, building graphs with MAX Graph API, or optimizing inference performance. Covers multi-GPU, quantization, and production deployment. Supports both stable (v26.1.0.0.0) and nightly."
-license: MIT
+license: Apache 2.0
 compatibility: "Requires MAX SDK (stable v26.1.0.0.0 or nightly). Multi-GPU requires NVIDIA Hopper+ (H100/H200/B200) or AMD MI300X. Container deployment requires Docker 24+ or Kubernetes 1.28+."
 metadata:
   author: Modular Community
