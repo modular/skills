@@ -164,6 +164,7 @@ var val_xor = shuffle_xor(my_val, UInt32(1))  # Adjacent exchange (butterfly)
 ```
 
 **Shuffle function signatures:**
+
 ```mojo
 # nocompile
 
@@ -208,6 +209,7 @@ var any_true = (mask != UInt32(0))
 ```
 
 **Vote function signature:**
+
 ```mojo
 # nocompile
 
@@ -251,26 +253,26 @@ var shared_int = broadcast(my_int)
 **When:** Reducing values within a warp (sum, max, min)
 
 **Do:**
+
 ```mojo
 
 from gpu.primitives.warp import shuffle_down
 
 fn warp_sum_fast(val: Scalar[DType.float32]) -> Scalar[DType.float32]:
     """Fast: Uses register shuffles for warp communication."""
-    var result = val
+    comptime LOG2_WARP_SIZE = log2_floor(WARP_SIZE)
 
+    var result = val
     # Tree reduction using shuffle_down
-    result += shuffle_down(result, UInt32(16))  # Lanes 0-15 get partial sum
-    result += shuffle_down(result, UInt32(8))
-    result += shuffle_down(result, UInt32(4))
-    result += shuffle_down(result, UInt32(2))
-    result += shuffle_down(result, UInt32(1))
+    comptime for i in reversed(range(LOG2_WARP_SIZE)):
+        result += shuffle_down(result, UInt32(1 << i))
 
     # Result is in lane 0
     return result
 ```
 
 **Or use the built-in warp reduction:**
+
 ```mojo
 # nocompile
 
@@ -292,20 +294,18 @@ from gpu.primitives.warp import shuffle_xor
 
 fn butterfly_sum(val: Scalar[DType.float32]) -> Scalar[DType.float32]:
     """Butterfly reduction - ALL lanes get the total sum."""
-    var result = val
+    comptime LOG2_WARP_SIZE = log2_floor(WARP_SIZE)
 
-    # XOR with increasing powers of 2
-    result += shuffle_xor(result, UInt32(1))   # Exchange with neighbor
-    result += shuffle_xor(result, UInt32(2))   # Exchange pairs
-    result += shuffle_xor(result, UInt32(4))   # Exchange quads
-    result += shuffle_xor(result, UInt32(8))   # Exchange octets
-    result += shuffle_xor(result, UInt32(16))  # Exchange halves
+    var result = val
+    comptime for i in range(LOG2_WARP_SIZE):
+        result += shuffle_xor(result, UInt32(1 << LOG2_WARP_SIZE))
 
     # All lanes now have the total sum
     return result
 ```
 
 **Or use the built-in lane_group_sum_and_broadcast:**
+
 ```mojo
 # nocompile
 
@@ -321,6 +321,7 @@ var total = lane_group_sum_and_broadcast[num_lanes=WARP_SIZE](val)
 `shuffle_xor` enables butterfly communication where each lane exchanges data with a partner determined by XOR of its lane ID and an offset. Unlike `shuffle_down` (result only in lane 0), butterfly patterns give **all lanes the final result**.
 
 **Pair swap — adjacent pairs exchange values:**
+
 ```mojo
 # nocompile
 from gpu.primitives.warp import shuffle_xor
@@ -330,6 +331,7 @@ var partner_val = shuffle_xor(my_val, UInt32(1))
 ```
 
 **Butterfly all-reduce — every lane gets the reduction result:**
+
 ```mojo
 # nocompile
 # All lanes end up with the global max (no shared memory needed)
@@ -430,6 +432,7 @@ var exclusive_scan = prefix_sum[exclusive=True](my_val)
 **When:** Threads need to coordinate shared memory access
 
 **Public API pattern using `stack_allocation`:**
+
 ```mojo
 # nocompile
 
@@ -477,6 +480,7 @@ fn reduce_kernel_correct(
 **When:** Any use of barriers in conditional code
 
 **Do:**
+
 ```mojo
 fn safe_kernel(data: UnsafePointer[Float32], size: Int):
     var tid = block_idx.x * block_dim.x + thread_idx.x
@@ -491,6 +495,7 @@ fn safe_kernel(data: UnsafePointer[Float32], size: Int):
 ```
 
 **Don't:**
+
 ```mojo
 fn deadlock_kernel(data: UnsafePointer[Float32], size: Int):
     var tid = block_idx.x * block_dim.x + thread_idx.x
@@ -506,6 +511,7 @@ fn deadlock_kernel(data: UnsafePointer[Float32], size: Int):
 **When:** Reducing across all threads in a block (>32 threads)
 
 > **Note:** Mojo also provides built-in block-level collectives via `gpu.primitives.block`:
+>
 > ```mojo
 >
 > from gpu.primitives.block import sum, max, min, broadcast, prefix_sum
@@ -515,6 +521,7 @@ fn deadlock_kernel(data: UnsafePointer[Float32], size: Int):
 > var shared_val = broadcast[block_size=TPB](val, 0)   # Broadcast from thread 0
 > var scan = prefix_sum[block_size=TPB](val)           # Block-wide inclusive scan
 > ```
+>
 > These handle the warp+shared memory two-phase reduction internally. **Always specify `[block_size=N]`** -- see [`gpu-block-collectives.md`](gpu-block-collectives.md). Use the manual pattern below for custom reduction functions.
 
 ```mojo
@@ -565,6 +572,7 @@ fn block_reduce[
 Block collectives from `gpu.primitives.block` replace 15+ lines of shared memory + barrier + tree reduction with a single function call. They handle the two-phase pattern (warp reduce → shared memory → warp reduce) internally.
 
 **Available operations (always specify `[block_size=N]`):**
+
 ```mojo
 # nocompile
 from gpu.primitives.block import sum, max, min, broadcast, prefix_sum
@@ -584,6 +592,7 @@ var scan = prefix_sum[block_size=TPB](my_val)       # Inclusive scan across bloc
 ```
 
 **Combined normalize pattern (sum → mean → broadcast → divide):**
+
 ```mojo
 # nocompile
 comptime TPB = 256
@@ -716,6 +725,7 @@ fn tma_with_mbarrier():
 **When:** TMA operations require exact byte counting to prevent hangs
 
 **Do:**
+
 ```mojo
 # nocompile
 
@@ -742,6 +752,7 @@ fn correct_tma_load[dtype: DType, BM: Int, BK: Int]():
 ```
 
 **Don't:**
+
 ```mojo
 # nocompile
 
@@ -760,6 +771,7 @@ fn bad_tma_load():
 For multi-tile loads, sum all tile byte counts: `total = cta_group * (a_bytes + b_bytes) * k_group_size`.
 
 **Common TMA hang causes:**
+
 - Missing `expect_bytes()` - barrier never completes
 - Wrong byte count - mismatch with actual TMA size
 - Missing TMA issue after `expect_bytes()`
@@ -977,6 +989,7 @@ var shared = broadcast(val)   # Broadcast lane 0 to all lanes
 ### Debugging Hung Kernels
 
 Common causes:
+
 - Missing `expect_bytes()` before TMA
 - Wrong byte count (mismatch with actual TMA size)
 - Phase mismatch in multi-iteration loops
