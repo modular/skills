@@ -191,13 +191,18 @@
 
 ## v26.2 (Nightly)
 
+### Breaking API Changes
+
 | Change | Description |
 |--------|-------------|
 | KVCache scheduler | Requires replica index for KV cache operations |
 | Large runtime layouts | Uses int64 indices for large tensor layouts |
 | SM100 kernels | Unified pipeline storage and naming for Blackwell |
 | `DeviceRef.from_device()` | **Deprecated** - still works but prefer `DeviceRef.CPU()` or `DeviceRef.GPU()` |
-| `PipelineConfig.max_length` | **Removed** - moved to `MAXModelConfig.max_length` (access via `config.model.max_length`) |
+| `PipelineConfig.max_length` | **Removed** - moved to `MAXModelConfig.max_length` (access as `config.model.max_length`) |
+| `PipelineModel(encoding=...)` | `encoding` parameter **removed** - automatically inferred from `quantization_encoding` |
+| Device-graph capture API | Requires explicit graph key: `model.capture(graph_key, *inputs)` instead of `model.capture(*inputs)` |
+| `max.nn` namespace | Graph-based API restored as default; eager module API moved to `max.nn.module_v3`; `max.tensor/functional/random` moved to `max.experimental` |
 | `ops.custom()` signature | `device` is now required positional arg: `ops.custom(name, device, values, out_types)` |
 | `TensorType` | Now requires `device` parameter: `TensorType(dtype, shape, device=DeviceRef.CPU())` |
 | Custom op kernel imports | Use `from tensor import InputTensor, OutputTensor, foreach` (not `from max.tensor`) |
@@ -208,6 +213,22 @@
 | `ops.clamp()` | Not available - use `ops.max(ops.min(x, high), low)` workaround |
 | `AlgebraicDim` | Use strings in TensorType shape instead: `["batch", 128]` |
 | `Graph.verify()` | Removed - no longer available |
+
+### New Features (v26.2 Nightly)
+
+| Feature | Description |
+|---------|-------------|
+| Overlap scheduling | Enabled by default for select architectures; reduces CPU overhead. Disable with `--no-enable-overlap-scheduler --force`. Incompatible with structured outputs and CPU models. |
+| `DeviceEvent(enable_timing=True)` | GPU event timing support; use `start.elapsed_time(end)` for GPU time measurement |
+| Global MLIR context | Now active by default; eliminates per-graph context plumbing requirement |
+| `max.graph.ops.prod` | New op for computing element products along axes |
+| `MODULAR_NVPTX_COMPILER_PATH` | Env var to point to system `ptxas` instead of bundled `libnvptxcompiler` |
+| CUDA 13.1 | Upgraded from CUDA 12.9; **minimum NVIDIA driver raised to 580** (Turing/sm_75+) |
+| AMD RDNA consumer GPUs | Common MAX models now run on AMD RDNA consumer GPUs |
+| Olmo3ForCausalLM | New architecture support |
+| Qwen3-30B-A3B MOE | Multi-GPU tensor parallelism support |
+| Multi-GPU TP for GPT-OSS | Tensor parallelism for GPT-OSS architecture |
+| Legacy Gemma 3 multimodal | **Removed** |
 
 **Critical: Version Alignment**
 

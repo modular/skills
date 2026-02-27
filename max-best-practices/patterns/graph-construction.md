@@ -372,9 +372,7 @@ class MyModel(PipelineModel[TextContext], KVCacheMixin):
     @classmethod
     def calculate_max_seq_len(cls, pipeline_config, huggingface_config) -> int:
         """Calculate maximum sequence length. (abstract, must implement)"""
-        # Note: max_length moved from PipelineConfig to MAXModelConfig in v26.2+
-        # Use pipeline_config.model.max_length (nightly) or pipeline_config.max_length (stable v26.1)
-        return pipeline_config.max_length or huggingface_config.max_position_embeddings
+        return pipeline_config.model.max_length or huggingface_config.max_position_embeddings
 
     @classmethod
     def get_kv_params(cls, huggingface_config, pipeline_config, devices, kv_cache_config, cache_dtype) -> KVCacheParams:

@@ -97,16 +97,54 @@ var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED](
 | `List[T]` elements | Elements must implement `Copyable` trait to be stored |
 
 
-## vnightly Changes (v26.2.0.dev2026012905+)
+## vnightly Changes (v26.2.0.dev2026022605+)
 
 ### Deprecations (NOW ACTIVE in Nightly)
 
 | Deprecated | Replacement | Status |
 |------------|-------------|--------|
-| `@register_passable("trivial")` | `TrivialRegisterType` trait | **DEPRECATED** - use trait instead |
+| `@register_passable("trivial")` | `TrivialRegisterPassable` trait | **DEPRECATED** - use trait instead |
+| `@register_passable` (non-trivial) | `RegisterPassable` trait | **DEPRECATED** - use trait instead |
+| `@parameter if` / `@parameter for` | `comptime if` / `comptime for` | **DEPRECATED** - legacy forms still accepted |
+| `__comptime_assert` | `comptime assert` | **DEPRECATED** - use keyword form |
 | `String.as_string_slice()` | `StringSlice(str)` constructor | **DEPRECATED** |
 | `String.as_string_slice_mut()` | N/A | **REMOVED** - no longer exists |
 | `__reversed__()` on String types | `codepoints_reversed()` | **DEPRECATED** - use Unicode-aware method |
+| `Stringable` / `Representable` traits | `Writable` trait | **DEPRECATED** - `Tuple`, `Variant`, `Optional` now conform to `Writable` |
+| `Int` to `SIMD` implicit conversion | Explicit `SIMD[dtype, 1](int_val)` | **DEPRECATED** |
+| `**_` / `*_` in parameter binding | `...` | **REMOVED** - use `...` instead |
+
+### Lifecycle Method Renames (NIGHTLY)
+
+Move and copy constructors have been renamed. Legacy names still compile but are deprecated:
+
+| Old (deprecated) | New (preferred) | Notes |
+|-------------------|-----------------|-------|
+| `fn __moveinit__(out self, deinit take: Self)` | `fn __init__(out self, *, take: Self)` | Move constructor; accepts `deinit` or `var` for "take" |
+| `fn __copyinit__(out self, copy: Self)` | `fn __init__(out self, *, copy: Self)` | Copy constructor |
+| `comptime __moveinit__is_trivial: Bool` | `comptime __move_ctor_is_trivial: Bool` | Trivial move flag |
+| `comptime __copyinit__is_trivial: Bool` | `comptime __copy_ctor_is_trivial: Bool` | Trivial copy flag |
+
+### Keyword Changes (NIGHTLY)
+
+| Old | New | Notes |
+|-----|-----|-------|
+| `owned` keyword | **REMOVED entirely** | Use `var` (ownership) or `deinit` (lifecycle) |
+| `@parameter if cond:` | `comptime if cond:` | Legacy `@parameter if` still accepted |
+| `@parameter for i in range(N):` | `comptime for i in range(N):` | Legacy `@parameter for` still accepted |
+| `__comptime_assert(cond, msg)` | `comptime assert cond, msg` | Finalizes previously unstable syntax |
+
+### Trait Changes (NIGHTLY)
+
+- `trait` declarations **no longer auto-inherit** `ImplicitlyDestructible` -- must opt-in explicitly
+- `Span[T]` no longer restricted to `Copyable` types
+
+### Module Restructuring (NIGHTLY)
+
+| Old | New | Notes |
+|-----|-----|-------|
+| `from builtin.math import ...` | `from math import ...` | `builtin.math` merged into `math` |
+| `from sys.ffi import ...` | `from ffi import ...` | `ffi` is now a top-level module |
 
 ### API Changes
 
@@ -123,6 +161,10 @@ var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED](
 | String/StringSlice subscripting | Panic if index in middle of codepoint | Unconditional panic on invalid UTF-8 index | Use `.as_bytes()[...]` for old behavior |
 | `StringSlice[byte=]` subscripting | Returns `String` | Returns `StringSlice` | Consistent with range-based subscripting |
 | String/StringSlice byte subscripting | Returns single byte (may be invalid UTF-8) | Returns entire Unicode codepoint | Prevents invalid UTF-8 generation |
+| `Dict` implementation | Hash table | Swiss Table | `power_of_two_initial_capacity` renamed to `capacity` |
+| `Set.pop()` | FIFO order | LIFO order | Behavior change |
+| `Dict.EMPTY` / `Dict.REMOVED` | Comptime aliases | **REMOVED** | No longer available |
+| `Int.__truediv__` | Returns `Float64` | Returns `Int` (truncating) | Breaking behavior change |
 
 ### New Features
 
@@ -130,6 +172,13 @@ var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED](
 |---------|-------------|
 | `codepoints_reversed()` | Added to `String`, `StringSlice`, and `StringLiteral` for Unicode-aware reverse iteration |
 | `StringSlice` mutability | Constructor now propagates mutability from source String reference |
+| `comptime if` / `comptime for` | Preferred replacements for `@parameter if/for` (legacy still accepted) |
+| `comptime assert` | Finalized syntax for compile-time assertions |
+| `@align(N)` decorator | Explicit struct alignment control |
+| `UnsafeUnion[*Ts]` | C-style untagged unions for FFI interop |
+| `uninit_move_n()`, `uninit_copy_n()`, `destroy_n()` | Bulk memory operations in memory module |
+| Iterator combinators | `cycle()`, `take_while[]`, `drop_while[]` added to iterators |
+| `ConditionalType` | New `utils/type_functions` module with conditional type selection |
 
 
 ## v24.1 Changes

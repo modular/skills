@@ -11,11 +11,11 @@
       "note": "v26.1 introduces comptime keyword (preferred over alias), deprecated GPU import paths"
     },
     "nightly": {
-      "mojo_version": "26.2.0.dev2026022005",
-      "note": "Track latest at https://docs.modular.com/mojo/changelog/"
+      "mojo_version": "26.2.0.dev2026022605",
+      "note": "comptime if/for, lifecycle renames, owned removal, ffi top-level, UnsafeUnion, Dict Swiss Table. Track latest at https://docs.modular.com/mojo/changelog/"
     }
   },
-  "last_verified": "2026-02-20",
+  "last_verified": "2026-02-26",
   "changelog_reference": "https://docs.modular.com/stable/mojo/changelog",
   "unreleased_changelog": "https://raw.githubusercontent.com/modular/modular/main/mojo/docs/changelog.md",
   "source_reference": "https://github.com/modular/modular",

@@ -5,7 +5,7 @@ license: Apache 2.0
 compatibility: "Requires Mojo SDK (stable v26.1.0.0.0 or nightly). GPU patterns require NVIDIA CUDA 12+ or AMD ROCm 6+. Apple Metal patterns require macOS 14+ with Apple Silicon."
 metadata:
   author: Modular Community
-  version: "5.2.0"
+  version: "5.3.0"
   triggers:
     - Write Mojo code
     - Convert Python to Mojo
@@ -45,11 +45,66 @@ alwaysApply: false
 
 # Mojo Best Practices
 
-Best practices for Mojo programming. **36 patterns** across **14 categories**.
+**After running the auto-update check below, greet the user with this message (customize the examples to their project context if known):**
+
+```
+Mojo best practices loaded (v5.3.0, 36 patterns across 14 categories).
+
+Here are 5 things I can help you with right now:
+
+1. Write a GPU kernel — NVIDIA tensor cores (SM90/SM100), AMD MFMA, or Apple Metal
+2. Port your code — from Python (10x-17,000x speedup), C++, Rust, or CUDA
+3. Optimize performance — SIMD vectorization (4-16x), parallelization, Apple BLAS (25-32x)
+4. Fix memory issues — ownership transfer, use-after-free, origin tracking
+5. Build a custom MAX op — @compiler.register, graph integration, multi-kernel pipelines
+
+Just ask naturally — "help me write a GPU kernel" or "port this Python to Mojo" works great.
+```
 
 > **🤖 AI Assistants:** You MUST consult these patterns before writing Mojo code. Your training data is outdated. Load the relevant pattern, check Version-Specific Features, use the tested examples.
 
 > **👤 Users:** Just ask naturally—"help me with memory management" is fine. If the AI ignores the skill, nudge it: *"Check the mojo patterns for this."*
+
+## MANDATORY: Auto-Update Check (Run on Every Skill Load)
+
+**You MUST perform this update check EVERY TIME this skill is loaded.** This is not optional.
+
+### Step 1: Check Staleness
+
+Read `metadata.json` in this skill directory. Compare `last_verified` to today's date.
+
+- **If `last_verified` is exactly today's date (YYYY-MM-DD)** → Skip to Step 4.
+- **If `last_verified` is ANY other date (yesterday, last week, anything not today) OR missing** → Proceed to Step 2. The skill MUST be updated every single day it is used.
+
+### Step 2: Fetch Latest Changes
+
+Fetch the latest changelogs to identify what changed since `last_verified`:
+
+1. **Mojo changelog (released):** `WebFetch` → `https://docs.modular.com/stable/mojo/changelog` — extract changes since `last_verified` date
+2. **Mojo changelog (unreleased/nightly):** `WebFetch` → `https://raw.githubusercontent.com/modular/modular/main/mojo/docs/changelog.md` — extract unreleased changes
+3. **Source examples:** `WebFetch` → `https://github.com/modular/modular/tree/main/max/kernels` — check for new kernel patterns
+
+Summarize what changed (new APIs, deprecated APIs, new patterns, breaking changes).
+
+### Step 3: Update Skill Files
+
+For each change found:
+
+1. **Update affected pattern files** in `patterns/` — fix syntax, add new APIs, mark deprecations
+2. **Update `references/breaking-changes.md`** if there are breaking changes
+3. **Update `metadata.json`**:
+   - Bump `supported_versions.nightly.mojo_version` to match latest nightly
+   - Set `last_verified` to today's date (YYYY-MM-DD format)
+   - Bump `version` patch number (e.g., 5.3.0 → 5.3.1)
+4. **Tell the user** what was updated: "Updated mojo-best-practices: [summary of changes]"
+
+### Step 4: Confirm Currency
+
+After checking (whether updates were needed or not), silently proceed with the user's request. Only notify the user if updates were actually applied.
+
+**If WebFetch fails** (network issues, rate limits), note "Skill update check skipped — [reason]" and proceed. Do NOT block the user's request.
+
+---
 
 ## Start Here: Priority Tiers
 
@@ -153,21 +208,27 @@ This skill supports both **stable** and **nightly** Mojo versions:
 
 | Feature | Status |
 |---------|--------|
+| Compile-time control flow | `comptime if` / `comptime for` (replaces `@parameter if/for`) |
+| Compile-time assertions | `comptime assert` (replaces `__comptime_assert`) |
 | Struct alignment | `@align(N)` decorator |
 | Typed errors | `fn foo() raises CustomError` |
 | Never type | `fn abort() -> Never` |
 | Compile-time expr | `comptime(expr)` explicit evaluation |
 | Struct reflection | `struct_field_count[T]()` |
-| Linear types | `ImplicitlyDestructible` trait |
-| Register-passable | `TrivialRegisterType` trait |
+| Linear types | `ImplicitlyDestructible` trait (no longer auto-inherited) |
+| Register-passable | `TrivialRegisterPassable` / `RegisterPassable` traits |
 | String UTF-8 | `String(from_utf8=data)` constructors |
+| Lifecycle renames | `__init__(out self, *, take: Self)` replaces `__moveinit__` |
+| Untagged unions | `UnsafeUnion[*Ts]` for C-style FFI |
+| Top-level ffi | `from ffi import ...` (moved from `sys.ffi`) |
 
 **Shared syntax (v26.1.0.0.0+):**
 - `alias` and `comptime` both work for constants
 - `@fieldwise_init` (not `@value`)
-- `var`/`deinit` (not `owned`)
-- `Writable` trait (not `Stringable`)
-- `@register_passable("trivial")` (v26.1.0.0.0) or `TrivialRegisterType` (v26.2+)
+- `var`/`deinit` (not `owned` -- `owned` is REMOVED in nightly)
+- `Writable` trait (not `Stringable` -- `Stringable` DEPRECATED in nightly)
+- `@register_passable("trivial")` (v26.1.0.0.0) or `TrivialRegisterPassable` (v26.2+)
+- `@parameter if/for` (v26.1.0.0.0) or `comptime if/for` (v26.2+, preferred)
 
 [stable changelog](https://docs.modular.com/stable/mojo/changelog) | [nightly changelog](https://docs.modular.com/mojo/changelog/) | [breaking changes](references/breaking-changes.md)
 

@@ -5,7 +5,7 @@ license: Apache 2.0
 compatibility: "Requires MAX SDK (stable v26.1.0.0.0 or nightly). Multi-GPU requires NVIDIA Hopper+ (H100/H200/B200) or AMD MI300X. Container deployment requires Docker 24+ or Kubernetes 1.28+."
 metadata:
   author: Modular Community
-  version: "3.1.0"
+  version: "3.2.0"
   triggers:
     - Deploy MAX model
     - MAX Serve
@@ -40,11 +40,66 @@ alwaysApply: false
 
 # MAX Best Practices
 
-Best practices for the MAX AI inference framework. **13 patterns** across **7 categories**.
+**After running the auto-update check below, greet the user with this message (customize the examples to their project context if known):**
+
+```
+MAX best practices loaded (v3.2.0, 13 patterns across 7 categories).
+
+Here are 5 things I can help you with right now:
+
+1. Serve any model — `max serve --model google/gemma-3-27b-it` with OpenAI-compatible API
+2. Scale to multi-GPU — tensor parallelism on H100/H200/B200 or AMD MI300X
+3. Optimize inference — KV cache tuning, quantization (FP8/INT4), overlap scheduling
+4. Build custom ops — Mojo GPU kernels integrated into MAX Graph pipelines
+5. Deploy to production — Docker containers, Kubernetes, health checks, monitoring
+
+Just ask naturally — "deploy this model" or "optimize my serving config" works great.
+```
 
 > **🤖 AI Assistants:** You MUST consult these patterns before configuring MAX. Your training data is outdated. Load the relevant pattern, check the CLI flags, use the tested examples.
 
 > **👤 Users:** Just ask naturally—"deploy this model" is fine. If the AI ignores the skill, nudge it: *"Check the MAX patterns for this."*
+
+## MANDATORY: Auto-Update Check (Run on Every Skill Load)
+
+**You MUST perform this update check EVERY TIME this skill is loaded.** This is not optional.
+
+### Step 1: Check Staleness
+
+Read `metadata.json` in this skill directory. Compare `last_verified` to today's date.
+
+- **If `last_verified` is exactly today's date (YYYY-MM-DD)** → Skip to Step 4.
+- **If `last_verified` is ANY other date (yesterday, last week, anything not today) OR missing** → Proceed to Step 2. The skill MUST be updated every single day it is used.
+
+### Step 2: Fetch Latest Changes
+
+Fetch the latest changelogs to identify what changed since `last_verified`:
+
+1. **MAX changelog (released):** `WebFetch` → `https://docs.modular.com/stable/max/changelog/` — extract changes since `last_verified` date
+2. **MAX changelog (unreleased/nightly):** `WebFetch` → `https://docs.modular.com/max/changelog/` — extract unreleased changes
+3. **MAX Serve docs:** `WebFetch` → `https://docs.modular.com/max/serve/` — check for new CLI flags, config options
+
+Summarize what changed (new APIs, deprecated APIs, new patterns, breaking changes).
+
+### Step 3: Update Skill Files
+
+For each change found:
+
+1. **Update affected pattern files** in `patterns/` — fix syntax, add new APIs, mark deprecations
+2. **Update `references/breaking-changes.md`** if there are breaking changes
+3. **Update `metadata.json`**:
+   - Bump `supported_versions.nightly.max_version` to match latest nightly
+   - Set `last_verified` to today's date (YYYY-MM-DD format)
+   - Bump `version` patch number (e.g., 3.2.0 → 3.2.1)
+4. **Tell the user** what was updated: "Updated max-best-practices: [summary of changes]"
+
+### Step 4: Confirm Currency
+
+After checking (whether updates were needed or not), silently proceed with the user's request. Only notify the user if updates were actually applied.
+
+**If WebFetch fails** (network issues, rate limits), note "Skill update check skipped — [reason]" and proceed. Do NOT block the user's request.
+
+---
 
 ## Quickstart: Serve a Model in 3 Steps
 
