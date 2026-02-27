@@ -84,7 +84,6 @@ max serve --model meta-llama/Llama-3.1-8B
 **✅ CORRECT:** Explicit KV cache configuration
 ```bash
 max serve --model meta-llama/Llama-3.1-8B \
-  --kv-cache-strategy paged \
   --kv-cache-page-size 256 \
   --max-batch-total-tokens 32768
 ```
