@@ -232,7 +232,9 @@ This skill supports both **stable** and **nightly** Mojo versions:
 
 [stable changelog](https://docs.modular.com/stable/mojo/changelog) | [nightly changelog](https://docs.modular.com/mojo/changelog/) | [breaking changes](references/breaking-changes.md)
 
-**max-best-practices** is a complementary skill for deploying models with MAX Serve and MAX Engine.
+### Complementary Skills
+
+**max-best-practices** – is a complementary skill for deploying models with MAX Serve and MAX Engine.
 Available at: https://github.com/modular/modular/skills/max-best-practices
 
 ### Cross-Skill: Building Custom Models

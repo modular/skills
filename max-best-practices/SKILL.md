@@ -248,8 +248,9 @@ See [breaking changes](references/breaking-changes.md) for detailed API differen
 
 [stable changelog](https://docs.modular.com/stable/max/changelog/) | [nightly changelog](https://docs.modular.com/max/changelog/) | [breaking changes](references/breaking-changes.md)
 
+### Complementary Skills
 
-**mojo-best-practices** is a complementary skill for Mojo language and GPU kernel development.
+**mojo-best-practices** – is a complementary skill for Mojo language and GPU kernel development.
 Available at: https://github.com/modular/modular/skills/mojo-best-practices
 
 ### Cross-Skill: Building Custom Models with Mojo
