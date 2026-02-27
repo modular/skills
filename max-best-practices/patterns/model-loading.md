@@ -64,7 +64,7 @@ MAX supports 35+ optimized model architectures natively with MAX Graph.
 |--------------|---------------|-----------|-----------|
 | `DeepseekV2ForCausalLM` | DeepSeek-V2-Lite-Chat | bfloat16 | Yes |
 | `DeepseekV3ForCausalLM` | DeepSeek-V3 | bfloat16, float8, float4 | Yes |
-| `DeepseekV3_2ForCausalLM` | DeepSeek-V3.2, DeepSeek-V3.2-Exp | float8 | Yes |
+| `DeepseekV32ForCausalLM` | DeepSeek-V3.2, DeepSeek-V3.2-Exp | float8 | Yes |
 | `DeepseekV3ForCausalLMNextN` | DeepSeek-V3-NextN (speculative) | bfloat16, float8 | Yes |
 
 **Vision-Language Models:**
@@ -117,6 +117,7 @@ HF_TOKEN=hf_xxx max serve --model meta-llama/Llama-3.1-8B-Instruct
 ```
 
 **Docker:**
+
 ```bash
 docker run --gpus=1 \
     -e HF_TOKEN=$HF_TOKEN \
@@ -126,12 +127,14 @@ docker run --gpus=1 \
 ```
 
 **Don't:**
+
 ```bash
 # Fails for gated models
 max serve --model meta-llama/Llama-3.1-8B-Instruct
 ```
 
 **Gated Models Include:**
+
 - `meta-llama/*` (Llama 3.x)
 - `mistralai/*` (some models)
 - `google/gemma-*` (some models)
@@ -160,6 +163,7 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct
 | `q4_0` | 4 | Lower | Maximum compression |
 
 **Pattern - GPU with bfloat16:**
+
 ```bash
 max serve --model meta-llama/Llama-3.1-8B-Instruct \
   --devices gpu:0 \
@@ -167,12 +171,14 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 ```
 
 **Pattern - CPU with GGUF:**
+
 ```bash
 max serve --model modularai/Llama-3.1-8B-Instruct-GGUF \
   --quantization-encoding q4_k
 ```
 
 **Pattern - GPTQ quantized model:**
+
 ```bash
 max serve --model TheBloke/Llama-2-13B-GPTQ \
   --devices gpu:0 \
@@ -184,6 +190,7 @@ max serve --model TheBloke/Llama-2-13B-GPTQ \
 ### Model Loading Examples
 
 **Llama 3.1/3.3:**
+
 ```bash
 # 8B model
 max serve --model meta-llama/Llama-3.1-8B-Instruct \
@@ -195,24 +202,28 @@ max serve --model meta-llama/Llama-3.3-70B-Instruct \
 ```
 
 **Mistral:**
+
 ```bash
 max serve --model mistralai/Mistral-7B-Instruct-v0.3 \
   --devices gpu:0
 ```
 
 **Qwen 2.5:**
+
 ```bash
 max serve --model Qwen/Qwen2.5-7B-Instruct \
   --devices gpu:0
 ```
 
 **Phi-4:**
+
 ```bash
 max serve --model microsoft/phi-4 \
   --devices gpu:0
 ```
 
 **Gemma 3 (recommended quickstart model):**
+
 ```bash
 max serve --model google/gemma-3-27b-it \
   --devices gpu:0
@@ -225,30 +236,35 @@ max serve --model google/gemma-3-27b-it \
 > **Note:** Some vision models require `--trust-remote-code` to load custom model code from HuggingFace.
 
 **Pixtral:**
+
 ```bash
 max serve --model mistral-community/pixtral-12b \
   --devices gpu:0
 ```
 
 **Gemma 3 Multimodal (4B+):**
+
 ```bash
 max serve --model google/gemma-3-12b-it \
   --devices gpu:0 --trust-remote-code
 ```
 
 **InternVL:**
+
 ```bash
 max serve --model OpenGVLab/InternVL3-8B-Instruct \
   --devices gpu:0
 ```
 
 **Qwen2.5-VL:**
+
 ```bash
 max serve --model Qwen/Qwen2.5-VL-7B-Instruct \
   --devices gpu:0
 ```
 
 **Qwen3-VL:**
+
 ```bash
 max serve --model Qwen/Qwen3-VL-4B \
   --devices gpu:0
@@ -259,18 +275,21 @@ max serve --model Qwen/Qwen3-VL-4B \
 ### Embedding Models
 
 **BERT-based (sentence-transformers):**
+
 ```bash
 max serve --model sentence-transformers/all-MiniLM-L6-v2 \
   --task embeddings
 ```
 
 **MPNet:**
+
 ```bash
 max serve --model sentence-transformers/all-mpnet-base-v2 \
   --task embeddings
 ```
 
 **Qwen3 Embedding:**
+
 ```bash
 max serve --model Qwen/Qwen3-Embedding-0.6B \
   --task embeddings
@@ -281,6 +300,7 @@ max serve --model Qwen/Qwen3-Embedding-0.6B \
 ### Image Generation Models
 
 **FLUX.1:**
+
 ```bash
 max serve --model black-forest-labs/FLUX.1-schnell \
   --devices gpu:0
@@ -343,6 +363,7 @@ Approximate VRAM requirements for bfloat16:
 | Qwen 2.5 72B | 72B | ~144GB |
 
 **Memory reduction with quantization:**
+
 - float8: ~50% of bfloat16
 - GPTQ (4-bit): ~25% of bfloat16
 - GGUF q4_k: ~25% of bfloat16
@@ -369,6 +390,7 @@ Approximate VRAM requirements for bfloat16:
 The architecture list above reflects nightly. Stable versions may have fewer architectures. Check the [MAX changelog](https://docs.modular.com/max/changelog/) for details on which models are available in each release.
 
 **Key differences:**
+
 - New architectures (DeepSeek V3.2, Qwen3-VL, Llama 4, OLMo2) are typically nightly-first
 - NVFP4 (`float4_e2m1fnx2`) is available on Blackwell GPUs in nightly
 - Apple GPU (Metal) support for GGUF models is evolving - use nightly for best compatibility
