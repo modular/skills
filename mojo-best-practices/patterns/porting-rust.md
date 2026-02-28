@@ -65,7 +65,7 @@ Complete guide for porting Rust code to Mojo with side-by-side examples. Both la
 | `fn foo(x: &mut String)` | `fn foo(mut x: String)` | Mutable borrow |
 | `let y = x;` (move) | `var y = x^` | Explicit transfer with `^` |
 | `x.clone()` | Copy (if `Copyable`) | Traits control copying |
-| `drop(x)` | `x^.__del__()` or scope end | Deterministic |
+| `drop(x)` | `_ = x^` or scope end | Deterministic (consume the value with `_ = x^`) |
 | `'a` (lifetime) | Origins (inferred) | Often no annotation needed |
 | `&'a str` | `StringSlice[origin]` | Origin-tracked reference |
 
@@ -516,7 +516,7 @@ struct Circle(Writable):
         self.radius = radius
 
     fn area(self) -> Float64:
-        return pi[DType.float64]() * self.radius * self.radius
+        return pi * self.radius * self.radius
 
     fn write_to[W: Writer](self, mut writer: W):
         writer.write("Circle(r=", self.radius, ")")
@@ -567,7 +567,7 @@ fn largest<T: PartialOrd>(list: &[T]) -> &T {
 **Mojo:**
 ```mojo
 # nocompile
-fn largest[T: ComparableCollectionElement](list: List[T]) -> T:
+fn largest[T: Comparable & Copyable & Movable](list: List[T]) -> T:
     var result = list[0]
     for i in range(1, len(list)):
         if list[i] > result:

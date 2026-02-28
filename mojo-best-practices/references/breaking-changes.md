@@ -35,13 +35,13 @@ The following import paths are **deprecated** in v26.1.0.0.0 (still work with wa
 | Old (deprecated) | New (recommended) |
 |-----------------|-------------------|
 | `from gpu.id import block_idx, thread_idx` | `from gpu import block_idx, thread_idx` |
-| `from gpu.warp import shuffle_down, lane_id` | `from gpu.primitives.warp import shuffle_down, lane_id` |
+| `from gpu.warp import shuffle_down, lane_id` | `from gpu.primitives.warp import shuffle_down, lane_id` (also available as `from gpu import lane_id`) |
 | `from gpu.block import ...` | `from gpu.primitives.block import ...` |
 | `from gpu.cluster import cluster_sync` | `from gpu.primitives.cluster import cluster_sync` |
 | `from gpu.grid_controls import ...` | `from gpu.primitives.grid_controls import ...` |
 | `from gpu.mma import mma` | `from gpu.compute.mma import mma` |
-| `from gpu.mma_sm100 import UMMAKind` | `from gpu.compute.mma_sm100 import UMMAKind` |
-| `from gpu.tcgen05 import tcgen05_alloc` | `from gpu.compute.tcgen05 import tcgen05_alloc` |
+| `from gpu.mma_sm100 import UMMAKind` | `from gpu.compute.arch.mma_nvidia_sm100 import UMMAKind` |
+| `from gpu.tcgen05 import tcgen05_alloc` | `from gpu.compute.arch.tcgen05 import tcgen05_alloc` |
 | `from gpu.semaphore import Semaphore` | `from gpu.sync.semaphore import Semaphore` |
 
 **Recommended pattern:**
@@ -60,7 +60,7 @@ from gpu.compute.mma import mma
 
 ```mojo
 # v26.1.0.0.0+: AddressSpace is in prelude, no import needed
-from gpu.memory import stack_allocation
+from memory import stack_allocation
 
 var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED]()
 ```
@@ -90,7 +90,7 @@ var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED](
 | `memcpy(dst, src, n)` | `memcpy(dest=dst, src=src, count=n)` |
 | `s[i]` on String | `s.as_bytes()[i]` for byte access |
 | `str(value)` | `String(value)` for conversions |
-| `math.pow(a, b)` | Custom implementation (not in math module) |
+| `math.pow(a, b)` | `from math import pow` (available in current stdlib) |
 | `math.sigmoid(x)` | Custom implementation: `1.0 / (1.0 + exp(-x))` |
 | `borrowed` keyword | Does not exist - use `read` (immutable) or `mut` (mutable) |
 | `ref self` in `__getitem__` | `mut self` for mutable self reference |
@@ -109,7 +109,7 @@ var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED](
 | `__comptime_assert` | `comptime assert` | **DEPRECATED** - use keyword form |
 | `String.as_string_slice()` | `StringSlice(str)` constructor | **DEPRECATED** |
 | `String.as_string_slice_mut()` | N/A | **REMOVED** - no longer exists |
-| `__reversed__()` on String types | `codepoints_reversed()` | **DEPRECATED** - use Unicode-aware method |
+| `__reversed__()` on String types | `codepoint_slices_reversed()` | **DEPRECATED** - use Unicode-aware method |
 | `Stringable` / `Representable` traits | `Writable` trait | **DEPRECATED** - `Tuple`, `Variant`, `Optional` now conform to `Writable` |
 | `Int` to `SIMD` implicit conversion | Explicit `SIMD[dtype, 1](int_val)` | **DEPRECATED** |
 | `**_` / `*_` in parameter binding | `...` | **REMOVED** - use `...` instead |
@@ -170,7 +170,7 @@ Move and copy constructors have been renamed. Legacy names still compile but are
 
 | Feature | Description |
 |---------|-------------|
-| `codepoints_reversed()` | Added to `String`, `StringSlice`, and `StringLiteral` for Unicode-aware reverse iteration |
+| `codepoint_slices_reversed()` | Added to `String`, `StringSlice`, and `StringLiteral` for Unicode-aware reverse iteration |
 | `StringSlice` mutability | Constructor now propagates mutability from source String reference |
 | `comptime if` / `comptime for` | Preferred replacements for `@parameter if/for` (legacy still accepted) |
 | `comptime assert` | Finalized syntax for compile-time assertions |
@@ -867,7 +867,7 @@ fn main():
 | Deprecated/Changed | Replacement | Notes |
 |-------------------|-------------|-------|
 | `UnsafePointer[T].alloc(n)` | `from memory import alloc; alloc[T](n)` | Reverted to function-based allocation |
-| `__has_next__()` on iterators | `__len__()` returning remaining count | For-loop termination mechanism |
+| `__has_next__()` on iterators | `raises StopIteration` on `__next__()` | Iterator trait-based termination |
 
 ### Memory Allocation in v0.26.2
 
@@ -882,30 +882,36 @@ from memory import alloc
 var ptr = alloc[Float32](count)
 ```
 
-### Iterator Protocol: `__len__()` vs StopIteration
+### Iterator Protocol
 
-Mojo uses `__len__()`-based termination, NOT Python's `StopIteration` exception:
+Mojo uses the `Iterator` trait with `raises StopIteration` on `__next__()`:
 
 ```mojo
-# Mojo iterator protocol (different from Python!)
-struct MyIter:
-    var remaining: Int
+# nocompile
+# The Iterator trait (from iter module):
+# trait Iterator(ImplicitlyDestructible, Movable):
+#     comptime Element: Movable
+#     fn __next__(mut self) raises StopIteration -> Self.Element
 
-    fn __len__(self) -> Int:
-        return self.remaining  # Loop checks this before each __next__()
+# Example implementation:
+struct MyIter(Iterator):
+    comptime Element = Int
+    var data: List[Int]
+    var index: Int
 
-    fn __next__(mut self) -> T:
-        self.remaining -= 1
-        return self.current_item
+    fn __next__(mut self) raises StopIteration -> Int:
+        if self.index >= len(self.data):
+            raise StopIteration()
+        var val = self.data[self.index]
+        self.index += 1
+        return val
 ```
 
 **How for-loops work in Mojo:**
-1. Call `__iter__()` to get iterator
-2. Check `len(iterator) > 0` before each iteration
-3. If true, call `__next__()` and continue
-4. If false (or zero), loop terminates
-
-This design avoids exception overhead and is GPU-compatible.
+1. Call `__iter__()` to get an `Iterator`
+2. Call `__next__()` on the iterator
+3. If `__next__()` returns a value, bind it and execute the loop body
+4. If `__next__()` raises `StopIteration`, the loop terminates
 
 ## v0.26.2 Type System Changes
 
@@ -976,40 +982,37 @@ fn main():
 
 | Deprecated | Replacement | Notes |
 |------------|-------------|-------|
-| `@register_passable("trivial")` | `TrivialRegisterType` trait | Migrate now for nightly, still works in stable |
+| `@register_passable("trivial")` | `TrivialRegisterPassable` trait | Fully replaced -- 0 occurrences of old decorator in stdlib |
 | `String.as_string_slice()` | `StringSlice(str)` constructor | Use constructor instead of method |
-| `__reversed__()` on strings | `codepoints_reversed()` | Unicode-aware reverse iteration |
+| `__reversed__()` on strings | `codepoint_slices_reversed()` | Unicode-aware reverse iteration |
 | `String.ljust` / `String.rjust` | `String.ascii_ljust` / `String.ascii_rjust` | Renamed for clarity |
 
-### TrivialRegisterType Migration
+### TrivialRegisterPassable Migration
 
-> **Current status:**
-> - **Nightly (v26.2+):** `@register_passable("trivial")` is **DEPRECATED** - shows compiler warnings
-> - **Stable (v26.1.0.0.0):** Still works without warnings
->
-> **Recommendation:** Migrate to `TrivialRegisterType` trait for nightly compatibility.
+> **Current status:** The `@register_passable("trivial")` decorator has been fully replaced by the `TrivialRegisterPassable` trait. There are 0 occurrences of the old decorator in the current stdlib.
 
-**Old syntax (deprecated in nightly):**
+**Old syntax (replaced):**
 ```mojo
+# nocompile - deprecated
 @register_passable("trivial")
 struct Point:
     var x: Float32
     var y: Float32
 ```
 
-**New syntax (required for nightly, works in stable):**
+**New syntax:**
 ```mojo
-struct Point(TrivialRegisterType, Copyable):
+struct Point(TrivialRegisterPassable, Copyable):
     var x: Float32
     var y: Float32
 ```
 
-**Size guidelines for TrivialRegisterType:**
+**Size guidelines for TrivialRegisterPassable:**
 - Ideal: 2-4 machine words (16-32 bytes on 64-bit)
 - Maximum recommended: ~48 bytes (6 machine words)
 - Larger types: Use normal structs with `Copyable` + `Movable`
 
-**When to use TrivialRegisterType:**
+**When to use TrivialRegisterPassable:**
 - Small fixed-size types with no heap allocations
 - Types that should be passed in registers (no pointer indirection)
 - Types with no lifecycle requirements (no `__del__` needed)

@@ -20,7 +20,7 @@ This index maps common error messages to relevant patterns.
 | `CUDA error: out of memory` | [gpu-fundamentals](../patterns/gpu-fundamentals.md) | gpu |
 | `CUTLASS to Mojo` | [gpu-porting-cute](../patterns/gpu-porting-cute.md) | gpu |
 | `CuTe equivalent` | [gpu-porting-cute](../patterns/gpu-porting-cute.md) | gpu |
-| `DLHandle` | [ffi](../patterns/ffi.md) | ffi |
+| `OwnedDLHandle` | [ffi](../patterns/ffi.md) | ffi |
 | `DeviceBuffer` | [gpu-custom-ops](../patterns/gpu-custom-ops.md) | gpu |
 | `GIL` | [python-interop](../patterns/python-interop.md) | python |
 | `GIL deadlock` | [ffi](../patterns/ffi.md) | ffi |
@@ -213,7 +213,7 @@ This index maps common error messages to relevant patterns.
 | `shared memory` | [gpu-block-collectives](../patterns/gpu-block-collectives.md) | gpu |
 | `shuffle error` | [gpu-warp-sync](../patterns/gpu-warp-sync.md) | gpu |
 | `shuffle_xor` | [gpu-warp-sync](../patterns/gpu-warp-sync.md) | gpu |
-| `simdwidthof` | [perf-vectorization](../patterns/perf-vectorization.md) | perf |
+| `simd_width_of` | [perf-vectorization](../patterns/perf-vectorization.md) | perf |
 | `slow memory access` | [perf-optimization](../patterns/perf-optimization.md) | perf |
 | `slow performance` | [perf-parallelization](../patterns/perf-parallelization.md) | perf |
 | `slow performance` | [perf-vectorization](../patterns/perf-vectorization.md) | perf |

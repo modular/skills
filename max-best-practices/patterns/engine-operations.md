@@ -401,13 +401,13 @@ from .model_config import MyModelConfig
 from . import weight_adapters
 
 my_arch = SupportedArchitecture(
-    name="MyModelForCausalLM_Legacy",  # HuggingFace name + "_Legacy" suffix for legacy Module architectures
+    name="MyModelForCausalLM_Legacy",  # HuggingFace name + "_Legacy" suffix when BOTH legacy and non-legacy versions exist
     example_repo_ids=["my-org/my-model-7b", "my-org/my-model-13b"],
-    default_encoding=SupportedEncoding.bfloat16,
+    default_encoding="bfloat16",
     supported_encodings={
-        SupportedEncoding.bfloat16: [KVCacheStrategy.PAGED],
-        SupportedEncoding.q4_k: [KVCacheStrategy.PAGED],
-        SupportedEncoding.float8_e4m3fn: [KVCacheStrategy.PAGED],
+        "bfloat16": ["paged"],
+        "q4_k": ["paged"],
+        "float8_e4m3fn": ["paged"],
     },
     pipeline_model=MyPipelineModel,
     tokenizer=TextTokenizer,
@@ -434,7 +434,7 @@ PIPELINE_REGISTRY.register(my_arch)
 | `example_repo_ids` | `list[str]` | HuggingFace repos for testing/validation |
 | `default_encoding` | `SupportedEncoding` | Default quantization when not specified |
 | `supported_encodings` | `dict` | Encoding-to-cache-strategy mapping |
-| `pipeline_model` | `type[PipelineModel]` | Model class with `load_model()` and `execute()` |
+| `pipeline_model` | `type[PipelineModel]` | Model class implementing `load_model()`, `execute()`, `calculate_max_seq_len()`, `prepare_initial_token_inputs()`, `prepare_next_token_inputs()` |
 | `task` | `PipelineTask` | Task type (TEXT_GENERATION, EMBEDDINGS_GENERATION, etc.) |
 
 **Encoding/Strategy Compatibility:**
@@ -484,14 +484,11 @@ def batch_process(prompts: list[str]) -> list[str]:
 
 ```python
 from max.pipelines import PipelineConfig
-from max.pipelines.kv_cache import KVCacheStrategy
 
 pipeline_config = PipelineConfig(
     model_path="modularai/Llama-3.1-8B-Instruct-GGUF",
     max_batch_size=32,
-    # Note: max_length moved to MAXModelConfig in v26.2+
-    # For nightly, set via config.model.max_length instead
-    max_length=4096,  # stable v26.1 only
+    cache_strategy="paged",  # KVCacheStrategy is Literal["model_default", "paged"]
     device_memory_utilization=0.85,
     enable_chunked_prefill=True,
     max_batch_input_tokens=8192,

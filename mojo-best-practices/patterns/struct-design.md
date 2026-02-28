@@ -164,9 +164,11 @@ struct Box[T: Movable & ImplicitlyDestructible](ImplicitlyDestructible):
     fn __init__(out self, var value: Self.T):
         self.value = value^
 
-    fn get(self) -> Self.T where Self.T: ImplicitlyCopyable:
+    fn get(self) -> Self.T:
         return self.value
 ```
+
+> **Note:** Mojo does not currently support `where` clauses on methods. Use parameter constraints in the struct definition or trait bounds on the type parameter instead. To conditionally enable methods based on additional trait conformance, the type parameter must include that trait in its bound.
 
 **Multiple type parameters:**
 
@@ -182,10 +184,10 @@ struct Pair[K: Movable & ImplicitlyDestructible, V: Movable & ImplicitlyDestruct
         self.key = key^
         self.value = value^
 
-    fn get_key(self) -> Self.K where Self.K: ImplicitlyCopyable:
+    fn ref_key(ref self) -> ref [self] Self.K:
         return self.key
 
-    fn get_value(self) -> Self.V where Self.V: ImplicitlyCopyable:
+    fn ref_value(ref self) -> ref [self] Self.V:
         return self.value
 ```
 
@@ -241,10 +243,10 @@ struct MyStruct(Sized, Stringable):
     fn __init__(out self):
         self.field = 0
 
-    fn __init__(out self, *, deinit take: Self):
+    fn __moveinit__(out self, deinit take: Self, /):
         self.field = take.field
 
-    fn __init__(out self, *, copy: Self):
+    fn __copyinit__(out self, copy: Self, /):
         self.field = copy.field
 
     fn __del__(deinit self):
@@ -303,7 +305,7 @@ struct MyStruct:
 
 1. **Aliases** - Type aliases and compile-time constants
 2. **Fields** - Instance variables (`var` declarations)
-3. **Life cycle methods** - `__init__`, `__moveinit__`, `__copyinit__`, `__del__`
+3. **Life cycle methods** - `__init__`, `__moveinit__`, `__copyinit__`, `__del__` (Note: a proposal to unify `__copyinit__`/`__moveinit__` into `__init__` overloads has been accepted but is not yet implemented)
 4. **Factory methods** - `@staticmethod` constructors returning `Self`
 5. **Operator dunders** - `__getitem__`, `__setitem__`, `__add__`, `__iter__`, etc.
 6. **Trait implementations** - `__len__`, `__str__`, `__bool__`, `__hash__`, etc.
@@ -879,13 +881,13 @@ var config_copy = config  # Uses Copyable trait
 | Version | Syntax | Notes |
 |---------|--------|-------|
 | **v26.1** | `@register_passable("trivial")` | Still works but deprecated in v26.2 |
-| **v26.2+** | `TrivialRegisterType` trait | Preferred replacement |
+| **v26.2+** | `TrivialRegisterPassable` trait | Preferred replacement |
 
 ```mojo
 # nocompile
-# Preferred: Use TrivialRegisterType trait
+# Preferred: Use TrivialRegisterPassable trait
 @fieldwise_init
-struct Point(TrivialRegisterType, Copyable):
+struct Point(TrivialRegisterPassable, Copyable):
     var x: Float64
     var y: Float64
 

@@ -45,7 +45,7 @@ consolidates:
 ---
 <!-- PATTERN QUICK REF
 WHEN: Building MAX Serve APIs, handling request lifecycle, endpoint configuration, error handling
-KEY_TYPES: OpenAI client, SchedulerResult, SchedulerError, PreemptionReason, OOMError, ZmqConfig
+KEY_TYPES: OpenAI client, SchedulerResult, PreemptionReason, OOMError, ZmqConfig
 SYNTAX:
   - client.chat.completions.create(model=..., stream=True) for streaming
   - response_format={"type": "json_schema", ...} for structured output
@@ -54,7 +54,7 @@ SYNTAX:
   - max serve --kvcache-ce-watermark 0.85 for preemption tuning
 PITFALLS:
   - LoRA incompatible with prefix caching (must use --no-enable-prefix-caching)
-  - Silent error swallowing causes requests to hang forever — always check SchedulerResult.error
+  - Silent error swallowing causes requests to hang forever — ensure error handling in scheduler
   - Default watermark 0.95 causes frequent preemptions under load — tune to 0.85-0.90
   - Only Llama 3 QKVO layers supported for LoRA (no MLP modules)
 RELATED: serve-configuration, serve-kv-cache, deploy-production
@@ -517,35 +517,33 @@ Model Worker           Scheduler              API Layer
      |                     |                     |
      |--[Exception]------->|                     |
      |                     |                     |
-     |  SchedulerResult    |                     |
-     |  .from_error(exc)   |                     |
+     |  Exception logged,  |                     |
+     |  requests released  |                     |
      |                     |                     |
-     |     [SchedulerError with traceback]       |
-     |                     |-------------------->|
+     |                     |--[RuntimeError]---->|
      |                     |                     |
-     |                     |  RuntimeError with  |
-     |                     |  remote traceback   |
 ```
 
-**Pattern - SchedulerError Structure:**
+**Pattern - SchedulerResult Structure:**
 
 ```python
-class SchedulerError(msgspec.Struct):
-    """Captures exception details for cross-process communication."""
-    error_type: str      # Exception class name (e.g., 'RuntimeError')
-    error_message: str   # The exception message
-    traceback_str: str   # Full traceback for debugging
+class SchedulerResult(msgspec.Struct, Generic[PipelineOutputType]):
+    """Result from the scheduler for a single request."""
+    is_done: bool           # Whether the request is complete
+    result: PipelineOutputType | None  # The output data, or None for cancelled
 
     @classmethod
-    def from_exception(cls, exc: BaseException) -> SchedulerError:
-        return cls(
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-            traceback_str="".join(
-                traceback.format_exception(type(exc), exc, exc.__traceback__)
-            ),
-        )
+    def cancelled(cls) -> SchedulerResult:
+        """Create a cancelled result."""
+        return cls(is_done=True, result=None)
+
+    @classmethod
+    def create(cls, result: PipelineOutputType) -> SchedulerResult:
+        """Create a result with output data."""
+        return cls(is_done=result.is_done, result=result)
 ```
+
+> **Note:** `SchedulerResult` has no `error` field. Errors are handled by catching exceptions in the scheduler loop and releasing affected requests.
 
 ### ZMQ Communication Architecture
 
@@ -740,10 +738,10 @@ def _schedule(self, inputs: TextGenerationInputs) -> int:
     except Exception as exc:
         logger.exception("Exception during pipeline execution")
 
-        # Send error results to ALL requests in the batch
+        # Cancel ALL requests in the batch
         self.response_queue.put_nowait(
             {
-                req_id: SchedulerResult.from_error(exc)
+                req_id: SchedulerResult.cancelled()
                 for req_id in batch_request_ids
             }
         )
@@ -769,30 +767,24 @@ def _schedule(self, inputs):
         return 0
 ```
 
-### API Layer Error Checking
+### API Layer Result Processing
 
 **When:** Processing scheduler results in API layer
 
 **Do:**
 ```python
 async def stream(self, req_id, data):
-    """Stream results with proper error propagation."""
+    """Stream results with proper cancellation handling."""
     with self.open_channel(req_id, data) as queue:
         while True:
             item = await queue.get()
 
-            # Check for error FIRST - propagate pipeline failures
-            if item.error is not None:
-                raise RuntimeError(
-                    f"Pipeline error ({item.error.error_type}): "
-                    f"{item.error.error_message}\n\n"
-                    f"Remote traceback:\n{item.error.traceback_str}"
-                )
+            # Check for cancellation (result is None when cancelled)
+            if item.result is None and item.is_done:
+                break  # Request was cancelled
 
-            if item.result is None:
-                break
-
-            yield item.result
+            if item.result is not None:
+                yield item.result
 
             if item.is_done:
                 break
@@ -869,7 +861,7 @@ def detect_and_wrap_oom(exception: Exception) -> None:
 | High cancellation rate (>5%) | Review client timeouts | Check client configuration |
 | High preemption rate (>10/min) | Reduce memory pressure | Lower batch size or utilization |
 | Frequent OOM errors | Increase memory headroom | `--device-memory-utilization 0.8` |
-| Silent request failures | Enable error propagation | Ensure SchedulerResult.error is checked |
+| Silent request failures | Enable error propagation | Ensure exceptions are caught and requests cancelled in scheduler |
 | Long-running requests | Enable host swapping | `--enable-kvcache-swapping-to-host` |
 
 ---
@@ -914,7 +906,7 @@ maxserve_cache_preemption_count_total 127
 - **Cancellation**: Automatic via cancel queue, frees KV cache blocks
 - **Preemption**: Triggered when `pct_blocks_used > kvcache_ce_watermark`
 - **Default watermark**: 0.95 (tune to 0.85-0.90 for stability)
-- **Error propagation**: Always check `SchedulerResult.error` before `result`
+- **Error propagation**: Exceptions caught in scheduler, requests cancelled via `SchedulerResult.cancelled()`
 - **Resource cleanup**: KV cache, batch slots, and network resources freed on cancel/error
 - **Partial results**: Already-sent tokens delivered, `is_done=True` on completion
 

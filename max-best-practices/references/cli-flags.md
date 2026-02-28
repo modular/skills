@@ -7,11 +7,11 @@
 | Flag | Description | Example |
 |------|-------------|---------|
 | `--model` | HuggingFace repo or local path | `google/gemma-3-27b-it` |
-| `--huggingface-revision` | Specific branch or commit | `main` |
+| `--huggingface-model-revision` | Specific branch or commit | `main` |
 | `--quantization-encoding` | Weight format | `bfloat16`, `float32`, `q4_k` |
 | `--trust-remote-code` | Allow custom model code from HF | (flag, no value) |
 
-> **Note:** `--model-path` is accepted as a legacy alias for `--model`. Docker containers also accept `--model-path`.
+> **Note:** `--model-path` is the canonical flag. `--model` is accepted as a deprecated alias (internally rewritten to `--model-path`). Docker containers also accept both.
 
 ## Device Configuration
 
@@ -33,7 +33,7 @@
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--kv-cache-page-size` | Page size (multiple of 128) | `128` |
-| `--enable-prefix-caching` | Enable prefix cache | `false` |
+| `--enable-prefix-caching` | Enable prefix cache | `true` |
 | `--kvcache-ce-watermark` | CE scheduling threshold (see below) | `0.95` |
 | `--enable-kvcache-swapping-to-host` | Host memory offload | `false` |
 | `--host-kvcache-swap-space-gb` | Host swap space size | - |
@@ -60,8 +60,8 @@ This flag controls when the scheduler prioritizes **decode batches** over **pref
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--enable-lora` | Enable LoRA adapter support | `false` |
-| `--max-num-loras` | Max adapters loaded concurrently | `8` |
-| `--max-lora-rank` | Maximum LoRA rank supported | `64` |
+| `--max-num-loras` | Max adapters loaded concurrently | `1` |
+| `--max-lora-rank` | Maximum LoRA rank supported | `16` |
 | `--lora-paths` | Adapter paths (name=path format) | - |
 
 **Example:**
@@ -80,9 +80,9 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--enable-structured-output` | JSON schema enforcement | `false` |
-| `--enable-penalties` | Repetition penalties | `true` |
+| `--enable-penalties` | Repetition penalties | `false` |
 | `--enable-in-flight-batching` | In-flight batching | `false` |
-| `--enable-chunked-prefill` | Split long prompts across batches | `false` |
+| `--enable-chunked-prefill` | Split long prompts across batches | `true` |
 | `--chat-template` | Custom Jinja2 template | - |
 | `--served-model-name` | Model name alias | - |
 
@@ -91,9 +91,7 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--num-warmups` | Warmup steps | `0` |
-| `--gpu-profiling` | Profiling level | `none` |
-| `--trace` | Enable nsys tracing | `false` |
-| `--trace-file` | Trace output path | - |
+| `--gpu-profiling` | Profiling level | `off` |
 
 ## Network
 

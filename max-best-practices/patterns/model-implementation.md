@@ -31,8 +31,8 @@ scenarios:
 
 > **Two Module Systems:** MAX provides two distinct APIs for building models:
 >
-> - **`max.nn.module_v3.Module`** — Eager-style, PyTorch-like API. Recommended for new standalone models.
-> - **`max.nn.Module`** — Graph-based API. Used by all production pipeline architectures today.
+> - **`max.nn.Module`** (new eager API) — Eager-style, PyTorch-like API. Recommended for new standalone models. Uses `Tensor`, `forward()`, `@F.functional`.
+> - **`max.nn.Module`** (graph API) — Graph-based API. Used by all production pipeline architectures today. Uses `TensorValue`, `__call__()`, `Weight`.
 >
 > This pattern covers both systems and when to use each.
 
@@ -44,7 +44,7 @@ Comprehensive patterns for implementing neural network models in MAX, including 
 
 ### Choosing the Right Module System
 
-**Use `max.nn.module_v3.Module` (eager API) when:**
+**Use `max.nn.Module (eager API)` (eager API) when:**
 
 - Building a new standalone model for inference
 - Porting a PyTorch model to MAX
@@ -58,7 +58,7 @@ Comprehensive patterns for implementing neural network models in MAX, including 
 - You need explicit graph construction with symbolic dimensions
 - Working with `PipelineModel` integration
 
-| Aspect | `max.nn.module_v3.Module` | `max.nn.Module` |
+| Aspect | `max.nn.Module (eager API)` | `max.nn.Module` |
 |--------|-----------------|------------------------|
 | **Tensor type** | `Tensor` (eager) | `TensorValue` (symbolic) |
 | **Define forward** | `forward()` method | `__call__()` method |
@@ -91,11 +91,11 @@ class GoodModel(Module[[Tensor], Tensor]):
         return x
 ```
 
-**Why?** `max.nn.module_v3.Module.forward()` operates on eager `Tensor` objects. `max.nn.Module.__call__()` operates on symbolic `TensorValue` objects. Mixing them causes type errors at compilation or runtime.
+**Why?** `max.nn.Module (eager API).forward()` operates on eager `Tensor` objects. `max.nn.Module.__call__()` operates on symbolic `TensorValue` objects. Mixing them causes type errors at compilation or runtime.
 
 ---
 
-## Building Models with `max.nn.module_v3` (Eager API)
+## Building Models with `max.nn` (Eager API)
 
 ### Import Reference
 
@@ -332,8 +332,8 @@ class GoodModel(Module[[Tensor], Tensor]):
 ### Import Reference
 
 ```python
-# Legacy module system
-from max.nn.layer import Module, LayerList
+# Graph module system
+from max.nn import Module, LayerList
 from max.nn.linear import Linear, MLP, ColumnParallelLinear
 from max.nn.norm import RMSNorm, LayerNorm
 from max.nn.rotary_embedding import RotaryEmbedding
@@ -348,12 +348,12 @@ from max.dtype import DType
 from max.engine import InferenceSession
 ```
 
-### Legacy Module Definition
+### Graph Module Definition
 
-Legacy modules use `Weight` objects and operate on symbolic `TensorValue`:
+Graph modules use `Weight` objects and operate on symbolic `TensorValue`:
 
 ```python
-from max.nn.layer import Module
+from max.nn import Module
 from max.graph import Weight, TensorValue, ops, DeviceRef
 from max.dtype import DType
 
@@ -375,13 +375,13 @@ class LegacyLinear(Module):
 
 ### Composing a Transformer
 
-Production models compose via the legacy `Transformer` and `TransformerBlock`:
+Production models compose via `Transformer` and `TransformerBlock`:
 
 ```python
 from max.nn.transformer import Transformer, TransformerBlock
 from max.nn.linear import Linear, MLP
 from max.nn.norm import RMSNorm
-from max.nn.layer import LayerList
+from max.nn import LayerList
 
 # Create layers using factory pattern (common in production code)
 def create_transformer(config):
@@ -408,9 +408,9 @@ def create_transformer(config):
     )
 ```
 
-### Graph Construction with Legacy Modules
+### Graph Construction with Graph Modules
 
-Build a computation graph by calling legacy modules with symbolic inputs:
+Build a computation graph by calling graph modules with symbolic inputs:
 
 ```python
 from max.graph import Graph, TensorType, DeviceRef
@@ -426,7 +426,7 @@ input_types = [
 # Build graph
 with Graph("my_model", input_types=input_types) as graph:
     tokens, offsets = graph.inputs
-    outputs = model(tokens.tensor, offsets.tensor)  # Legacy __call__ builds graph ops
+    outputs = model(tokens.tensor, offsets.tensor)  # __call__ builds graph ops
     graph.output(*outputs)
 
 # Load weights and compile
@@ -435,9 +435,9 @@ session = InferenceSession(devices=[Accelerator()])
 compiled_model = session.load(graph, weights_registry=state_dict)
 ```
 
-### Weight Loading (Legacy)
+### Weight Loading (Graph API)
 
-Legacy models use `load_state_dict()` with weight adapter remapping:
+Graph API models use `load_state_dict()` with weight adapter remapping:
 
 ```python
 from max.graph.weights import load_weights
@@ -469,7 +469,7 @@ my_architecture/
 ├── arch.py              # SupportedArchitecture registration
 ├── model_config.py      # Config dataclass (ArchConfig)
 ├── model.py             # PipelineModel subclass
-├── my_model.py          # Graph model (extends legacy Module)
+├── my_model.py          # Graph model (extends Module)
 └── weight_adapters.py   # Weight name mapping functions
 ```
 
@@ -479,16 +479,18 @@ Register your architecture in `arch.py`:
 
 ```python
 from max.pipelines.lib.registry import SupportedArchitecture
-from max.pipelines.lib import PipelineTask, SupportedEncoding, KVCacheStrategy
+from max.interfaces import PipelineTask
+from max.pipelines.lib import SupportedEncoding
+from max.nn.kv_cache import KVCacheStrategy
 from max.graph.weights import WeightsFormat
 
 my_arch = SupportedArchitecture(
-    name="MyModelForCausalLM_Legacy",  # HF name + "_Legacy" suffix for legacy Module architectures
+    name="MyModelForCausalLM_Legacy",  # HF name + "_Legacy" suffix when BOTH legacy and non-legacy versions exist
     example_repo_ids=["org/MyModel-7B-Instruct"],
     default_encoding=SupportedEncoding.bfloat16,
     supported_encodings={
-        SupportedEncoding.bfloat16: [KVCacheStrategy.PAGED],
-        SupportedEncoding.float32: [KVCacheStrategy.PAGED],
+        "bfloat16": ["paged"],
+        "float32": ["paged"],
     },
     pipeline_model=MyPipelineModel,
     tokenizer=TextTokenizer,
@@ -698,19 +700,19 @@ class TransformerBlock(Module[[Tensor], Tensor]):
 
 | Scenario | Approach | Key Imports |
 |----------|----------|-------------|
-| New standalone model | `max.nn.module_v3.Module` + `compile()` | `from max.nn.module_v3 import Module, Linear` |
-| Add architecture to MAX Serve | `max.nn.Module` + `PipelineModel` | `from max.nn.layer import Module` |
-| Port PyTorch model | `max.nn.module_v3.Module` (closest to PyTorch) | `from max.nn.module_v3 import Module` |
-| Modify Llama3/Gemma3/DeepSeek | Legacy API (match existing code) | `from max.nn import ...` |
-| Quantized GGUF inference | Legacy + `GGUFWeights` | `from max.graph.weights import GGUFWeights` |
-| Quick prototype | `max.nn.module_v3.Module` + `compile()` | `from max.nn.module_v3 import Module` |
-| Multi-GPU model | Legacy + `ColumnParallelLinear` | `from max.nn.linear import ColumnParallelLinear` |
+| New standalone model | `max.nn.Module (eager API)` + `compile()` | `from max.nn import Module, Linear` |
+| Add architecture to MAX Serve | `max.nn.Module` + `PipelineModel` | `from max.nn import Module` |
+| Port PyTorch model | `max.nn.Module (eager API)` (closest to PyTorch) | `from max.nn import Module` |
+| Modify Llama3/Gemma3/DeepSeek | Graph API (match existing code) | `from max.nn import ...` |
+| Quantized GGUF inference | Graph API + `GGUFWeights` | `from max.graph.weights import GGUFWeights` |
+| Quick prototype | `max.nn.Module (eager API)` + `compile()` | `from max.nn import Module` |
+| Multi-GPU model | Graph API + `ColumnParallelLinear` | `from max.nn.linear import ColumnParallelLinear` |
 
 ---
 
 ## Quick Reference
 
-- **Eager API Module** (`max.nn.module_v3`): `class MyModel(Module[[Tensor], Tensor])` with `forward()` and `@F.functional`
+- **Eager API Module** (`max.nn`): `class MyModel(Module[[Tensor], Tensor])` with `forward()` and `@F.functional`
 - **Graph API Module** (`max.nn`): `class MyModel(Module)` with `__call__()` and `Weight` objects
 - **Compile new API**: `compiled = model.compile(TensorType(dtype, shape, device=DeviceRef.CPU()))`
 - **Compile legacy**: `session = InferenceSession(); model = session.load(graph, weights_registry=state_dict)`
@@ -729,7 +731,7 @@ class TransformerBlock(Module[[Tensor], Tensor]):
 
 | Feature | Stable (v26.1) | Nightly (v26.2+) |
 |---------|----------------|------------------|
-| **`max.nn.module_v3.Module`** | Eager API — recommended for new models | Same |
+| **`max.nn.Module (eager API)`** | Eager API — recommended for new models | Same |
 | **`max.nn.Module`** | Graph API — for pipeline models | Same |
 | **`driver.Buffer`** | `driver.Buffer` (renamed from `Tensor`) | Same |
 | **V1 layers** | Removed (`LinearV1`, `Conv2dV1`, etc.) | Same |
@@ -779,8 +781,8 @@ fn my_kernel[width: Int](
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `Module has no attribute 'forward'` | Using legacy Module (has `__call__`, not `forward`) | Use `max.nn.Module` or override `__call__` for legacy |
-| `Expected TensorValue but got Tensor` | Passing eager Tensor to legacy Module | Use `TensorValue` from graph inputs with legacy modules |
+| `Module has no attribute 'forward'` | Using graph Module (has `__call__`, not `forward`) | Use `max.nn.Module` eager API or override `__call__` for graph API |
+| `Expected TensorValue but got Tensor` | Passing eager Tensor to graph Module | Use `TensorValue` from graph inputs with graph modules |
 | `Weight not found in state dict` | Weight name mismatch | Check weight adapter mapping; use `strict=False` to debug |
 | `missing keys in state_dict` | Weight adapter not remapping all names | Print `model.state_dict().keys()` and compare to loaded names |
 | `Shape mismatch loading weights` | Transposed or wrong-dim weights | Check if weight needs `.T`; verify HF config matches |

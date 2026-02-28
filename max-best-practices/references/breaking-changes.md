@@ -1,7 +1,430 @@
 # MAX Breaking Changes Reference
 
-> Updated for MAX v26.1.0.0.0+
+> Updated for MAX v26.2.0.dev nightly and v26.1.0.0.0 stable (2026-02-27)
 
+---
+
+## v26.1 (Stable) → v26.2+ (Nightly)
+
+This section consolidates all differences between the current stable release (v26.1.0.0.0) and the nightly builds (v26.2+). If you are migrating from stable to nightly, review each subsection below.
+
+### Quick Version Compatibility
+
+| Feature | v26.1.0.0.0 (Stable) | v26.2+ (Nightly) |
+|---------|----------------------|-------------------|
+| `foreach` callback | `fn[width: Int, element_alignment: Int](idx)` | `fn[width: Int](idx)` |
+| `ops.neg()` | `ops.neg()` | `ops.negate()` |
+| `ops.reduce_mean()` | `ops.reduce_mean()` | `ops.mean()` |
+| `ops.clamp()` | N/A | N/A (use `ops.max(ops.min(x, high), low)`) |
+| `Buffer` to numpy | `np.array(buf.to(CPU()))` | `buf.to(CPU()).to_numpy()` |
+| `PipelineConfig.max_length` | `pipeline_config.max_length` | Removed; use `config.model.max_length` |
+| `PipelineModel(encoding=...)` | `encoding` parameter present | Removed; auto-inferred from `quantization_encoding` |
+| `max.nn` namespace | Unified | Eager API in `max.nn`; legacy graph API moved to `max.nn.legacy`; `max.tensor/functional/random` moved to `max.experimental` |
+| NVFP4 quantization | Not available | `float4_e2m1fnx2` on Blackwell GPUs |
+| SM100 (Blackwell) | Not available | Supported |
+| Container tags | `modular/max-nvidia-full:26.1` | `modular/max-nvidia-full:latest` |
+| CUDA version | 12.9 | 13.1 (minimum driver raised to 580) |
+
+---
+
+### Custom Op `foreach` Callback Signature
+
+The most common breaking change when moving from stable to nightly. The `element_alignment` compile-time parameter was removed from the `foreach` callback.
+
+**v26.1.0.0.0 (Stable):**
+
+```mojo
+@parameter
+@always_inline
+fn elementwise_op[width: Int, element_alignment: Int](
+    idx: IndexList[output.rank],
+) -> SIMD[output.dtype, width]:
+    return inp.load[width](idx) * 2
+
+foreach[elementwise_op, target=target](output, ctx)
+```
+
+**v26.2+ (Nightly):**
+
+```mojo
+@parameter
+@always_inline
+fn elementwise_op[width: Int](
+    idx: IndexList[output.rank],
+) -> SIMD[output.dtype, width]:
+    return inp.load[width](idx) * 2
+
+foreach[elementwise_op, target=target](output, ctx)
+```
+
+**Common error when mismatched:**
+
+```
+note: callee parameter 'func' has 'fn[width: Int, element_alignment: Int](IndexList[rank])' type,
+      but value has type 'fn[width: Int](idx: IndexList[rank])'
+```
+
+---
+
+### Op Renames
+
+Several graph operations were renamed in v26.2+.
+
+| v26.1 (Stable) | v26.2+ (Nightly) | Notes |
+|-----------------|-------------------|-------|
+| `ops.neg()` | `ops.negate()` | Renamed |
+| `ops.reduce_mean()` | `ops.mean()` | Renamed with different API |
+| `ops.clamp()` | N/A | Not available; use `ops.max(ops.min(x, high), low)` |
+| `Graph.verify()` | Removed | Called automatically during compilation; no need to call directly |
+
+**v26.1 (Stable):**
+
+```python
+result = ops.neg(x)
+mean = ops.reduce_mean(x, axis=0)
+```
+
+**v26.2+ (Nightly):**
+
+```python
+result = ops.negate(x)
+mean = ops.mean(x, axis=0)
+```
+
+---
+
+### New Op: `ops.prod`
+
+New in v26.2+, `max.graph.ops.prod` computes element products along axes. Not available in v26.1.
+
+---
+
+### `Buffer` to NumPy Conversion
+
+The method for converting a `Buffer` to a NumPy array changed.
+
+**v26.1 (Stable):**
+
+```python
+output = np.array(result.to(CPU()))
+```
+
+**v26.2+ (Nightly):**
+
+```python
+output = result[0].to(CPU()).to_numpy()
+```
+
+---
+
+### `PipelineConfig.max_length` Removed
+
+The `max_length` field moved from `PipelineConfig` to `MAXModelConfig`.
+
+**v26.1 (Stable):**
+
+```python
+max_len = pipeline_config.max_length
+```
+
+**v26.2+ (Nightly):**
+
+```python
+max_len = pipeline_config.model.max_length  # via MAXModelConfig
+```
+
+---
+
+### `PipelineModel` Constructor: `encoding` Removed
+
+The `encoding` parameter is no longer passed to `PipelineModel`. It is automatically inferred from `quantization_encoding`.
+
+**v26.1 (Stable):**
+
+```python
+model = MyPipelineModel(encoding="bfloat16", ...)
+```
+
+**v26.2+ (Nightly):**
+
+```python
+model = MyPipelineModel(...)  # encoding auto-inferred from quantization_encoding
+```
+
+---
+
+### Device-Graph Capture API
+
+v26.2+ requires an explicit `graph_key` parameter when capturing device graphs.
+
+**v26.1 (Stable):**
+
+```python
+model.capture(*inputs)
+```
+
+**v26.2+ (Nightly):**
+
+```python
+model.capture(graph_key, *inputs)
+```
+
+---
+
+### `max.nn` Namespace Reorganization
+
+In v26.2+, the namespace is restructured:
+
+| v26.1 (Stable) | v26.2+ (Nightly) |
+|-----------------|-------------------|
+| `max.nn.Module` (both eager and graph) | Eager API stays in `max.nn.Module`; legacy graph-based layers moved to `max.nn.legacy` |
+| `max.tensor` | Moved to `max.experimental` |
+| `max.functional` | Moved to `max.experimental` |
+| `max.random` | Moved to `max.experimental` |
+
+---
+
+### `DeviceRef` Construction
+
+`DeviceRef.from_device()` is **not deprecated** -- it works across all versions. v26.2+ adds convenient static constructors.
+
+**v26.1 (Stable):**
+
+```python
+from max.graph import DeviceRef
+from max.driver import CPU, Accelerator, accelerator_count
+
+device = Accelerator() if accelerator_count() > 0 else CPU()
+device_ref = DeviceRef.from_device(device)
+```
+
+**v26.2+ (Nightly) -- all three methods work:**
+
+```python
+from max.graph import DeviceRef
+
+device_ref = DeviceRef.CPU()
+device_ref = DeviceRef.GPU()
+device_ref = DeviceRef.GPU(1)              # specific GPU
+device_ref = DeviceRef.from_device(device) # still works
+```
+
+---
+
+### `ops.custom()` Signature
+
+The `device` parameter is required in both versions. In v26.2+ it is a required positional argument.
+
+**v26.1 (Stable):**
+
+```python
+ops.custom(
+    name="my_kernel",
+    device=device_ref,   # keyword argument
+    values=[x],
+    out_types=[TensorType(dtype=x.dtype, shape=x.tensor.shape, device=device_ref)],
+)[0].tensor
+```
+
+**v26.2+ (Nightly):**
+
+```python
+ops.custom(
+    name="my_kernel",
+    device=device_ref,   # required positional, before values
+    values=[x],
+    out_types=[TensorType(dtype=x.dtype, shape=x.tensor.shape, device=device_ref)],
+)[0].tensor
+```
+
+---
+
+### `TensorType` Device Parameter
+
+The `device` parameter is required in both versions.
+
+```python
+# Both v26.1 and v26.2+
+TensorType(DType.float32, ("batch", 128), device=DeviceRef.GPU())
+```
+
+---
+
+### Overlap Scheduling (v26.2+ Only)
+
+Enabled by default for select architectures in v26.2+. Reduces CPU overhead. Disable with `--no-enable-overlap-scheduler --force`. Incompatible with structured outputs and CPU-only models. Not available in v26.1.
+
+---
+
+### Global MLIR Context (v26.2+ Only)
+
+Now active by default in v26.2+. Eliminates the need for per-graph context plumbing. Not available in v26.1.
+
+---
+
+### GPU Event Timing (v26.2+ Only)
+
+New `DeviceEvent(enable_timing=True)` for GPU time measurement:
+
+```python
+start = DeviceEvent(enable_timing=True)
+end = DeviceEvent(enable_timing=True)
+# ... GPU work ...
+elapsed_ms = start.elapsed_time(end)
+```
+
+Not available in v26.1.
+
+---
+
+### `ops.fence` (v26.2+ Only)
+
+Synchronization fence for multi-GPU coordination. Not available in v26.1.
+
+---
+
+### `max.nn.moe` (v26.2+ Only)
+
+Mixture-of-Experts module support. Not available in v26.1.
+
+---
+
+### NVFP4 Quantization (v26.2+ Blackwell Only)
+
+`float4_e2m1fnx2` encoding available on NVIDIA Blackwell GPUs (SM100). Not available in v26.1.
+
+```bash
+max serve --model meta-llama/Llama-3.3-70B-Instruct \
+  --devices gpu:0,1,2,3 \
+  --quantization-encoding float4_e2m1fnx2
+```
+
+---
+
+### Float8 Format Additions
+
+| Format | v26.1 (Stable) | v26.2+ (Nightly) |
+|--------|----------------|-------------------|
+| `float8_e4m3fn` | Supported | Supported |
+| `float8_e5m2` | Not available | Supported |
+
+---
+
+### SM100 (Blackwell) GPU Support
+
+Blackwell GPU support (SM100) is only available in v26.2+. v26.1 supports up to Hopper (SM90).
+
+---
+
+### CUDA Version and Driver Requirements
+
+| Version | CUDA | Minimum NVIDIA Driver |
+|---------|------|----------------------|
+| v26.1 | 12.9 | 580 |
+| v26.2+ | 13.1 | 580 (Turing/sm_75+) |
+
+---
+
+### `MODULAR_NVPTX_COMPILER_PATH` (v26.2+ Only)
+
+New environment variable to point to a system `ptxas` instead of the bundled `libnvptxcompiler`. Not available in v26.1.
+
+---
+
+### AMD RDNA Consumer GPU Support (v26.2+ Only)
+
+Common MAX models now run on AMD RDNA consumer GPUs in v26.2+. v26.1 supports only datacenter AMD GPUs (MI300X, MI325X, MI355X).
+
+---
+
+### Container Tags
+
+| Version | NVIDIA | AMD |
+|---------|--------|-----|
+| v26.1 (Stable) | `modular/max-nvidia-full:26.1` | `modular/max-amd:26.1` |
+| v26.2+ (Nightly) | `modular/max-nvidia-full:latest` | `modular/max-amd:latest` |
+
+---
+
+### New Model Architectures (v26.2+ Only)
+
+These architectures are available in nightly but not in v26.1 stable:
+
+| Architecture | Notes |
+|-------------|-------|
+| `Olmo3ForCausalLM` | New architecture |
+| `DeepseekV32ForCausalLM` | DeepSeek-V3.2, DeepSeek-V3.2-Exp |
+| `Qwen3ForCausalLM` (MoE) | Qwen3-30B-A3B multi-GPU TP |
+| `Qwen3VLForConditionalGeneration` | Qwen3-VL vision-language |
+| `Qwen3VLMoeForConditionalGeneration` | Qwen3-VL MoE |
+| `Llama4ForConditionalGeneration` | Llama 4 Scout/Maverick |
+| Multi-GPU TP for GPT-OSS | Tensor parallelism for GPT-OSS |
+
+---
+
+### Vision Model Support Changes
+
+| Model | v26.1 (Stable) | v26.2+ (Nightly) |
+|-------|----------------|-------------------|
+| Llama 3.2 Vision | Supported | **Removed** |
+| Legacy Gemma 3 multimodal | Supported | **Removed** |
+| Gemma3 Vision (12B, 27B) | Supported | Supported |
+| Pixtral | Supported | Supported |
+| InternVL | Supported | Supported |
+| Qwen2.5-VL | Supported | Supported |
+| Qwen3-VL | Not available | Supported |
+
+---
+
+### Pipeline Parallelism (v26.2+ Enhanced)
+
+Pipeline parallelism is enhanced in v26.2+. Limited support in v26.1.
+
+---
+
+### Kernel Imports (Unchanged)
+
+Kernel imports use the same paths in both versions:
+
+```mojo
+from tensor import InputTensor, OutputTensor, foreach
+from runtime.asyncrt import DeviceContextPtr
+```
+
+The `from max.tensor import ...` path does **not** work in either version for custom op kernels.
+
+---
+
+### Serving Configuration (Unchanged Across Versions)
+
+These serving features have identical behavior in both v26.1 and v26.2+:
+
+- `--max-batch-size` is per-replica (changed from aggregate in v25.x)
+- `--kvcache-ce-watermark` (default 0.95)
+- `--enable-in-flight-batching`
+- `--enable-prefix-caching` (on by default)
+- `--enable-kvcache-swapping-to-host`
+- `--max-batch-input-tokens` / `--max-batch-total-tokens`
+- KV cache page size (`--kv-cache-page-size`, must be multiple of 128)
+- LoRA adapter serving (`--enable-lora`, Llama 3 QKVO only)
+- Structured output (`--enable-structured-output`)
+- Function calling (Llama 3.1+, Mistral)
+- Health endpoint (`/health` on port 8000)
+- Metrics endpoint (`/metrics` on port 8001)
+- Disaggregated inference (`--pipeline-role PrefillOnly|DecodeOnly`)
+
+---
+
+### Weight Management (Unchanged Across Versions)
+
+These weight APIs are stable across both versions:
+
+- `ShardingStrategy` (rowwise, columnwise, replicate, stacked_qkv, head_aware_columnwise, tensor_parallel, expert_parallel, gate_up)
+- `WeightsAdapter` registration pattern
+- `Buffer.from_dlpack()` and `Tensor.from_dlpack()` (DLPack interop)
+- Buffer transfer APIs (`to(Accelerator())`, `to(CPU())`)
+
+---
 
 ## v24.2.1 Changes
 
@@ -32,7 +455,7 @@
 
 | Feature | Description | Example |
 |---------|-------------|--------|
-| `--huggingface-revision` | Added `--huggingface-revision` option, to allow selecting... | |
+| `--huggingface-model-revision` | Added `--huggingface-model-revision` option, to allow selecting... | |
 
 ## v24.3 Changes
 
@@ -202,7 +625,7 @@
 | `PipelineConfig.max_length` | **Removed** - moved to `MAXModelConfig.max_length` (access as `config.model.max_length`) |
 | `PipelineModel(encoding=...)` | `encoding` parameter **removed** - automatically inferred from `quantization_encoding` |
 | Device-graph capture API | Requires explicit graph key: `model.capture(graph_key, *inputs)` instead of `model.capture(*inputs)` |
-| `max.nn` namespace | Graph-based API restored as default; eager module API moved to `max.nn.module_v3`; `max.tensor/functional/random` moved to `max.experimental` |
+| `max.nn` namespace | Eager module API is now `max.nn.Module`; legacy graph-based layer API moved to `max.nn.legacy`; `max.tensor/functional/random` moved to `max.experimental` |
 | `ops.custom()` signature | `device` is now required positional arg: `ops.custom(name, device, values, out_types)` |
 | `TensorType` | Now requires `device` parameter: `TensorType(dtype, shape, device=DeviceRef.CPU())` |
 | Custom op kernel imports | Use `from tensor import InputTensor, OutputTensor, foreach` (not `from max.tensor`) |
@@ -315,13 +738,13 @@ pip uninstall max  # Remove global install
 
 | Change | Description |
 |--------|-------------|
-| `--do-penalties` | Renamed to `--enable-penalties` (now default) |
+| `--do-penalties` | Renamed to `--enable-penalties` (default: false) |
 | Removed `Conv2dV1`, `LinearV1`, etc. | Use `Conv2d`, `Linear` instead |
 | `max.engine.MojoValue` | Removed |
 | `custom_ops_path` in InferenceSession | Removed |
 | `foreach` callback signature | Requires `element_alignment: Int`: `fn[width: Int, element_alignment: Int](idx)` |
-| `max.driver.Buffer` | Use `max.driver.Tensor` (Buffer renamed to Tensor) |
-| `KVCacheStrategy` import | Import from `max.kv_cache.registry` or `max.nn.kv_cache` |
+| `max.driver.Tensor` | Renamed to `max.driver.Buffer` |
+| `KVCacheStrategy` import | Import from `max.nn.kv_cache` or `max.nn` |
 
 ## v25.6
 
@@ -368,7 +791,7 @@ pip uninstall max  # Remove global install
 
 | Old Flag | New Flag | Version |
 |----------|----------|---------|
-| `--model-path` | `--model` (preferred; `--model-path` still accepted) | v26.1+ |
+| `--model` | `--model-path` (canonical; `--model` still accepted as deprecated alias) | v26.1+ |
 | `--use-gpu` | `--devices gpu:0` | v25.3 |
 | `--max-ce-batch-size` | `--max-batch-size` | v26.1.0.0.0 |
 | `--do-penalties` | `--enable-penalties` | v26.1.0.0.0 |

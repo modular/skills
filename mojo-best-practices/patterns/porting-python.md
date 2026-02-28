@@ -115,7 +115,7 @@ These Python features have **no Mojo equivalent** — do not attempt to port the
 | Python 3.13 | Mojo | Notes |
 |-------------|------|-------|
 | `class Foo:` | `struct Foo:` | Value semantics, no inheritance |
-| `@dataclass` | `@fieldwise_init` | Auto-generates `__init__`. **`@value` is removed.** |
+| `@dataclass` | `@fieldwise_init` | Auto-generates `__init__`. **`@fieldwise_init` is the preferred replacement for `@value`.** |
 | `class Foo(Base):` | `struct Foo(Trait):` | Traits, not inheritance (see Pattern 7) |
 | `self.x = x` | `self.x = x` | Same in `__init__` |
 | `a, b = 1, 2` | `var a = 1; var b = 2` | Separate declarations |
@@ -356,6 +356,7 @@ Write a GPU kernel directly. Python requires external libraries (CUDA, Triton).
 **Python 3.13 (impossible without external library):**
 
 ```python
+# novalidate
 # Python CANNOT write GPU kernels directly.
 # You need: CUDA, Triton, Numba, CuPy, or JAX
 import cupy as cp  # Requires CUDA toolkit installed
@@ -501,7 +502,7 @@ Python allocates ALL objects on the heap. Mojo can stack-allocate.
 
 ```mojo
 # nocompile
-from memory import InlineArray
+from collections import InlineArray
 
 fn fast_computation():
     # Stack-allocated array — no heap allocation, no GC
@@ -625,7 +626,7 @@ struct Point(Writable, Copyable, Movable):
 | `@dataclass` feature | Mojo equivalent |
 |---|---|
 | `__init__` | `@fieldwise_init` |
-| `__eq__` | Implement `EqualityComparable` trait |
+| `__eq__` | Implement `Equatable` trait |
 | `__repr__`/`__str__` | Implement `Writable` trait |
 | `order=True` | Implement `Comparable` trait |
 | `frozen=True` | Avoid `mut` methods + immutable borrows (NOT automatic — Mojo structs are mutable) |
@@ -690,7 +691,7 @@ fn count_words(words: List[String]) -> Dict[String, Int]:
 
 > **Dict gotchas:**
 >
-> - **Value type constraint:** Dict values must conform to `CollectionElement` (`Copyable + Movable`). `Dict[String, List[Int]]` works but has poor ergonomics — prefer flat parallel arrays (`List[String]` keys + `List[Int]` values) for Dict-of-Lists patterns.
+> - **Value type constraint:** Dict values must be `Copyable & Movable`. `Dict[String, List[Int]]` works but has poor ergonomics — prefer flat parallel arrays (`List[String]` keys + `List[Int]` values) for Dict-of-Lists patterns.
 > - **Value mutation:** `dict[key].append(val)` may copy, not mutate in-place. Build complete values before insertion, or extract → modify → reinsert.
 > - **`Counter` pattern:** `if key in d: d[key] = d[key] + 1; else: d[key] = 1` — no `.get(key, default)`.
 > - **Heterogeneous values:** Python's `Dict[str, Any]` has no equivalent. Use separate typed Dicts (`Dict[String, String]` + `Dict[String, Int]`) and dispatch by type.
@@ -1453,12 +1454,12 @@ python3.14t --version  # Free-threaded Python 3.14
 | Feature | Stable (v26.1) | Nightly (v26.2+) | Migration |
 |---------|----------------|-------------------|-----------|
 | **Constants** | `alias` (deprecated) or `comptime` | `comptime` preferred | Replace `alias` with `comptime` in fn/struct scope |
-| **Struct init** | `@fieldwise_init` | `@fieldwise_init` | Same — **`@value` is removed in both** |
+| **Struct init** | `@fieldwise_init` | `@fieldwise_init` | Same — **`@fieldwise_init` is the preferred replacement for `@value`** |
 | **`__del__` signature** | `fn __del__(deinit self):` | `fn __del__(deinit self):` | Same in both |
 | **`__moveinit__` signature** | `fn __moveinit__(out self, deinit take: Self):` | `fn __moveinit__(out self, deinit take: Self):` | Same — param must be named `take` |
 | **Ownership params** | `fn foo(var x: T):` | `fn foo(var x: T):` | Same in both |
 | **Memory allocation** | `UnsafePointer[T].alloc(n)` may work | **Removed** — use `List[T]` + `.unsafe_ptr()` | Use List-based allocation |
-| **List element traits** | `CollectionElement` may work | **Removed** — use `Copyable, Movable` | Add explicit trait conformance |
+| **List element traits** | `CollectionElement` was removed | Use `Copyable & Movable` trait composition | Add explicit trait conformance |
 | **Implicit copies** | Less strictly enforced | Requires `ImplicitlyCopyable` | Add `ImplicitlyCopyable` trait or use `.copy()` |
 | **String indexing** | `s[i]` may work | `s[byte=i]` returns `StringSlice` | Use `String(s[byte=i])` |
 | **List for-in iteration** | `for x in list: x[]` | Broken for custom structs | Use `for i in range(len(list)):` |

@@ -120,7 +120,7 @@ GPTQ (Group-wise Post-Training Quantization) enables memory-efficient 4-bit infe
 
 ```python
 from max.graph.quantization import QuantizationConfig, QuantizationEncoding
-from max.nn import GPTQLinear
+from max.nn.linear import GPTQLinear
 from max.dtype import DType
 
 # Standard GPTQ configuration

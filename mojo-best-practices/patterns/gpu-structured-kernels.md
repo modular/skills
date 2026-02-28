@@ -136,7 +136,7 @@ struct ScatterGather[
         self,
         src: UnsafePointer[Scalar[dtype]],
         dst: LayoutTensor[dtype, ..., AddressSpace.SHARED],
-        barrier: MbarPtr,
+        barrier: UnsafePointer[SharedMemBarrier, address_space=AddressSpace.SHARED],
         expected_bytes: Int,
     ):
         """Load tile with automatic masking and layout transformation."""
@@ -291,13 +291,13 @@ struct TileOp[
 # nocompile
 
 # Trait for all tile payloads
-trait TilePayload(TrivialRegisterType):
+trait TilePayload(TrivialRegisterPassable):
     """Marker trait for tile payload types."""
     pass
 
 
 # Standard matmul payload
-struct StandardTilePayload[...](TilePayload, TrivialRegisterType):
+struct StandardTilePayload[...](TilePayload, TrivialRegisterPassable):
     var a_tiles: UnsafePointer[ATileStorage, AddressSpace.SHARED]
     var b_tiles: UnsafePointer[BTileStorage, AddressSpace.SHARED]
 
@@ -306,7 +306,7 @@ struct StandardTilePayload[...](TilePayload, TrivialRegisterType):
 
 
 # Block-scaled matmul payload (FP8 with per-block scales)
-struct BlockScaledTilePayload[...](TilePayload, TrivialRegisterType):
+struct BlockScaledTilePayload[...](TilePayload, TrivialRegisterPassable):
     var a_tiles: UnsafePointer[ATileStorage, AddressSpace.SHARED]
     var b_tiles: UnsafePointer[BTileStorage, AddressSpace.SHARED]
     var sfa_tiles: UnsafePointer[SFATileStorage, AddressSpace.SHARED]  # A scales
@@ -417,10 +417,10 @@ var tiles = smem.a_tiles()  # ld.shared instruction (~30 cycles)
 ```mojo
 # nocompile
 
-# 1. TrivialRegisterType - Lives in registers, no heap allocation
-struct ProducerConsumerPipeline[num_stages: Int](TrivialRegisterType):
-    var full: MbarPtr           # Just a pointer (register)
-    var empty: MbarPtr          # Just a pointer (register)
+# 1. TrivialRegisterPassable - Lives in registers, no heap allocation
+struct ProducerConsumerPipeline[num_stages: Int](TrivialRegisterPassable):
+    var full: UnsafePointer[SharedMemBarrier, address_space=AddressSpace.SHARED]
+    var empty: UnsafePointer[SharedMemBarrier, address_space=AddressSpace.SHARED]
     var _producer_stage: UInt32 # Single register
     var _consumer_phase: UInt32 # Single register
 
@@ -448,7 +448,7 @@ mojo build --emit-asm=ptx kernel.mojo
 
 # Inspect PTX - abstractions should not appear in assembly
 # - No function calls for @always_inline functions
-# - No heap allocations for TrivialRegisterType
+# - No heap allocations for TrivialRegisterPassable
 # - Same instruction count as hand-written code
 ```
 
@@ -532,7 +532,7 @@ struct BlockwiseFP8Accumulator[
 # nocompile
 
 # Block-scaled payload extends standard payload
-struct BlockScaledTilePayload[...](TilePayload, TrivialRegisterType):
+struct BlockScaledTilePayload[...](TilePayload, TrivialRegisterPassable):
     var a_tiles: UnsafePointer[ATileStorage, AddressSpace.SHARED]
     var b_tiles: UnsafePointer[BTileStorage, AddressSpace.SHARED]
     var sfa_tiles: UnsafePointer[SFATileStorage, AddressSpace.SHARED]  # A scale factors
@@ -792,12 +792,11 @@ struct AppleMatmulKernel[
 
 **File Locations (Reference):**
 ```
-/max/kernels/src/linalg/matmul/gpu/apple_structured/
-├── matmul_kernel.mojo       # Kernel orchestration
-├── tile_loader.mojo         # Load tiles to shared memory
-├── tile_op.mojo            # Outer product computation
-└── split_k.mojo            # Split-K implementation
+max/kernels/src/linalg/matmul/gpu/apple_structured/
+└── __init__.mojo            # Module stub (implementation in development)
 ```
+
+> **Note:** Apple Metal structured kernel support is in active development. The directory currently contains only the module init file.
 
 ## Performance Results
 
@@ -878,7 +877,7 @@ struct AppleMatmulKernel[
 - [ ] Consumer waits BEFORE consuming
 - [ ] Stage count matches pipeline depth
 - [ ] Barrier types match architecture (mbarrier vs shared)
-- [ ] Components use TrivialRegisterType (no heap allocation)
+- [ ] Components use TrivialRegisterPassable (no heap allocation)
 
 **TileOp:**
 - [ ] Uses architecture-specific MMA instruction
@@ -888,7 +887,7 @@ struct AppleMatmulKernel[
 - [ ] Functions marked `@always_inline` for zero overhead
 
 **Zero-Cost Abstractions:**
-- [ ] Components inherit from TrivialRegisterType
+- [ ] Components inherit from TrivialRegisterPassable
 - [ ] Hot path functions marked `@always_inline`
 - [ ] Compile-time parameters use `comptime` or `@parameter`
 - [ ] Verify PTX shows no function call or heap overhead
@@ -916,7 +915,7 @@ struct AppleMatmulKernel[
 | TMEM not deallocated | Missing dealloc barrier wait | Ensure MMA warp waits on dealloc barrier in __exit__ |
 | 50% register waste on AMD | 8 waves with 4 idle | Use 8-wave ping-pong pattern |
 | Payload not extensible | Copy-pasting entire kernel | Use TilePayload trait with composition |
-| Runtime overhead | Not using TrivialRegisterType | Ensure components use TrivialRegisterType |
+| Runtime overhead | Not using TrivialRegisterPassable | Ensure components use TrivialRegisterPassable |
 | Function call overhead | Missing @always_inline | Add @always_inline to hot path functions |
 
 ## Version-Specific Features
@@ -975,7 +974,7 @@ max/kernels/src/linalg/matmul/gpu/sm100_structured/
 │   ├── pipeline.mojo              # Producer-consumer pipeline
 │   ├── tile_pipeline.mojo         # Input/output tile staging
 │   ├── tile_loader.mojo           # TMA-based loading
-│   ├── tile_writer.mojo           # Output operations
+│   ├── output_writer.mojo         # Output operations
 │   ├── tmem.mojo                  # Tensor memory management
 │   ├── barriers.mojo              # Type-safe barrier wrappers
 │   └── tile_scheduler.mojo        # CLC work distribution
@@ -988,12 +987,10 @@ max/kernels/src/linalg/matmul/gpu/sm100_structured/
 **Apple Structured Kernels:**
 ```
 max/kernels/src/linalg/matmul/gpu/apple_structured/
-├── matmul_kernel.mojo             # Kernel orchestration
-├── tile_loader.mojo               # Load tiles to shared memory
-├── tile_op.mojo                   # Outer product computation
-├── matmul.mojo                    # Entry points
-└── split_k.mojo                   # Split-K implementation
+└── __init__.mojo                  # Module stub
 ```
+
+> **Note:** Apple Metal structured kernel support is in active development. The directory currently contains only the module init file. The structured kernel patterns shown in the Apple Metal section above are design targets, not yet implemented as separate files.
 
 **Documentation (Internal):**
 ```

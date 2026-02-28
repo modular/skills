@@ -53,12 +53,12 @@ consolidates:
 ---
 <!-- PATTERN QUICK REF
 WHEN: Writing C FFI bindings, calling external libraries, vendoring C/C++ code, integrating GPU frameworks (cuBLAS, MPS), Apple BLAS/AMX
-KEY_TYPES: UnsafePointer, external_call, OwnedDLHandle, DLHandle, RTLD, C_char
+KEY_TYPES: UnsafePointer, external_call, OwnedDLHandle, RTLD, Byte
 SYNTAX:
   - external_call["func_name", return_type](args)
   - UnsafePointer[T].alloc(n) / .free()
   - OwnedDLHandle("lib.so", RTLD.NOW).get_function[FnType]("symbol")
-  - s.unsafe_cstr_ptr() for String -> C string
+  - s.unsafe_ptr() for String -> C string pointer
 PITFALLS: Must free manually, no RAII for C pointers, Int is 64-bit but C int is 32-bit, CString lifetime tied to String, BF16+F32 not supported on MPS, ASAP destroys OwnedDLHandle after get_function() — pass lib as `read` parameter to helper to keep alive
 RELATED: memory-ownership (lifecycle), memory-safety (origins), python-interop, gpu-fundamentals
 -->
@@ -123,7 +123,7 @@ Mojo's `Int` is 64-bit on most platforms, but C's `int` is 32-bit. This mismatch
 # nocompile
 fn call_c_function(s: String):
     # Get null-terminated pointer (valid while s is alive)
-    var c_str = s.unsafe_cstr_ptr()
+    var c_str = s.unsafe_ptr()
 
     # Call C function
     external_call["puts", NoneType](c_str)
@@ -137,8 +137,8 @@ fn call_c_function(s: String):
 ```mojo
 # nocompile
 fn safe_c_call(s: String):
-    # Explicitly manage lifetime
-    var c_str: UnsafePointer[C_char] = s.unsafe_cstr_ptr()
+    # Explicitly manage lifetime — unsafe_ptr() returns UnsafePointer[Byte]
+    var c_str = s.unsafe_ptr()
 
     # Call is safe - s still in scope
     var result = external_call["strlen", Int](c_str)
@@ -147,16 +147,18 @@ fn safe_c_call(s: String):
     # c_str becomes dangling - do not use after return
 ```
 
-### C String to Mojo String (taking ownership)
+### C String to Mojo String
 
 ```mojo
 # nocompile
 fn receive_c_string() -> String:
     # C function returns allocated string
-    var c_str = external_call["get_message", UnsafePointer[C_char]]()
+    var c_str = external_call["get_message", UnsafePointer[Byte]]()
 
-    # Option 1: Copy to String (C still owns memory)
-    var s = String(StringRef(c_str))
+    # Create a StringSlice view, then copy to owned String
+    var length = Int(external_call["strlen", Int64](c_str))
+    var slice = StringSlice[ImmutAnyOrigin](ptr=c_str, length=length)
+    var s = String(slice)
 
     # Must free C memory if we own it
     external_call["free", NoneType](c_str)
@@ -189,10 +191,10 @@ from memory import alloc
 fn get_cwd() raises -> String:
     # Allocate buffer for C function to write into
     comptime BUFFER_SIZE = 4096
-    var buffer = alloc[C_char](BUFFER_SIZE)
+    var buffer = alloc[Byte](BUFFER_SIZE)
 
     # C function writes into buffer
-    var result = external_call["getcwd", UnsafePointer[C_char]](
+    var result = external_call["getcwd", UnsafePointer[Byte]](
         buffer, BUFFER_SIZE
     )
 
@@ -200,8 +202,10 @@ fn get_cwd() raises -> String:
         buffer.free()
         raise Error("getcwd failed")
 
-    # Convert to String (copies data)
-    var path = String(StringRef(buffer))
+    # Convert to String via StringSlice (copies data)
+    var length = Int(external_call["strlen", Int64](buffer))
+    var slice = StringSlice[ImmutAnyOrigin](ptr=buffer, length=length)
+    var path = String(slice)
 
     # Free our buffer
     buffer.free()
@@ -218,7 +222,7 @@ fn use_static_string():
     comptime MSG: StaticString = "Hello, World!"
 
     # Safe to pass to C - lives forever
-    var c_str = MSG.unsafe_cstr_ptr()
+    var c_str = MSG.unsafe_ptr()
     external_call["puts", NoneType](c_str)
 ```
 
@@ -227,20 +231,14 @@ fn use_static_string():
 ```mojo
 # nocompile
 # BAD: Using pointer after String is freed
-fn bad_lifetime() -> UnsafePointer[C_char]:
+fn bad_lifetime() -> UnsafePointer[Byte]:
     var s = String("hello")
-    return s.unsafe_cstr_ptr()  # s is freed, pointer dangles!
-
-# BAD: Double-free
-fn bad_ownership():
-    var c_str = external_call["strdup", UnsafePointer[C_char]]("hello")
-    var s1 = String(c_str, transfer_ownership=True)  # s1 will free
-    var s2 = String(c_str, transfer_ownership=True)  # Double free!
+    return s.unsafe_ptr()  # s is freed, pointer dangles!
 
 # BAD: Assuming null termination
 fn bad_assumption(ptr: UnsafePointer[UInt8], len: Int):
     # ptr might not be null-terminated!
-    external_call["puts", NoneType](ptr.bitcast[C_char]())
+    external_call["puts", NoneType](ptr.bitcast[Byte]())
 ```
 
 ---
@@ -646,9 +644,9 @@ fn decompress(data: Span[UInt8]) raises -> List[UInt8]:
 fn load_platform_library() raises -> OwnedDLHandle:
     """Load appropriate library for current platform."""
     @parameter
-    if os_is_macos():
+    if CompilationTarget.is_macos():
         return OwnedDLHandle("./libcustom.dylib", RTLD.NOW)
-    elif os_is_linux():
+    elif CompilationTarget.is_linux():
         return OwnedDLHandle("./libcustom.so", RTLD.NOW)
     else:
         return OwnedDLHandle("./custom.dll", RTLD.NOW)
@@ -670,44 +668,9 @@ clang -dynamiclib -o libgpu_wrapper.dylib gpu_wrapper.m \
 
 ---
 
-## Missing Math Functions
+## Math Functions
 
-Some math functions are not in Mojo's math module. Implement them using primitives.
-
-### Power Function
-
-```mojo
-from math import exp, log, sqrt
-
-fn pow(base: Float64, exponent: Float64) -> Float64:
-    """Power function - not available in math module."""
-    if base <= 0:
-        if base == 0 and exponent > 0:
-            return 0.0
-        return 0.0  # Handle edge cases
-    return exp(exponent * log(base))
-
-fn ipow(base: Int, exponent: Int) -> Int:
-    """Integer power using repeated squaring - O(log n)."""
-    if exponent < 0:
-        return 0
-    if exponent == 0:
-        return 1
-
-    var result = 1
-    var b = base
-    var e = exponent
-
-    while e > 0:
-        if e & 1:
-            result *= b
-        b *= b
-        e >>= 1
-
-    return result
-```
-
-### Available vs Missing Functions
+### Available Functions
 
 **Available in `from math import`:**
 
@@ -715,11 +678,20 @@ fn ipow(base: Int, exponent: Int) -> Int:
 - `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`
 - `floor`, `ceil`, `abs`
 
+**Builtins (no import needed):**
+
+- `pow` (both `pow[T: Powable](base: T, exp: T)` and `pow(base: SIMD, exp: Int)`)
+
+```mojo
+fn example():
+    var result = pow(2.0, 3.0)  # 8.0
+    var simd_result = pow(SIMD[DType.float32, 4](2.0), 3)  # [8.0, 8.0, 8.0, 8.0]
+```
+
 **Not available (implement yourself):**
 
 | Function | Implementation |
 |----------|----------------|
-| `pow(a, b)` | `exp(b * log(a))` |
 | `hypot(a, b)` | `sqrt(a*a + b*b)` |
 | `cbrt(x)` | `exp(log(x)/3.0)` |
 | `round(x)` | `floor(x + 0.5)` |
@@ -915,9 +887,9 @@ from ffi import OwnedDLHandle, RTLD
 
 fn load_blas() raises -> OwnedDLHandle:
     @parameter
-    if os_is_macos():
+    if CompilationTarget.is_macos():
         return OwnedDLHandle("/System/Library/Frameworks/Accelerate.framework/Accelerate", RTLD.NOW)
-    elif os_is_linux():
+    elif CompilationTarget.is_linux():
         return OwnedDLHandle("libopenblas.so", RTLD.NOW)
     else:
         raise Error("Unsupported platform for BLAS")
@@ -931,11 +903,11 @@ fn load_blas() raises -> OwnedDLHandle:
 
 ```mojo
 # nocompile
-from ffi import external_call, DLHandle
+from ffi import external_call, OwnedDLHandle, RTLD
 from memory import UnsafePointer
 
 # Load cuBLAS library
-var cublas = DLHandle("libcublas.so")
+var cublas = OwnedDLHandle("libcublas.so", RTLD.NOW)
 
 # cuBLAS handle type
 struct cublasHandle_t:
@@ -1078,11 +1050,11 @@ GPUProgram* get_cached_program(int param1, int param2, int param3) {
 
 ```mojo
 # nocompile
-struct GILAcquired(TrivialRegisterType):
+struct GILAcquired(TrivialRegisterPassable):
     """Marker type indicating the GIL is held by this thread."""
     pass
 
-struct GILReleased(TrivialRegisterType):
+struct GILReleased(TrivialRegisterPassable):
     """Marker type indicating the GIL is NOT held by this thread."""
     pass
 ```
@@ -1369,7 +1341,7 @@ vendor_matmul(f32_input, f32_weights, f32_output)
 
 | Scenario | Approach | Section |
 |----------|----------|---------|
-| Need C string | Use `unsafe_cstr_ptr()`, mind lifetime | CString Safety |
+| Need C string | Use `unsafe_ptr()`, mind lifetime | CString Safety |
 | Passing int arrays to C | Convert Int to Int32 explicitly | Integer Size Mismatch |
 | Loading optional library | Use `OwnedDLHandle` with RTLD.NOW | Dynamic Loading |
 | Binary file format | Use byte-order functions | Binary Data Patterns |
@@ -1383,7 +1355,7 @@ vendor_matmul(f32_input, f32_weights, f32_output)
 
 ## Quick Reference
 
-- **CString lifetime**: `unsafe_cstr_ptr()` only valid while String lives
+- **CString lifetime**: `unsafe_ptr()` only valid while String lives
 - **Int to C**: Always convert `Int` to `Int32` for C's `int`
 - **memcpy**: Use keyword arguments: `memcpy(dest=d, src=s, count=n)`
 - **Binary formats**: Use explicit byte-order functions for portability
@@ -1402,7 +1374,7 @@ vendor_matmul(f32_input, f32_weights, f32_output)
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `undefined symbol` | Library not linked or wrong symbol name | Check library path; use `nm` to verify symbol exists; ensure correct mangling |
-| `library not found` | DLHandle can't locate shared library | Use full path or set `DYLD_LIBRARY_PATH`/`LD_LIBRARY_PATH` |
+| `library not found` | OwnedDLHandle can't locate shared library | Use full path or set `DYLD_LIBRARY_PATH`/`LD_LIBRARY_PATH` |
 | `symbol not found` | Wrong symbol name or library | Check spelling; use `nm -gU libname` to list symbols |
 | `CString use-after-free` | CString destroyed before C function returns | Keep CString alive until C call completes; use `with` block |
 | `Int vs c_int mismatch` | Mojo Int is 64-bit, C int is 32-bit | Use `Int32` or `c_int` alias for C function arguments |

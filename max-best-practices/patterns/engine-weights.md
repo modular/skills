@@ -240,7 +240,7 @@ weight = Weight(name="model.weight", shape=[16384, 16384], device=DeviceRef.GPU(
 
 **Do:**
 ```python
-from max.nn import MLP
+from max.nn.linear import MLP
 from max.graph.quantization import QuantizationEncoding
 
 mlp = MLP(

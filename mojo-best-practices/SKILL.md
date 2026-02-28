@@ -227,7 +227,7 @@ This skill supports both **stable** and **nightly** Mojo versions:
 - `@fieldwise_init` (not `@value`)
 - `var`/`deinit` (not `owned` -- `owned` is REMOVED in nightly)
 - `Writable` trait (not `Stringable` -- `Stringable` DEPRECATED in nightly)
-- `@register_passable("trivial")` (v26.1.0.0.0) or `TrivialRegisterPassable` (v26.2+)
+- `@register_passable("trivial")` has been replaced by `TrivialRegisterPassable` trait
 - `@parameter if/for` (v26.1.0.0.0) or `comptime if/for` (v26.2+, preferred)
 
 [stable changelog](https://docs.modular.com/stable/mojo/changelog) | [nightly changelog](https://docs.modular.com/mojo/changelog/) | [breaking changes](references/breaking-changes.md)

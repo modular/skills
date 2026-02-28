@@ -107,14 +107,14 @@ fn process[T: DType](data: UnsafePointer[Scalar[T]]):
     var vec = data.load[width=8]()  # Assumes 8 works everywhere
 ```
 
-**✅ CORRECT:** Use `simdwidthof` for portable code
+**✅ CORRECT:** Use `simd_width_of` for portable code
 ```mojo
 fn process[T: DType](data: UnsafePointer[Scalar[T]]):
-    alias width = simdwidthof[T]()
+    alias width = simd_width_of[T]()
     var vec = data.load[width=width]()
 ```
 
-**Why?** SIMD width varies by hardware and dtype. `simdwidthof` returns the optimal width for the target.
+**Why?** SIMD width varies by hardware and dtype. `simd_width_of` returns the optimal width for the target.
 
 ---
 
@@ -150,22 +150,22 @@ fn use_it():
 
 ### `@value` vs `@fieldwise_init`
 
-**❌ WRONG:** Using deprecated `@value` decorator (pre-26.1)
+**❌ WRONG:** Using `@value` decorator (not used in current stdlib)
 ```mojo
-# nocompile - Deprecated syntax
+# nocompile - Not recommended
 @value
 struct OldStyle:
     var x: Int
 ```
 
-**✅ CORRECT:** Use `@fieldwise_init` (26.1+)
+**✅ CORRECT:** Use `@fieldwise_init` (preferred)
 ```mojo
 @fieldwise_init
 struct NewStyle:
     var x: Int
 ```
 
-**Why?** `@value` is deprecated. `@fieldwise_init` only generates the initializer, giving you control over copy/move.
+**Why?** `@fieldwise_init` is the preferred replacement for `@value`. It only generates the initializer, giving you control over copy/move. `@value` may still work but has 0 occurrences in the current stdlib.
 
 ---
 
@@ -518,21 +518,24 @@ var shared = block_broadcast[block_size=TPB](my_val, 0)
 **❌ WRONG:** Non-contiguous thread access pattern
 ```mojo
 # nocompile - Demonstrates anti-pattern
-@gpu_kernel
+from gpu import thread_idx
+
 fn bad_kernel(data: UnsafePointer[Float32]):
-    var tid = gpu.thread_idx.x
+    var tid = thread_idx.x
     var val = data[tid * STRIDE]  # Strided access - uncoalesced!
 ```
 
 **✅ CORRECT:** Adjacent threads access adjacent memory
 ```mojo
-@gpu_kernel
+# nocompile
+from gpu import thread_idx
+
 fn good_kernel(data: UnsafePointer[Float32]):
-    var tid = gpu.thread_idx.x
+    var tid = thread_idx.x
     var val = data[tid]  # Coalesced - adjacent threads, adjacent memory
 ```
 
-**Why?** GPU memory is accessed in large chunks. Strided access wastes bandwidth and causes multiple transactions.
+**Why?** GPU memory is accessed in large chunks. Strided access wastes bandwidth and causes multiple transactions. GPU kernels are regular functions passed to `ctx.enqueue_function` -- there is no `@gpu_kernel` decorator.
 
 ---
 
@@ -541,21 +544,26 @@ fn good_kernel(data: UnsafePointer[Float32]):
 **❌ WRONG:** Reading shared memory without synchronization
 ```mojo
 # nocompile - Demonstrates anti-pattern
-@gpu_kernel
+from gpu import thread_idx, barrier
+from memory import stack_allocation
+
 fn bad_kernel():
-    var shared = gpu.shared_memory[128, Float32]()
-    shared[gpu.thread_idx.x] = compute()
+    var shared = stack_allocation[128, DType.float32, address_space=AddressSpace.SHARED]()
+    shared[thread_idx.x] = compute()
     # Missing barrier!
     var result = shared[other_idx]  # Race condition!
 ```
 
 **✅ CORRECT:** Barrier before reading
 ```mojo
-@gpu_kernel
+# nocompile
+from gpu import thread_idx, barrier
+from memory import stack_allocation
+
 fn good_kernel():
-    var shared = gpu.shared_memory[128, Float32]()
-    shared[gpu.thread_idx.x] = compute()
-    gpu.barrier()  # Ensure all writes complete
+    var shared = stack_allocation[128, DType.float32, address_space=AddressSpace.SHARED]()
+    shared[thread_idx.x] = compute()
+    barrier()  # Ensure all writes complete
     var result = shared[other_idx]  # Safe to read
 ```
 
@@ -568,17 +576,20 @@ fn good_kernel():
 **❌ WRONG:** Confusing block and grid dimensions
 ```mojo
 # nocompile - Demonstrates anti-pattern
-@gpu_kernel
+from gpu import block_idx, block_dim, thread_idx
+
 fn bad_kernel():
     # Wrong: using block_dim for grid-level indexing
-    var global_id = gpu.block_idx.x * gpu.block_idx.y  # Nonsense!
+    var global_id = block_idx.x * block_idx.y  # Nonsense!
 ```
 
 **✅ CORRECT:** Proper global thread ID calculation
 ```mojo
-@gpu_kernel
+# nocompile
+from gpu import block_idx, block_dim, thread_idx
+
 fn good_kernel():
-    var global_id = gpu.block_idx.x * gpu.block_dim.x + gpu.thread_idx.x
+    var global_id = block_idx.x * block_dim.x + thread_idx.x
 ```
 
 **Why?**
@@ -641,39 +652,38 @@ fn add(a: Int, b: Int) -> Int:
 
 ### Stable vs Nightly Syntax Differences
 
-**❌ WRONG:** Using nightly syntax on stable
+**❌ WRONG:** Using old decorator syntax
 ```mojo
-# nocompile - Nightly v26.2+ only
-struct MyType(TrivialRegisterType):  # Error on stable!
-    var value: Int
-```
-
-**✅ CORRECT:** Use version-appropriate syntax
-```mojo
-# Stable v26.1.0.0.0
+# nocompile - Deprecated
 @register_passable("trivial")
 struct MyType:
     var value: Int
 ```
 
-**Why?** `TrivialRegisterType` trait is nightly-only. Check your version with `mojo --version`.
+**✅ CORRECT:** Use `TrivialRegisterPassable` trait
+```mojo
+struct MyType(TrivialRegisterPassable):
+    var value: Int
+
+    fn __init__(out self, v: Int):
+        self.value = v
+```
+
+**Why?** The `@register_passable("trivial")` decorator has been replaced by the `TrivialRegisterPassable` trait. The old decorator has 0 occurrences in the current stdlib.
 
 ---
 
 ### `comptime` vs `alias`
 
-**❌ WRONG:** Using `comptime` on stable
+Both `comptime` and `alias` work for compile-time constants. `comptime` is the preferred keyword (used 572+ times in the current stdlib).
+
 ```mojo
-# nocompile - Nightly v26.2+ only
-comptime SIZE: Int = 64
+# Both are valid:
+comptime SIZE = 64   # Preferred
+alias SIZE2 = 128    # Also works
 ```
 
-**✅ CORRECT:** Use `alias` (works on both)
-```mojo
-alias SIZE = 64  # Works on stable and nightly
-```
-
-**Why?** `comptime` keyword is nightly-only. `alias` is the stable equivalent for compile-time constants.
+**Why both?** `comptime` and `alias` are interchangeable for simple constant declarations. `comptime` is the modern preferred form.
 
 ---
 
@@ -691,7 +701,7 @@ alias SIZE = 64  # Works on stable and nightly
 | GPU wrong results | Missing barrier | [Missing Barrier](#missing-barrier-after-shared-memory-write) |
 | "would need to copy" / missing `^` | Missing transfer operator | [Missing Transfer](#missing--in-ownership-transfer) |
 | Slow GPU kernel | Uncoalesced access | [Uncoalesced Memory](#uncoalesced-memory-access) |
-| Nightly-only API error | Version mismatch | [Version-Specific](#version-specific) |
+| `@register_passable` deprecated | Use `TrivialRegisterPassable` trait | [Version-Specific](#version-specific) |
 | "invalid use of mutating method on rvalue" | `as_c_string_slice()` on String | [FFI String unsafe_ptr](#stringunsafe_ptr-for-ffi-not-as_c_string_sliceunsafe_ptr) |
 | `StringSlice` passed to `String` param | `.strip()` / slicing returns `StringSlice` | [StringSlice vs String](#stringslice-vs-string--conversions-required) |
 | `Span[Byte]` passed to `List[UInt8]` param | `as_bytes()` returns Span, not List | [List vs Span](#listuint8-vs-spanbyte-from-as_bytes) |

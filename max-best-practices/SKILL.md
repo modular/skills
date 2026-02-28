@@ -129,7 +129,7 @@ max serve --model Qwen/Qwen2.5-7B-Instruct              # Qwen
 max serve --model google/gemma-3-12b-it --trust-remote-code  # Vision model
 ```
 
-> **Note:** The CLI flag is `--model`. The legacy alias `--model-path` still works but `--model` is preferred. For gated models, set `HF_TOKEN` first.
+> **Note:** The canonical CLI flag is `--model-path`. The deprecated alias `--model` still works but is internally rewritten to `--model-path` with a warning. For gated models, set `HF_TOKEN` first.
 
 ## Start Here: Priority Tiers
 
@@ -239,7 +239,7 @@ See [breaking changes](references/breaking-changes.md) for detailed API differen
 | Prefill chunk size | `--max-batch-input-tokens` | `--max-batch-input-tokens` |
 | Max context length | `--max-batch-total-tokens` | `--max-batch-total-tokens` |
 | CE batch size CLI | `--max-batch-size` | `--max-batch-size` |
-| Scheduling | Default | `--kvcache-ce-watermark` (new) |
+| Scheduling | `--kvcache-ce-watermark` (default 0.95) | `--kvcache-ce-watermark` |
 | Llama 3.2 Vision | Supported | **Removed** |
 | Gemma3 Vision | Not available | Supported (12B, 27B) |
 | V1 layer classes | Deprecated | **Removed** |

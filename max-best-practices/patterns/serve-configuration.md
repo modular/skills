@@ -170,7 +170,7 @@ def prepare_ragged_batch(contexts, device):
 - `input_row_offsets` length must be `batch_size + 1`
 - First offset must be 0, last offset must equal `total_seq_len`
 - Offsets must be monotonically increasing
-- Requires `KVCacheStrategy.PAGED` for attention layers
+- Requires `cache_strategy="paged"` for attention layers
 
 ### Scheduling Priority (CE vs TG)
 

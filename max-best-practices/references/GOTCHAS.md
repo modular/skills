@@ -84,6 +84,7 @@ max serve --model meta-llama/Llama-3.1-8B
 **✅ CORRECT:** Explicit KV cache configuration
 ```bash
 max serve --model meta-llama/Llama-3.1-8B \
+  --cache-strategy paged \
   --kv-cache-page-size 256 \
   --max-batch-total-tokens 32768
 ```
@@ -178,23 +179,24 @@ max serve --devices gpu:0,2  # Use GPU 0 and 2 only
 
 ### Tensor Parallel Without Enough GPUs
 
-**❌ WRONG:** Requesting more tensor parallel than available
+**❌ WRONG:** Using fabricated `--tensor-parallel` flag
 ```bash
-# nocompile - Only 2 GPUs available
+# nocompile - --tensor-parallel does NOT exist
 max serve --model meta-llama/Llama-3.1-70B \
-  --tensor-parallel=4  # Error: not enough GPUs
+  --tensor-parallel=4  # Error: unrecognized flag
 ```
 
-**✅ CORRECT:** Match tensor parallel to available GPUs
+**✅ CORRECT:** Use `--devices` to specify GPUs (tensor parallelism is automatic)
 ```bash
 # Check available GPUs first
 nvidia-smi -L  # Shows 2 GPUs
 
+# TP degree = number of GPUs listed
 max serve --model meta-llama/Llama-3.1-70B \
-  --tensor-parallel=2 --devices gpu:0,1
+  --devices gpu:0,1  # 2-way tensor parallelism
 ```
 
-**Why?** Tensor parallelism requires the specified number of GPUs. Use a smaller model or fewer TP shards if limited.
+**Why?** There is no `--tensor-parallel` flag. Tensor parallelism degree is determined by the number of GPUs in `--devices`. Use `--data-parallel-degree` for data parallelism.
 
 ---
 
@@ -227,23 +229,20 @@ x = graph.input(TensorType(
 
 ---
 
-### Wrong DeviceRef Construction (26.2+)
+### DeviceRef Construction (26.2+)
 
-**❌ WRONG:** Old DeviceRef API
+Both `DeviceRef.from_device()` and factory methods work:
 ```python
-# nocompile - Deprecated in 26.2
-device = DeviceRef.from_device(my_device)
-```
-
-**✅ CORRECT:** Use factory methods
-```python
-# 26.2+ API
+# Factory methods (convenient for new code)
 cpu = DeviceRef.CPU()
 gpu = DeviceRef.GPU()
 gpu1 = DeviceRef.GPU(1)  # Specific GPU
+
+# from_device() also works (used in PipelineModel.__init__ and throughout codebase)
+device = DeviceRef.from_device(my_device)
 ```
 
-**Why?** DeviceRef API simplified in 26.2. `from_device` is deprecated.
+**Note:** `DeviceRef.from_device()` is NOT deprecated — it is used extensively in production code including `PipelineModel.__init__`. Factory methods are convenient shortcuts for new code.
 
 ---
 

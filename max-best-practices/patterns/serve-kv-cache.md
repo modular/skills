@@ -18,6 +18,7 @@ scenarios:
   - "Fix OOM during inference"
   - "Enable prefix caching"
   - "Tune KV cache memory"
+  - "Choose KV cache strategy"
   - "Optimize cache hit rate"
 consolidates:
   - serve-kv-cache-strategy.md
@@ -53,7 +54,8 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 |----------|--------|-------------|
 | MODEL_DEFAULT | Default | Selects the default strategy for the model architecture |
 | PAGED | Recommended | Reduces fragmentation, enables larger batches |
-| CONTINUOUS | Deprecated | Higher fragmentation, legacy support only |
+
+> **CLI flag:** `--cache-strategy` (values: `model_default`, `paged`)
 
 ### Memory Budget Calculation
 
@@ -241,6 +243,7 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 
 ## Quick Reference
 
+- **PAGED strategy**: Always use PAGED (CONTINUOUS deprecated); `--cache-strategy` flag
 - **Page size**: Must be multiple of 128, minimum 128 tokens (default 128)
 - **Gemma3**: Requires `--kv-cache-page-size 256` minimum
 - **Prefix caching**: Enabled by default; 10-50% throughput boost; incompatible with LoRA
@@ -273,6 +276,7 @@ curl http://localhost:8001/metrics | grep cache
 
 | Feature | Stable (v26.1) | Nightly (v26.2+) |
 |---------|----------------|-------------------|
+| **Cache strategy** | PAGED (CONTINUOUS deprecated) | PAGED only |
 | **Page size flag** | `--kv-cache-page-size` (default 128) | `--kv-cache-page-size` |
 | **Prefix caching** | Enabled by default (`--no-enable-prefix-caching` to disable) | Enabled by default |
 | **Host swapping** | `--enable-kvcache-swapping-to-host` | `--enable-kvcache-swapping-to-host` |
@@ -328,4 +332,4 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 ## References
 
 - [MAX Serve Configuration](https://docs.modular.com/max/serve)
-- Source: `max/nn/kv_cache/cache_params.py`, `max/pipelines/lib/memory_estimation.py`
+- Source: `max/nn/legacy/kv_cache/cache_params.py`, `max/pipelines/lib/memory_estimation.py`

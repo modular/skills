@@ -54,10 +54,10 @@ from max.nn import Conv2d
 from max.tensor import Tensor
 from max import functional as F  # F.lazy() context, @F.functional decorator
 
-# Legacy modules (for pipeline architectures)
-from max.nn.layer import Module as LegacyModule, LayerList
-from max.nn.linear import Linear as LegacyLinear, MLP, ColumnParallelLinear
-from max.nn.norm import RMSNorm as LegacyRMSNorm
+# Graph modules (for pipeline architectures)
+from max.nn import Module, LayerList
+from max.nn.linear import Linear, MLP, ColumnParallelLinear
+from max.nn.norm import RMSNorm
 
 # Engine and execution
 from max.engine import InferenceSession
@@ -325,7 +325,8 @@ def create_mlp(x, w1, w2):
 **Module Compilation Pattern:**
 ```python
 from max.nn import Module, module_dataclass
-from max.tensor import Tensor, TensorType
+from max.tensor import Tensor
+from max.graph import TensorType
 
 @module_dataclass
 class Linear(Module):
@@ -366,8 +367,8 @@ from max.engine import InferenceSession
 
 class MyModel(PipelineModel[TextContext], KVCacheMixin):
     """PipelineModel constructor receives: pipeline_config, session,
-    huggingface_config, encoding, devices, kv_cache_config, weights,
-    adapter, return_logits, return_hidden_states."""
+    devices, kv_cache_config, weights, adapter, return_logits,
+    return_hidden_states."""
 
     @classmethod
     def calculate_max_seq_len(cls, pipeline_config, huggingface_config) -> int:
@@ -417,15 +418,15 @@ class MyModel:
         return self.model(prompt)
 ```
 
-**Required Methods:**
+**Required Abstract Methods:**
 
 | Method | Purpose |
 |--------|---------|
-| `calculate_max_seq_len()` | Determine max context length |
-| `get_kv_params()` | Configure KV cache |
-| `load_model()` | Build and compile graph |
+| `load_model()` | Build and compile the model graph (from `ComponentModel`) |
+| `calculate_max_seq_len()` | Determine max context length (classmethod) |
 | `execute()` | Run inference |
-| `prepare_initial_token_inputs()` | Prepare input buffers |
+| `prepare_initial_token_inputs()` | Prepare input buffers for prefill |
+| `prepare_next_token_inputs()` | Prepare input buffers for decode |
 
 ---
 
@@ -439,10 +440,10 @@ from max.pipelines.lib.registry import SupportedArchitecture, PIPELINE_REGISTRY
 my_architecture = SupportedArchitecture(
     name="MyModelForCausalLM",  # Must match HuggingFace architectures
     example_repo_ids=["your-org/your-model"],
-    default_encoding=SupportedEncoding.bfloat16,
+    default_encoding="bfloat16",
     supported_encodings={
-        SupportedEncoding.bfloat16: [KVCacheStrategy.PAGED],
-        SupportedEncoding.q4_k: [KVCacheStrategy.PAGED],
+        "bfloat16": ["paged"],
+        "q4_k": ["paged"],
     },
     pipeline_model=MyModel,
     tokenizer=TextTokenizer,
@@ -502,7 +503,7 @@ response = pipeline.generate(
 - **Symbolic dims**: Use strings `("batch", 128)` or `AlgebraicDim("batch")` for dynamic dimensions
 - **Lazy context**: Use `F.lazy()` for deferred tensor creation
 - **Modules**: Extend `Module` for reusable layers with automatic weight management
-- **Pipeline models**: Implement `load_model()` and `execute()` methods
+- **Pipeline models**: Implement `calculate_max_seq_len()`, `execute()`, `prepare_initial_token_inputs()`, `prepare_next_token_inputs()`
 - **Verification**: `graph.verify()` is called automatically - no need to call directly
 
 ---

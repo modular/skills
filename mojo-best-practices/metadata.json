@@ -1,6 +1,6 @@
 {
   "name": "mojo-best-practices",
-  "version": "5.3.0",
+  "version": "5.3.1",
   "license": "Apache 2.0",
   "organization": "Modular Community",
   "author": "Modular Community",
@@ -15,7 +15,7 @@
       "note": "comptime if/for, lifecycle renames, owned removal, ffi top-level, UnsafeUnion, Dict Swiss Table. Track latest at https://docs.modular.com/mojo/changelog/"
     }
   },
-  "last_verified": "2026-02-26",
+  "last_verified": "2026-02-27",
   "changelog_reference": "https://docs.modular.com/stable/mojo/changelog",
   "unreleased_changelog": "https://raw.githubusercontent.com/modular/modular/main/mojo/docs/changelog.md",
   "source_reference": "https://github.com/modular/modular",

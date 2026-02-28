@@ -279,7 +279,7 @@ max benchmark --model meta-llama/Llama-3.1-8B-Instruct \
 |---------|----------------|--------------------|
 | **Batch context flag** | `--max-batch-total-tokens` | `--max-batch-total-tokens` |
 | **Prefill token budget** | `--max-batch-input-tokens` | `--max-batch-input-tokens` |
-| **KV cache watermark** | Not available | `--kvcache-ce-watermark` (new) |
+| **KV cache watermark** | `--kvcache-ce-watermark` (default 0.95) | `--kvcache-ce-watermark` |
 | **In-flight batching** | `--enable-in-flight-batching` | `--enable-in-flight-batching` |
 
 **Stable (v26.1.0.0.0):**

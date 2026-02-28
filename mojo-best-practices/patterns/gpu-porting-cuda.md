@@ -57,7 +57,7 @@ Complete guide for porting CUDA kernels to Mojo with side-by-side examples, from
 | CUDA | Mojo | Import |
 |------|------|--------|
 | `__syncthreads()` | `barrier()` | `from gpu.sync import barrier` |
-| `__syncwarp(mask)` | `sync_warp()` | `from gpu.sync import sync_warp` |
+| `__syncwarp(mask)` | `syncwarp()` | `from gpu.sync import syncwarp` |
 | `cudaDeviceSynchronize()` | `ctx.synchronize()` | `from gpu.host import DeviceContext` |
 
 ### Kernel Launch
@@ -332,14 +332,14 @@ __global__ void block_reduce(float* input, float* output, int n) {
 ```mojo
 # nocompile
 from gpu import thread_idx, block_idx, block_dim, global_idx, lane_id, WARP_SIZE
-from gpu.sync import barrier, sync_warp
-from gpu.warp import shfl_down
+from gpu.sync import barrier, syncwarp
+from gpu.primitives.warp import shuffle_down
 from memory import stack_allocation, UnsafePointer
 
 fn warp_reduce_sum(var val: Float32) -> Float32:
     @parameter
     for i in range(5):  # log2(32) = 5
-        val += shfl_down[DType.float32, 1](val, 1 << (4 - i))
+        val += shuffle_down(val, 1 << (4 - i))
     return val
 
 fn block_reduce(input: UnsafePointer[Float32], output: UnsafePointer[Float32], n: Int):
@@ -372,16 +372,14 @@ fn block_reduce(input: UnsafePointer[Float32], output: UnsafePointer[Float32], n
 
 | CUDA | Mojo | Import |
 |------|------|--------|
-| `__shfl_sync(mask, val, src)` | `shfl[dtype, width](val, src)` | `from gpu.warp import shfl` |
-| `__shfl_down_sync(mask, val, delta)` | `shfl_down[dtype, width](val, delta)` | `from gpu.warp import shfl_down` |
-| `__shfl_up_sync(mask, val, delta)` | `shfl_up[dtype, width](val, delta)` | `from gpu.warp import shfl_up` |
-| `__shfl_xor_sync(mask, val, mask)` | `shfl_xor[dtype, width](val, lane_mask)` | `from gpu.warp import shfl_xor` |
-| `__ballot_sync(mask, pred)` | `ballot(pred)` | `from gpu.warp import ballot` |
-| `__popc(__ballot_sync(mask, pred))` | `vote_count(pred)` | `from gpu.warp import vote_count` |
-| `__all_sync(mask, pred)` | `vote_all(pred)` | `from gpu.warp import vote_all` |
-| `__any_sync(mask, pred)` | `vote_any(pred)` | `from gpu.warp import vote_any` |
+| `__shfl_sync(mask, val, src)` | `shuffle_idx(val, src)` | `from gpu.primitives.warp import shuffle_idx` |
+| `__shfl_down_sync(mask, val, delta)` | `shuffle_down(val, delta)` | `from gpu.primitives.warp import shuffle_down` |
+| `__shfl_up_sync(mask, val, delta)` | `shuffle_up(val, delta)` | `from gpu.primitives.warp import shuffle_up` |
+| `__shfl_xor_sync(mask, val, mask)` | `shuffle_xor(val, lane_mask)` | `from gpu.primitives.warp import shuffle_xor` |
+| `__ballot_sync(mask, pred)` | `vote[ret_type](pred)` | `from gpu.primitives.warp import vote` |
+| `__ballot_sync + __popc / __all / __any` | `vote[ret_type](pred)` | `from gpu.primitives.warp import vote` |
 
-> **Note:** Mojo warp operations don't require explicit mask parameters — the full warp is always used. This matches the CUDA model for compute capability 7.0+.
+> **Note:** Mojo warp operations don't require explicit mask parameters — the full warp is always used. This matches the CUDA model for compute capability 7.0+. The `vote` function returns a bitmask; use popcount, all-bits, or any-bits checks on the result to replicate `__popc(__ballot_sync(...))`, `__all_sync`, or `__any_sync`.
 
 ---
 
@@ -614,7 +612,7 @@ fn producer_load(
 |------|------|-------|
 | `cp.async` (SM80) | `async_copy()` | `from gpu.memory import async_copy` |
 | `cp.async.commit_group` | `async_copy_commit_group()` | `from gpu.memory import async_copy_commit_group` |
-| `cp.async.wait_group` | `async_copy_wait_group[N]()` | `from gpu.memory import async_copy_wait_group` |
+| `cp.async.wait_group` | `async_copy_wait_group(N)` | `from gpu.memory import async_copy_wait_group` |
 | TMA load (SM90) | `tma_tile.async_load(dst, barrier, coords)` | `from layout.tma_async import TMATensorTile` |
 | TMA store (SM90) | `tma_tile.async_store(src, coords)` | `from layout.tma_async import TMATensorTile` |
 | TMA prefetch (SM90) | `tma_tile.prefetch(coords)` | Prefetch to L2 cache |
@@ -799,7 +797,7 @@ if global_idx.x < UInt(n):  # Cast n to UInt for comparison
 # nocompile
 # CUDA: __shfl_down_sync(0xFFFFFFFF, val, offset)
 # Mojo: No mask parameter — full warp is always used
-var result = shfl_down[DType.float32, 1](val, offset)
+var result = shuffle_down(val, offset)
 ```
 
 ### 3. Compile-Time vs Runtime Parameters
@@ -814,7 +812,7 @@ comptime SMEM_SIZE = BLOCK_SIZE * 4  # Computed at compile time
 # Use @parameter for compile-time unrolling
 @parameter
 for i in range(5):  # Fully unrolled at compile time
-    val += shfl_down[DType.float32, 1](val, 1 << (4 - i))
+    val += shuffle_down(val, 1 << (4 - i))
 ```
 
 ### 4. Address Space Annotations
@@ -852,15 +850,15 @@ from gpu import thread_idx, block_idx, block_dim, grid_dim, global_idx
 from gpu import lane_id, WARP_SIZE
 from gpu import warp_id as get_warp_id
 from gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
-from gpu.sync import barrier, sync_warp
+from gpu.sync import barrier, syncwarp
 
 # === Memory ===
-from memory import UnsafePointer, stack_allocation
-from gpu.memory import external_memory, async_copy, AddressSpace
+from memory import UnsafePointer, stack_allocation, AddressSpace
+from gpu.memory import external_memory, async_copy  # AddressSpace also available from gpu.memory
 
 # === Warp Operations ===
-from gpu.warp import shfl, shfl_down, shfl_up, shfl_xor
-from gpu.warp import ballot, vote_all, vote_any, vote_count
+from gpu.primitives.warp import shuffle_idx, shuffle_down, shuffle_up, shuffle_xor
+from gpu.primitives.warp import vote
 
 # === Layout System ===
 from layout import Layout, LayoutTensor, IntTuple
@@ -875,7 +873,7 @@ from layout.tma_async import TMATensorTile, SharedMemBarrier
 from linalg.structuring import (
     SMemTile, RegTile, SMemBarrier, PipelineBarrier,
     SharedMemoryManager, NVIDIASharedMemoryManager,
-    ScatterGatherAmd, eval,
+    ScatterGatherAmd,
 )
 
 # === Cluster Operations (SM90+) ===
