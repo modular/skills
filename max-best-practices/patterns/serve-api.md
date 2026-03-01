@@ -106,7 +106,7 @@ Token budgets control how many tokens are processed per batch. Understanding `--
 
 | Budget | CLI Flag | Default | Purpose |
 |--------|----------|---------|---------|
-| Active Token Budget | `--max-batch-input-tokens` | None (auto) | Limits tokens processed per CE batch |
+| Active Token Budget | `--max-batch-input-tokens` | 8192 | Limits tokens processed per CE batch |
 | Total Context Budget | `--max-batch-total-tokens` | None | Limits total context across batch |
 
 **Throughput vs Latency Tradeoffs:**
@@ -423,7 +423,7 @@ MAX Serve automatically handles request cancellations when clients disconnect, t
 
 **Cancellation Triggers:**
 - Client disconnects during streaming
-- Client timeout while waiting for response
+- Client-side timeout while waiting for response (there is no server-side per-request timeout flag; timeouts are controlled by the client, e.g., `timeout=30` in the OpenAI Python client)
 - Exception during stream processing
 - Async generator closed early
 - Client process terminates unexpectedly
@@ -892,6 +892,8 @@ curl http://localhost:8001/metrics | grep preemption
 maxserve_cache_preemption_count_total 127
 ```
 
+> **Note:** The metrics port depends on the `--metrics-recording-method` configuration. With the default `PROCESS` method, metrics are served on port **8001** (separate process). With `ASYNCIO` method, metrics are served on the main API port **8000** at the `/metrics` path.
+
 ---
 
 ## Quick Reference
@@ -924,7 +926,7 @@ maxserve_cache_preemption_count_total 127
 | `429 Too Many Requests` | Batch queue full | Increase `--max-batch-size` or add rate limiting on client |
 | `request cancelled` | Client disconnected during processing | Normal behavior, resources are freed |
 | `preemption` | Memory pressure caused eviction | Reduce batch size or add GPU memory |
-| `timeout` | Request took too long | Check batch settings, enable chunked prefill |
+| `timeout` | Client-side timeout elapsed (no server-side per-request timeout flag exists) | Increase client timeout (e.g., `timeout=60`); check batch settings or enable chunked prefill to reduce latency |
 | `stream error` | Network issue during streaming | Client should handle reconnection |
 | `generation failed` | Internal error during generation | Check logs, may be OOM or model issue |
 

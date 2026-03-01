@@ -71,9 +71,13 @@ weight.sharding_strategy = ShardingStrategy.stacked_qkv(
 )
 
 # Tensor parallel: for MLP layers (auto-shards gate/up/down)
+# WARNING: Currently a placeholder — raises NotImplementedError at runtime.
+# Use rowwise/columnwise on individual MLP weights instead (see MLP pattern below).
 weight.sharding_strategy = ShardingStrategy.tensor_parallel(num_devices=4)
 
 # Expert parallel: for MoE expert layers
+# WARNING: Currently a placeholder — raises NotImplementedError at runtime.
+# Use rowwise/columnwise on individual expert weights instead.
 weight.sharding_strategy = ShardingStrategy.expert_parallel(num_devices=4)
 
 # Gate-up: for fused gate+up projections
@@ -88,13 +92,13 @@ shards = weight.shard(devices)
 
 | Strategy | Communication | Best For |
 |----------|--------------|----------|
-| `rowwise` | None | Output projections |
-| `columnwise` | AllReduce | Input projections |
+| `rowwise` | None | QKV projections, gate/up projections (first linear in a pair) |
+| `columnwise` | AllReduce | Output projections, down projections (second linear in a pair) |
 | `replicate` | None | Small tensors, embeddings |
 | `head_aware_columnwise` | AllReduce | Attention QKV |
 | `stacked_qkv` | AllReduce | Fused QKV with GQA |
-| `tensor_parallel` | AllReduce | MLP layers (auto-shards gate/up/down) |
-| `expert_parallel` | AllReduce | MoE expert layers |
+| `tensor_parallel` | AllReduce | MLP layers (auto-shards gate/up/down) — **placeholder; raises `NotImplementedError`** |
+| `expert_parallel` | AllReduce | MoE expert layers — **placeholder; raises `NotImplementedError`** |
 | `gate_up` | AllReduce | Fused gate+up projections |
 
 ### Weight Adapters
@@ -253,6 +257,10 @@ mlp = MLP(
 )
 
 # Set tensor parallel sharding
+# WARNING: ShardingStrategy.tensor_parallel() is currently a placeholder and
+# raises NotImplementedError at runtime. Instead, set sharding on individual
+# weights: gate_proj → rowwise, up_proj → rowwise, down_proj → columnwise.
+# Check the latest API docs for updates.
 # - gate_proj: rowwise sharding
 # - down_proj: columnwise sharding
 # - up_proj: rowwise sharding
@@ -354,8 +362,8 @@ buffer = Buffer.from_dlpack(np_transposed)  # ValueError!
 
 ## Quick Reference
 
-- **Rowwise sharding**: No communication, use for output projections
-- **Columnwise sharding**: Requires AllReduce, use for input projections
+- **Rowwise sharding**: No communication, use for QKV/gate/up projections (first linear in a pair)
+- **Columnwise sharding**: Requires AllReduce, use for output/down projections (second linear in a pair)
 - **Replicate**: For embeddings and layer norms (small tensors)
 - **DLPack**: Zero-copy between MAX and PyTorch/JAX/NumPy
 - **Contiguity**: Arrays must be contiguous for DLPack

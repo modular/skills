@@ -239,7 +239,11 @@ Track these metrics to evaluate optimization effectiveness:
 
 **Benchmark command:**
 ```bash
-max benchmark --model meta-llama/Llama-3.1-8B-Instruct \
+# Standalone benchmark (no --collect-gpu-stats here)
+max benchmark --model meta-llama/Llama-3.1-8B-Instruct
+
+# GPU stats collection is available on serving benchmarks only:
+max serve benchmark --model meta-llama/Llama-3.1-8B-Instruct \
   --collect-gpu-stats
 ```
 
@@ -267,7 +271,7 @@ max benchmark --model meta-llama/Llama-3.1-8B-Instruct \
 | `in-flight batching stalls` | Unbalanced prefill/decode | Adjust batch config; separate prefill/decode workers |
 | `host swapping latency spike` | PCIe bandwidth saturated | Reduce swap frequency; increase GPU memory |
 | `TTFT too high` | Large batch blocking prefill | Enable priority scheduling; use `--kvcache-ce-watermark` |
-| `throughput regression` | Wrong batch configuration | Profile with `--metrics-mode DETAILED`; tune batch sizes |
+| `throughput regression` | Wrong batch configuration | Profile with `MAX_SERVE_METRIC_LEVEL=DETAILED max serve ...`; tune batch sizes |
 
 ---
 
@@ -289,22 +293,23 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
   --max-batch-total-tokens 32768 \
   --max-batch-input-tokens 8192 \
   --enable-in-flight-batching \
-  --enable-prefix-caching
+  --enable-prefix-caching \
+  --kvcache-ce-watermark 0.8  # Available in current stable
 ```
 
 **Nightly (v26.2+):**
 ```bash
-# v26.2+ renamed flags
+# v26.2+ flag names (same as stable for these features)
 max serve --model meta-llama/Llama-3.1-8B-Instruct \
   --max-batch-total-tokens 32768 \
   --max-batch-input-tokens 8192 \
   --enable-in-flight-batching \
   --enable-prefix-caching \
-  --kvcache-ce-watermark 0.8  # NEW: context extension watermark
+  --kvcache-ce-watermark 0.8
 ```
 
 **Notes:**
-- `--kvcache-ce-watermark` is new in v26.2+ for controlling when context extension kicks in
+- `--kvcache-ce-watermark` controls when context extension kicks in (available in current stable, no version gate)
 - In-flight batching (`--enable-in-flight-batching`) and prefix caching flags are stable
 - KV cache swapping flags are stable across versions
 

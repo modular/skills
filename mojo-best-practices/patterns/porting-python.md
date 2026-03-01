@@ -692,7 +692,7 @@ fn count_words(words: List[String]) -> Dict[String, Int]:
 > - **`Dict[key]` can raise:** `Dict.__getitem__` raises if the key is not found. Any function that uses `dict[key]` needs `raises` in its signature, or wrap access in `try/except`. Use `if key in dict:` before access to avoid.
 > - **Value type constraint:** Dict values must be `Copyable & Movable`. `Dict[String, List[Int]]` works but has poor ergonomics — prefer flat parallel arrays (`List[String]` keys + `List[Int]` values) for Dict-of-Lists patterns.
 > - **Value mutation:** `dict[key].append(val)` may copy, not mutate in-place. Build complete values before insertion, or extract → modify → reinsert.
-> - **`Counter` pattern:** `if key in d: d[key] = d[key] + 1; else: d[key] = 1` — no `.get(key, default)`.
+> - **`Counter` pattern:** `d[key] = d.get(key, 0) + 1` — `.get(key, default)` returns the default if the key is missing without raising.
 > - **Heterogeneous values:** Python's `Dict[str, Any]` has no equivalent. Use separate typed Dicts (`Dict[String, String]` + `Dict[String, Int]`) and dispatch by type.
 
 ### Pattern 5: Python with Statement → Mojo RAII
@@ -1380,7 +1380,7 @@ fn eval_node(arena: List[ASTNode], idx: Int) -> Float64:
 
 | Python | Mojo | Notes |
 |--------|------|-------|
-| `assert cond` | `debug_assert[cond]()` or `if not cond: raise "..."` | `debug_assert` only runs in debug builds |
+| `assert cond` | `debug_assert(cond, "message")` or `if not cond: raise "..."` | `debug_assert` only runs in debug builds |
 | `assertEqual(a, b)` | `if a != b: raise "..."` | No test framework — explicit checks |
 | `list1 == list2` | Index-based comparison loop | `List` has no `__eq__` for custom structs |
 | `assertTrue(x)` | `if not x: raise "assertion failed"` | Manual assertion |

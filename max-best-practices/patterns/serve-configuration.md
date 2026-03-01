@@ -47,7 +47,7 @@ curl -s http://0.0.0.0:8000/v1/chat/completions \
   }'
 ```
 
-> **Note:** The CLI flag is `--model` (not `--model-path`). The legacy `--model-path` alias still works. For gated models (e.g., Llama), set `HF_TOKEN` first.
+> **Note:** The canonical CLI flag is `--model-path`. The shorter `--model` alias also works (internally rewritten to `--model-path`). For gated models (e.g., Llama), set `HF_TOKEN` first.
 
 ---
 
@@ -71,7 +71,7 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--max-batch-size` | Model-dependent | Maximum requests per batch |
-| `--max-batch-input-tokens` | None (auto) | Target tokens per CE batch |
+| `--max-batch-input-tokens` | 8192 | Target tokens per CE batch |
 | `--max-batch-total-tokens` | None | Total context limit across batch |
 
 **v26.1 Change:** With `--data-parallel-degree`, batch size is now per-replica (was aggregate in v25.x). This aligns with vLLM and similar frameworks.
@@ -410,7 +410,7 @@ Two budgets control batch composition:
 
 | Budget | CLI Flag | Default | Purpose |
 |--------|----------|---------|---------|
-| Active Token Budget | `--max-batch-input-tokens` | None (auto) | Limits tokens processed per CE batch |
+| Active Token Budget | `--max-batch-input-tokens` | 8192 | Limits tokens processed per CE batch |
 | Total Context Budget | `--max-batch-total-tokens` | None | Limits total context across batch |
 
 **Chunking behavior:** When active token budget is exceeded and chunked prefill is enabled, large prompts are split across multiple batches. This improves GPU utilization for variable-length inputs.
@@ -426,7 +426,7 @@ Two budgets control batch composition:
 **Long-context configuration:**
 ```bash
 max serve --model meta-llama/Llama-3.1-8B-Instruct \
-  --max-sequence-length 65536 \
+  --max-length 65536 \
   --max-batch-input-tokens 16384 \
   --max-batch-total-tokens 65536 \
   --enable-chunked-prefill
@@ -481,7 +481,7 @@ Use a reverse proxy (nginx, envoy) to route requests to the correct instance bas
 |-------|-------|-----|
 | `batch size exceeds` | Request exceeds max-batch-size | Increase `--max-batch-size` or reduce request |
 | `out of memory` | Total tokens exceed capacity | Reduce `--max-batch-total-tokens` or add GPUs |
-| `sequence length exceeds` | Input too long | Increase `--max-sequence-length` or truncate input |
+| `sequence length exceeds` | Input too long | Increase `--max-length` or truncate input |
 | `model not found` | Invalid model path | Check path format, use HF format or local path |
 | `slow startup` | Cold compilation | Graph caching is automatic; subsequent runs use warm cache |
 | `request timeout` | Request processing too slow | Enable chunked prefill, check batch settings |

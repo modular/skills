@@ -55,7 +55,7 @@ SYNTAX:
   - docker run --gpus=1 -v ~/.cache/huggingface:/root/.cache/huggingface -p 8000:8000 modular/max-nvidia-full:latest --model-path MODEL
   - export MAX_SERVE_METRIC_LEVEL=BASIC; export MAX_SERVE_METRIC_RECORDING_METHOD=PROCESS
   - max benchmark --model MODEL --collect-gpu-stats
-  - max serve --pipeline-role PrefillOnly|DecodeOnly
+  - max serve --pipeline-role prefill_only|decode_only
 PITFALLS: Missing volume mounts (30+ min cold start), DETAILED metrics in prod (5-15% overhead), SYNC recording method (blocking), no heartbeat for large models, fork multiprocessing with GPU models
 RELATED: serve-api, serve-configuration, perf-inference, multigpu-scaling
 -->
@@ -194,7 +194,13 @@ metadata:
   name: max-llm
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: max-llm
   template:
+    metadata:
+      labels:
+        app: max-llm
     spec:
       containers:
       - name: max-serve
@@ -356,19 +362,19 @@ export MAX_SERVE_MW_HEALTH_FAIL=60  # Restart if no heartbeat for 60s
 
 | Metric | Level | Description |
 |--------|-------|-------------|
-| `maxserve_request_count_total` | BASIC | HTTP request count (labels: `code`, `path`) |
+| `maxserve_request_count_total` | BASIC | HTTP request count (counter; labels: `code`, `path`) |
 | `maxserve_request_time_milliseconds` | BASIC | Request latency histogram (ms) |
 | `maxserve_time_to_first_token_milliseconds` | BASIC | TTFT latency histogram (ms) |
-| `maxserve_num_input_tokens_total` | BASIC | Input token count |
-| `maxserve_num_output_tokens_total` | BASIC | Output token count |
+| `maxserve_num_input_tokens_total` | BASIC | Input token count (counter) |
+| `maxserve_num_output_tokens_total` | BASIC | Output token count (counter) |
 | `maxserve_model_load_time_milliseconds` | BASIC | Model load time (ms) |
 | `maxserve_num_requests_queued` | BASIC | Requests waiting (gauge) |
 | `maxserve_num_requests_running` | BASIC | Requests processing (gauge) |
 | `maxserve_itl_milliseconds` | DETAILED | Inter-token latency histogram (ms) |
 | `maxserve_batch_size` | DETAILED | Batch size distribution (histogram) |
 | `maxserve_batch_execution_time_milliseconds` | DETAILED | Batch execution time |
-| `maxserve_cache_hit_rate` | DETAILED | Prefix cache hit rate |
-| `maxserve_cache_preemption_count_total` | DETAILED | Memory preemption events |
+| `maxserve_cache_hit_rate` | DETAILED | Prefix cache hit rate (gauge) |
+| `maxserve_cache_preemption_count_total` | DETAILED | Memory preemption events (counter; Prometheus adds `_total` suffix) |
 | `maxserve_cache_num_used_blocks` | DETAILED | KV cache block usage (gauge) |
 | `maxserve_cache_num_total_blocks` | DETAILED | Total KV cache blocks (gauge) |
 
@@ -531,14 +537,14 @@ Stay with Unified When:
 ```bash
 # Prefill-only worker
 max serve --model meta-llama/Llama-3.1-8B-Instruct \
-  --pipeline-role PrefillOnly \
+  --pipeline-role prefill_only \
   --max-batch-size 8 \
   --max-batch-input-tokens 32768 \
   --enable-chunked-prefill
 
 # Decode-only worker
 max serve --model meta-llama/Llama-3.1-8B-Instruct \
-  --pipeline-role DecodeOnly \
+  --pipeline-role decode_only \
   --max-batch-size 256 \
   --enable-in-flight-batching
 ```

@@ -42,7 +42,7 @@ Comprehensive patterns for MAX Graph construction including proper type specific
 ```python
 # Graph construction
 from max.graph import Graph, TensorType, ops, DeviceRef
-from max.graph import AlgebraicDim, SymbolicDim  # Symbolic dimensions
+from max.graph import Dim, SymbolicDim  # Symbolic dimensions
 from max.graph import Weight, ShardingStrategy  # Weight management
 from max.dtype import DType
 
@@ -56,7 +56,7 @@ from max import functional as F  # F.lazy() context, @F.functional decorator
 
 # Graph modules (for pipeline architectures)
 from max.nn import Module, LayerList
-from max.nn.linear import Linear, MLP, ColumnParallelLinear
+from max.nn.legacy.linear import Linear, MLP, ColumnParallelLinear
 from max.nn.norm import RMSNorm
 
 # Engine and execution
@@ -71,7 +71,7 @@ from max.driver import Device, DeviceSpec, CPU, Accelerator, Buffer, accelerator
 ```
 
 **Notes:**
-- `AlgebraicDim` is stable and available in all versions
+- `Dim` is stable and available in all versions
 - Strings can also be used for symbolic dimensions (implicitly converted to `SymbolicDim`)
 - `TensorType` requires a `device` parameter (has been required for ~1 year)
 - `TensorType` accepts `Device | DeviceRef` for the `device` param (internally calls `DeviceRef.from_device()`)
@@ -160,13 +160,13 @@ with Graph(
     x, y = graph.inputs
 ```
 
-**Pattern (AlgebraicDim - for expressions):**
+**Pattern (Dim - for expressions):**
 
 ```python
-from max.graph import Graph, TensorType, AlgebraicDim, DeviceRef
+from max.graph import Graph, TensorType, Dim, DeviceRef
 from max.dtype import DType
 
-batch = AlgebraicDim("batch")
+batch = Dim("batch")
 device = DeviceRef.GPU()
 
 # Named dims that must match
@@ -179,23 +179,23 @@ with Graph(
 ) as graph:
     x, y = graph.inputs
 
-# Algebraic expressions - use AlgebraicDim when you need math
-seq_len = AlgebraicDim("seq")
+# Algebraic expressions - use Dim when you need math
+seq_len = Dim("seq")
 padded = seq_len + 4  # Compile-time expression
 ```
 
 **With Device Reference:**
 
 ```python
-from max.graph import Graph, TensorType, DeviceRef, AlgebraicDim
+from max.graph import Graph, TensorType, DeviceRef, Dim
 from max.dtype import DType
 
 # Create DeviceRef - required for TensorType
 device_ref = DeviceRef.GPU()           # Default GPU
 # device_ref = DeviceRef.CPU()         # CPU device
 
-batch = AlgebraicDim("batch")
-seq_len = AlgebraicDim("seq_len")
+batch = Dim("batch")
+seq_len = Dim("seq_len")
 
 # TensorType with required device parameter
 input_type = TensorType(
@@ -506,6 +506,7 @@ def causal_mask(seq_len: DimLike, *, dtype: DType | None = None, device=None) ->
 
 ```python
 from max import functional as F
+from max.graph import ops
 from max.dtype import DType
 
 def causal_mask(seq_len, dtype=DType.float32, device=None):
@@ -514,11 +515,11 @@ def causal_mask(seq_len, dtype=DType.float32, device=None):
     cols = F.arange(0, seq_len, step=1, out_dim=seq_len, dtype=DType.int64, device=device)
     # Compare: mask is True where cols > rows (upper triangle)
     is_masked = F.greater(cols.unsqueeze(0), rows.unsqueeze(1))
-    # Use F.select to avoid NaN from 0 * -inf:
+    # Use ops.where to avoid NaN from 0 * -inf:
     # where masked -> -inf, where not masked -> 0.0
     zero = Tensor.constant(0.0, dtype=dtype, device=device)
     neg_inf = Tensor.constant(float("-inf"), dtype=dtype, device=device)
-    return F.select(is_masked, neg_inf, zero)
+    return ops.where(is_masked, neg_inf, zero)
 ```
 
 **Note:** `F.broadcast_to` does NOT support dynamic/symbolic dimensions, so the mask cannot be explicitly broadcast to `[n_heads, seq, seq]`. Instead, rely on implicit broadcasting when adding the mask to attention weights.
@@ -533,7 +534,7 @@ def causal_mask(seq_len, dtype=DType.float32, device=None):
 
 ```python
 from max.graph import Graph, TensorType
-from max.nn._realization_context import (
+from max._realization_context import (
     GraphRealizationContext,
     realization_context,
     as_weight,  # Converts Tensor parameters to graph Weights
@@ -600,8 +601,8 @@ Without `out_dim`, the graph compiler cannot infer the output shape and compilat
 
 | Scenario | Approach | See Also |
 |----------|----------|----------|
-| Dynamic batch size | Use `"batch"` string or `AlgebraicDim("batch")` in shape | — |
-| Variable sequence length | Use `"seq"` string or `AlgebraicDim("seq")` in shape | — |
+| Dynamic batch size | Use `"batch"` string or `Dim("batch")` in shape | — |
+| Variable sequence length | Use `"seq"` string or `Dim("seq")` in shape | — |
 | Complex model architecture | Use `F.lazy()` context | — |
 | Reusable layers | Extend `Module` base class | — |
 | MAX Serve integration | Implement `PipelineModel` | [`engine-operations.md`](engine-operations.md) |
@@ -614,7 +615,7 @@ Without `out_dim`, the graph compiler cannot infer the output shape and compilat
 - **Graph constructor**: `Graph(name="...", input_types=[TensorType(...), ...])` — always provide a name
 - **Accessing inputs**: Use `graph.inputs` property (returns `Sequence[Value]`), NOT `graph.input()` or `graph[0]`
 - **Input types**: Always specify explicitly with `TensorType` including `device` parameter
-- **Symbolic dims**: Use strings `("batch", 128)` or `AlgebraicDim("batch")` for dynamic dimensions
+- **Symbolic dims**: Use strings `("batch", 128)` or `Dim("batch")` for dynamic dimensions
 - **Lazy context**: Use `F.lazy()` for deferred tensor creation
 - **Modules**: Extend `Module` for reusable layers with automatic weight management
 - **Pipeline models**: Implement `calculate_max_seq_len()`, `execute()`, `prepare_initial_token_inputs()`, `prepare_next_token_inputs()`
@@ -657,8 +658,8 @@ The following APIs are stable and consistent across versions:
 
 | Feature | Usage |
 |---------|-------|
-| **Symbolic dims** | Use strings `("batch", 128)` or `AlgebraicDim("batch")` |
-| **AlgebraicDim** | Required for expressions: `batch + 1`, `seq * 2` |
+| **Symbolic dims** | Use strings `("batch", 128)` or `Dim("batch")` |
+| **Dim** | Required for expressions: `batch + 1`, `seq * 2` |
 | **TensorType device** | Required parameter: `device=DeviceRef.GPU()` |
 | **graph.verify()** | Called automatically during compilation - no need to call directly |
 | **F.lazy()** | Stable context manager for deferred tensor creation |
@@ -681,16 +682,16 @@ with Graph(
     x = graph.inputs[0]
 ```
 
-**Standard Pattern (AlgebraicDim - for expressions):**
+**Standard Pattern (Dim - for expressions):**
 ```python
-from max.graph import Graph, TensorType, ops, AlgebraicDim, DeviceRef
+from max.graph import Graph, TensorType, ops, Dim, DeviceRef
 from max.dtype import DType
 
-batch = AlgebraicDim("batch")
-seq = AlgebraicDim("seq")
+batch = Dim("batch")
+seq = Dim("seq")
 device_ref = DeviceRef.GPU()
 
-# Use AlgebraicDim when you need math: seq + 1, batch * 2
+# Use Dim when you need math: seq + 1, batch * 2
 with Graph(
     "my_model",
     input_types=[
@@ -702,8 +703,8 @@ with Graph(
 
 **Notes:**
 - `Graph(name, input_types=[...])` is the constructor signature; access inputs via `graph.inputs`
-- Strings or `AlgebraicDim` can be used for symbolic dimensions (strings implicitly convert)
-- `AlgebraicDim` is required when you need algebraic expressions (`batch + 1`)
+- Strings or `Dim` can be used for symbolic dimensions (strings implicitly convert)
+- `Dim` is required when you need algebraic expressions (`batch + 1`)
 - `TensorType` requires a `device` parameter (has been required for ~1 year)
 - `graph.verify()` is called automatically - calling it directly is unnecessary
 - Lazy context (`F.lazy()`) is stable across versions

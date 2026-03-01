@@ -29,7 +29,7 @@ consolidates:
 
 Comprehensive patterns for model loading including supported architectures, quantization formats, and HuggingFace authentication for gated models.
 
-> **CLI Flag:** Use `--model` (not `--model-path`) to specify the model. The legacy `--model-path` alias still works.
+> **CLI Flag:** Use `--model-path` to specify the model. The deprecated `--model` alias still works (it gets internally rewritten to `--model-path`).
 
 ---
 
@@ -41,66 +41,70 @@ MAX supports 35+ optimized model architectures natively with MAX Graph.
 
 **Text Generation (Causal LM):**
 
-| Architecture | Example Models | Encodings | Multi-GPU |
+> **Note on `_Legacy` suffix:** Most architecture names in the registry carry a `_Legacy` suffix (e.g., `MistralForCausalLM_Legacy`). When searching for an architecture by its HuggingFace class name (e.g., `MistralForCausalLM`), be aware the registered name may differ. The six architectures registered **without** the `_Legacy` suffix are: `LlamaForCausalLM`, `Phi3ForCausalLM`, `GptOssForCausalLM`, `Olmo3ForCausalLM`, `FluxPipeline`, and `Flux2Pipeline`.
+
+| Architecture (registered name) | Example Models | Encodings | Multi-GPU |
 |--------------|---------------|-----------|-----------|
 | `LlamaForCausalLM` | Llama 3.1, Llama 3.2, DeepSeek-R1-Distill, Llama-Guard-3 | q4_k, q4_0, q6_k, float32, float16, bfloat16, float8, float4 | Yes |
-| `MistralForCausalLM` | Mistral-Nemo-Instruct-2407 | bfloat16, float16 | Yes |
-| `Mistral3ForConditionalGeneration` | Mistral-Small-3.1-24B-Instruct | bfloat16 | Yes |
-| `Qwen2ForCausalLM` | Qwen2.5-7B-Instruct, QwQ-32B | float32, bfloat16 | Yes |
-| `Qwen3ForCausalLM` | Qwen3-8B, Qwen3-30B-A3B (dense + MoE) | bfloat16, float32 | Yes |
+| `MistralForCausalLM_Legacy` | Mistral-Nemo-Instruct-2407 | bfloat16, float16 | Yes |
+| `Mistral3ForConditionalGeneration_Legacy` | Mistral-Small-3.1-24B-Instruct | bfloat16 | Yes |
+| `Qwen2ForCausalLM_Legacy` | Qwen2.5-7B-Instruct, QwQ-32B | float32, bfloat16 | Yes |
+| `Qwen3ForCausalLM_Legacy` | Qwen3-8B, Qwen3-30B-A3B (dense + MoE) | bfloat16, float32 | Yes |
 | `Phi3ForCausalLM` | Microsoft Phi-4, Phi-3.5-mini-instruct | float32, bfloat16 | No |
-| `GraniteForCausalLM` | IBM Granite 3.1-8B-instruct | float32, bfloat16 | No |
-| `Gemma3ForCausalLM` | Gemma 3 1B (text-only, <4B models) | bfloat16 | Yes |
-| `OlmoForCausalLM` | OLMo-1B-hf | float32, bfloat16 | No |
-| `Olmo2ForCausalLM` | OLMo-2-0425-1B, OLMo-2-1124-7B/13B, OLMo-2-0325-32B | bfloat16, float32 | No |
-| `ExaoneForCausalLM` | EXAONE-3.5-2.4B/7.8B/32B-Instruct | q4_k, q6_k, float32, bfloat16 | No |
+| `GraniteForCausalLM_Legacy` | IBM Granite 3.1-8B-instruct | float32, bfloat16 | No |
+| `Gemma3ForCausalLM_Legacy` | Gemma 3 1B (text-only, <4B models) | bfloat16 | Yes |
+| `OlmoForCausalLM_Legacy` | OLMo-1B-hf | float32, bfloat16 | No |
+| `Olmo2ForCausalLM_Legacy` | OLMo-2-0425-1B, OLMo-2-1124-7B/13B, OLMo-2-0325-32B | bfloat16, float32 | No |
+| `ExaoneForCausalLM_Legacy` | EXAONE-3.5-2.4B/7.8B/32B-Instruct | q4_k, q6_k, float32, bfloat16 | No |
 | `GptOssForCausalLM` | gpt-oss-20b | bfloat16 | Yes |
-| `Llama4ForConditionalGeneration` | Llama-4-Scout-17B-16E, Llama-4-Maverick-17B-128E | bfloat16 | Yes |
-| `LlamaForCausalLMEagle` | sglang-EAGLE-LLaMA3-Instruct-8B (speculative decoding) | bfloat16, float32 | No |
+| `Llama4ForConditionalGeneration_Legacy` | Llama-4-Scout-17B-16E, Llama-4-Maverick-17B-128E | bfloat16 | Yes |
+| `LlamaForCausalLMEagle_Legacy` | sglang-EAGLE-LLaMA3-Instruct-8B (speculative decoding) | bfloat16, float32 | No |
 
 **Mixture of Experts (MoE):**
 
-| Architecture | Example Models | Encodings | Multi-GPU |
+| Architecture (registered name) | Example Models | Encodings | Multi-GPU |
 |--------------|---------------|-----------|-----------|
-| `DeepseekV2ForCausalLM` | DeepSeek-V2-Lite-Chat | bfloat16 | Yes |
-| `DeepseekV3ForCausalLM` | DeepSeek-V3 | bfloat16, float8, float4 | Yes |
-| `DeepseekV32ForCausalLM` | DeepSeek-V3.2, DeepSeek-V3.2-Exp | float8 | Yes |
-| `DeepseekV3ForCausalLMNextN` | DeepSeek-V3-NextN (speculative) | bfloat16, float8 | Yes |
+| `DeepseekV2ForCausalLM_Legacy` | DeepSeek-V2-Lite-Chat | bfloat16 | Yes |
+| `DeepseekV3ForCausalLM_Legacy` | DeepSeek-V3 | bfloat16, float8, float4 | Yes |
+| `DeepseekV3_2ForCausalLM_Legacy` | DeepSeek-V3.2, DeepSeek-V3.2-Exp | float8 | Yes |
+| `DeepseekV3ForCausalLMNextN_Legacy` | DeepSeek-V3-NextN (speculative) | bfloat16, float8 | Yes |
 
 **Vision-Language Models:**
 
-| Architecture | Example Models | Encodings | Multi-GPU |
+| Architecture (registered name) | Example Models | Encodings | Multi-GPU |
 |--------------|---------------|-----------|-----------|
-| `LlavaForConditionalGeneration` | Pixtral-12B | bfloat16 | No |
-| `Idefics3ForConditionalGeneration` | Idefics3-8B-Llama3 | bfloat16 | No |
-| `Gemma3ForConditionalGeneration` | Gemma 3 4B/12B/27B (multimodal, >=4B) | bfloat16, float8 | Yes |
-| `InternVLChatModel` | InternVL3-8B-Instruct | bfloat16 | Yes |
-| `Qwen2_5_VLForConditionalGeneration` | Qwen2.5-VL-3B/7B-Instruct | float32, bfloat16, float8 | Yes |
-| `Qwen3VLForConditionalGeneration` | Qwen3-VL-2B/4B-Instruct | float32, bfloat16, float8 | Yes |
-| `Qwen3VLMoeForConditionalGeneration` | Qwen3-VL-30B-A3B-Instruct (MoE) | float32, bfloat16, float8 | Yes |
+| `LlavaForConditionalGeneration_Legacy` | Pixtral-12B | bfloat16 | No |
+| `Idefics3ForConditionalGeneration_Legacy` | Idefics3-8B-Llama3 | bfloat16 | No |
+| `Gemma3ForConditionalGeneration_Legacy` | Gemma 3 4B/12B/27B (multimodal, >=4B) | bfloat16, float8 | Yes |
+| `InternVLChatModel_Legacy` | InternVL3-8B-Instruct | bfloat16 | Yes |
+| `Qwen2_5_VLForConditionalGeneration_Legacy` | Qwen2.5-VL-3B/7B-Instruct | float32, bfloat16, float8 | Yes |
+| `Qwen3VLForConditionalGeneration_Legacy` | Qwen3-VL-2B/4B-Instruct | float32, bfloat16, float8 | Yes |
+| `Qwen3VLMoeForConditionalGeneration_Legacy` | Qwen3-VL-30B-A3B-Instruct (MoE) | float32, bfloat16, float8 | Yes |
 
 **Embedding Models:**
 
-| Architecture | Example Models | Encodings |
+| Architecture (registered name) | Example Models | Encodings |
 |--------------|---------------|-----------|
-| `BertModel` | all-MiniLM-L6-v2, all-MiniLM-L12-v2 | float32, bfloat16 |
-| `MPNetForMaskedLM` | all-mpnet-base-v2 | float32, bfloat16 |
-| `Qwen3Embedding` | Qwen3-Embedding-0.6B/4B/8B | float32, bfloat16 |
+| `BertModel_Legacy` | all-MiniLM-L6-v2, all-MiniLM-L12-v2 | float32, bfloat16 |
+| `MPNetForMaskedLM_Legacy` | all-mpnet-base-v2 | float32, bfloat16 |
+| `Qwen3ForCausalLM_Legacy` (embedding) | Qwen3-Embedding-0.6B/4B/8B | float32, bfloat16 |
 
 **Image Generation:**
 
-| Architecture | Example Models | Encodings |
+| Architecture (registered name) | Example Models | Encodings |
 |--------------|---------------|-----------|
 | `FluxPipeline` | FLUX.1-dev, FLUX.1-schnell | bfloat16 |
 
-**Other (Encoder-Decoder / Audio):**
+**Other (Internal Components -- not registered as standalone architectures):**
 
-| Architecture | Example Models | Notes |
-|--------------|---------------|-------|
-| `T5` | T5 encoder-decoder | Encoder-decoder model |
-| `Whisper` | Whisper ASR | Speech-to-text |
-| `CLIP` | CLIP vision-text encoder | Used as component in other pipelines |
-| `AutoencoderKL` | VAE models | Used in image generation pipelines |
+> **Note:** The following models are used internally as sub-components of other pipelines (e.g., CLIP within Flux, AutoencoderKL within image generation) but are **not** registered in `register_all_models()` and cannot be loaded directly via `max serve --model-path`. Do not list these as independently supported architectures.
+
+| Component | Used By | Notes |
+|-----------|---------|-------|
+| `T5` | Flux image generation | Text encoder component |
+| `Whisper` | -- | Speech-to-text; not currently registered in the architecture registry |
+| `CLIP` | Flux image generation | Vision-text encoder component |
+| `AutoencoderKL` | Flux image generation | VAE decoder component |
 
 ### HuggingFace Token Authentication
 

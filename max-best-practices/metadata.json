@@ -11,11 +11,11 @@
       "note": "v26.1 aligned with Mojo 26.1 - comptime keyword preferred"
     },
     "nightly": {
-      "max_version": "26.2.0.dev2026022717",
+      "max_version": "26.2.0.dev2026030105",
       "note": "Track latest at https://docs.modular.com/max/changelog/"
     }
   },
-  "last_verified": "2026-02-28",
+  "last_verified": "2026-03-01",
   "source_reference": "https://github.com/modular/modular",
   "abstract": "MAX AI inference framework best practices from Modular. Supports both stable (v26.1) and nightly. Covers MAX Serve deployment, MAX Graph API, multi-GPU inference, and performance optimization. 13 patterns across 7 categories.",
   "patterns": {

@@ -145,9 +145,9 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 When KV cache memory is exhausted, MAX Serve uses LRU (Least Recently Used) eviction to free cache blocks from the oldest idle sequences. Active sequences are never evicted.
 
 To minimize eviction impact:
-- Size `--max-cache-batch-size` to your expected concurrent request count
+- Size `--max-batch-size` to your expected concurrent request count
 - Monitor cache utilization via metrics endpoint
-- For long-context models, increase `--max-cache-batch-size` proportionally
+- For long-context models, increase `--max-batch-size` proportionally
 
 ---
 
@@ -182,9 +182,9 @@ max serve --model ... --kv-cache-page-size 64
 
 **Do:**
 ```bash
-# 4-GPU tensor parallel setup
+# 4-GPU tensor parallel setup (TP degree determined by number of GPUs)
 max serve --model meta-llama/Llama-3.1-70B-Instruct \
-  --tensor-parallel-degree 4 \
+  --devices gpu:0,1,2,3 \
   --device-memory-utilization 0.9 \
   --max-batch-size 16
 
@@ -228,6 +228,8 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 **Do:**
 ```bash
 # Configure for long context with host swapping
+# Note: --enable-kvcache-swapping-to-host requires prefix caching to be enabled
+# (it is enabled by default; if you disabled it, re-enable it or a ValueError is raised)
 max serve --model meta-llama/Llama-3.1-8B-Instruct \
   --max-length 65536 \
   --enable-kvcache-swapping-to-host \
@@ -245,7 +247,7 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 | Chatbot with system prompts | Prefix caching (default on) | Tune `--kv-cache-page-size` for hit rate |
 | Long context (32K+) | Host swapping, lower utilization | `--enable-kvcache-swapping-to-host` |
 | Memory-constrained | Lower utilization, smaller batches | `--device-memory-utilization 0.8` |
-| Multi-GPU TP | Sharded KV heads | `--tensor-parallel-degree N` |
+| Multi-GPU TP | Sharded KV heads | `--devices gpu:0,1,...,N-1` |
 | Multi-GPU DP | Full KV per replica | `--data-parallel-degree N` |
 
 ---
@@ -257,7 +259,7 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 - **Gemma3**: Requires `--kv-cache-page-size 256` minimum
 - **Prefix caching**: Enabled by default; 10-50% throughput boost; incompatible with LoRA
 - **Memory utilization**: Default 0.9, lower for stability under load
-- **Host swapping**: Extends cache to CPU for very long contexts
+- **Host swapping**: Extends cache to CPU for very long contexts; requires prefix caching enabled (ValueError if disabled)
 - **CE watermark**: `--kvcache-ce-watermark` (default 0.95) controls prefill scheduling
 
 ---

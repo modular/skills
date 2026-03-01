@@ -59,7 +59,7 @@ Complete guide for porting ROCm/HIP kernels to Mojo, covering the HIP basics, AM
 
 | HIP | Mojo |
 |-----|------|
-| `hipLaunchKernelGGL(kernel, grid, block, smem, stream, args...)` | `ctx.enqueue_function[kernel](args, grid_dim=grid, block_dim=block)` |
+| `hipLaunchKernelGGL(kernel, grid, block, smem, stream, args...)` | `ctx.enqueue_function[kernel, kernel](args, grid_dim=grid, block_dim=block)` |
 | `kernel<<<grid, block, smem, stream>>>(args)` | Same as above — HIP's CUDA-like syntax maps identically |
 
 > **Key insight:** Most HIP→Mojo porting is identical to CUDA→Mojo porting since HIP mirrors the CUDA API. See [`gpu-porting-cuda.md`](gpu-porting-cuda.md) for basics. This guide focuses on **AMD-specific** patterns.

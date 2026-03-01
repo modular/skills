@@ -156,7 +156,7 @@ fn receive_c_string() -> String:
     var c_str = external_call["get_message", UnsafePointer[Byte]]()
 
     # Create a StringSlice view, then copy to owned String
-    var length = Int(external_call["strlen", Int64](c_str))
+    var length = external_call["strlen", Int](c_str)
     var slice = StringSlice[ImmutAnyOrigin](ptr=c_str, length=length)
     var s = String(slice)
 
@@ -203,7 +203,7 @@ fn get_cwd() raises -> String:
         raise Error("getcwd failed")
 
     # Convert to String via StringSlice (copies data)
-    var length = Int(external_call["strlen", Int64](buffer))
+    var length = external_call["strlen", Int](buffer)
     var slice = StringSlice[ImmutAnyOrigin](ptr=buffer, length=length)
     var path = String(slice)
 
@@ -696,7 +696,6 @@ fn example():
 |----------|----------------|
 | `hypot(a, b)` | `sqrt(a*a + b*b)` |
 | `cbrt(x)` | `exp(log(x)/3.0)` |
-| `round(x)` | `floor(x + 0.5)` |
 
 ---
 

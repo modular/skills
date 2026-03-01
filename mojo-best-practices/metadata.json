@@ -11,11 +11,11 @@
       "note": "v26.1 introduces comptime keyword (preferred over alias), deprecated GPU import paths"
     },
     "nightly": {
-      "mojo_version": "26.2.0.dev2026022814",
+      "mojo_version": "26.2.0.dev2026030105",
       "note": "comptime if/for, lifecycle renames, owned removal, ffi top-level, UnsafeUnion, Dict Swiss Table. Track latest at https://docs.modular.com/mojo/changelog/"
     }
   },
-  "last_verified": "2026-02-28",
+  "last_verified": "2026-03-01",
   "source_reference": "https://github.com/modular/modular",
   "abstract": "Mojo programming best practices from the official modular/modular repository. Supports both stable (v26.1) and nightly. 36 patterns across 13 categories covering memory safety, GPU kernels (SM90/SM100), language porting, testing, and performance.",
   "patterns": {

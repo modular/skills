@@ -207,14 +207,12 @@ layers = ModuleList([Linear(768, 768) for _ in range(12)])
 **RotaryEmbedding** — positional encoding:
 
 ```python
-from max.nn.rope import RotaryEmbedding
+from max.nn.rope import RotaryEmbedding, positional_embedding
 
 rope = RotaryEmbedding(
-    dim=64,              # head_dim
-    max_seq_len=8192,
-    theta=500000.0,
+    weight=positional_embedding(dim=64, base=500000.0, max_sequence_length=8192),
 )
-# weight: pre-computed [max_seq_len, dim//2, 2] cos/sin tensor
+# weight: pre-computed [max_sequence_length, dim//2, 2] cos/sin tensor
 ```
 
 ### The Literal[0] Pattern for Optional Bias
@@ -333,7 +331,8 @@ class GoodModel(Module[[Tensor], Tensor]):
 
 ```python
 # Graph module system
-from max.nn import Module, LayerList
+from max.nn import Module
+from max.nn.legacy.layer import LayerList
 from max.nn.linear import Linear, MLP, ColumnParallelLinear
 from max.nn.norm import RMSNorm, LayerNorm
 from max.nn.rotary_embedding import RotaryEmbedding
@@ -380,7 +379,7 @@ Production models compose via `Transformer` and `TransformerBlock`:
 from max.nn.transformer import Transformer, TransformerBlock
 from max.nn.linear import Linear, MLP
 from max.nn.norm import RMSNorm
-from max.nn import LayerList
+from max.nn.legacy.layer import LayerList
 
 # Create layers using factory pattern (common in production code)
 def create_transformer(config):
@@ -486,7 +485,7 @@ from max.graph.weights import WeightsFormat
 my_arch = SupportedArchitecture(
     name="MyModelForCausalLM_Legacy",  # HF name + "_Legacy" suffix when BOTH legacy and non-legacy versions exist
     example_repo_ids=["org/MyModel-7B-Instruct"],
-    default_encoding=SupportedEncoding.bfloat16,
+    default_encoding="bfloat16",
     supported_encodings={
         "bfloat16": ["paged"],
         "float32": ["paged"],
@@ -532,20 +531,39 @@ class MyModelConfig(ArchConfigWithKVCache):
 
     @classmethod
     def initialize(cls, pipeline_config: PipelineConfig) -> "MyModelConfig":
-        """Phase 1: Read from HuggingFace config."""
+        """Phase 1: Read from HuggingFace config.
+        Note: huggingface_config is an AutoConfig object — access fields
+        via attributes (e.g., hf.hidden_size), not dict keys."""
         hf = pipeline_config.model.huggingface_config
         return cls(
-            hidden_size=hf["hidden_size"],
-            num_attention_heads=hf["num_attention_heads"],
-            num_key_value_heads=hf.get("num_key_value_heads", hf["num_attention_heads"]),
-            num_layers=hf["num_hidden_layers"],
-            intermediate_size=hf["intermediate_size"],
-            vocab_size=hf["vocab_size"],
+            hidden_size=hf.hidden_size,
+            num_attention_heads=hf.num_attention_heads,
+            num_key_value_heads=getattr(hf, "num_key_value_heads", hf.num_attention_heads),
+            num_layers=hf.num_hidden_layers,
+            intermediate_size=hf.intermediate_size,
+            vocab_size=hf.vocab_size,
         )
 
-    def finalize(self, huggingface_config, state_dict):
+    def finalize(
+        self,
+        huggingface_config,
+        state_dict,
+        return_logits,
+        return_hidden_states=...,
+        norm_method="rms_norm",
+        attention_bias=False,
+    ):
         """Phase 2: Inspect weights for encoding-dependent config.
-        Not part of ArchConfig Protocol, but a common convention in architectures."""
+        Note: The actual signature requires additional parameters beyond
+        huggingface_config and state_dict. See llama3/model_config.py for
+        the full signature:
+            finalize(self, huggingface_config: AutoConfig,
+                     state_dict: dict[str, WeightData],
+                     return_logits: ReturnLogits,
+                     return_hidden_states: ReturnHiddenStates = ...,
+                     norm_method: Literal["rms_norm"] | Literal["layer_norm"] = "rms_norm",
+                     attention_bias: bool = False)
+        """
         # Check for quantization, stacked weights, etc.
         pass
 

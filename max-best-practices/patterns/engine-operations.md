@@ -389,7 +389,7 @@ Supported parameter types: `bool`, `int`, `str`, `DType`.
 ```python
 from max.graph.weights import WeightsFormat
 from max.interfaces import PipelineTask
-from max.nn.kv_cache import KVCacheStrategy
+from max.nn.legacy.kv_cache import KVCacheStrategy
 from max.pipelines.core import TextContext
 from max.pipelines.lib import (
     PIPELINE_REGISTRY,
@@ -541,7 +541,7 @@ model = session.load(graph)
 from max.graph import Graph, TensorType, ops
 
 # Create main graph
-main_graph = Graph(TensorType(DType.float32, "batch", 128))
+main_graph = Graph("main", input_types=[TensorType(DType.float32, "batch", 128)])
 
 # Add subgraph with device specification
 subgraph = main_graph.add_subgraph(
@@ -616,7 +616,7 @@ channels = ["conda-forge", "https://conda.modular.com/max"]
 platforms = ["osx-arm64", "linux-64"]
 
 [dependencies]
-max = ">=25.1.0"
+max = ">=26.1"
 
 [tasks]
 test = "mojo test tests/"
@@ -796,7 +796,7 @@ from max.tensor import ...  # Doesn't exist
 | `custom op not found` | `@compiler.register` not visible to graph | Ensure Mojo kernel is in correct path and compiled |
 | `DeviceRef not found` | Wrong import | Use `from max.graph import DeviceRef` — `from_device()`, `CPU()`, `GPU()` all work |
 | `TensorType device required` | Missing device argument in nightly | Add `device=DeviceRef.GPU()` to TensorType in v26.2+ |
-| `architecture not registered` | Pipeline not in PIPELINE_REGISTRY | Add model to registry with `@register_arch` decorator |
+| `architecture not registered` | Pipeline not in PIPELINE_REGISTRY | Register with `PIPELINE_REGISTRY.register(my_arch)` — see [Architecture Registration](#architecture-registration) |
 | `InferenceSession creation failed` | Invalid model path or format | Verify model file exists; check supported formats in model-loading.md |
 
 ---

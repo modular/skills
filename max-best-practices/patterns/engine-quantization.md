@@ -53,7 +53,7 @@ Float8 enables high-performance inference on NVIDIA Hopper GPUs (H100) with mini
 **Pattern - FBGEMM FP8 (Recommended for H100):**
 
 ```python
-from max.nn.float8_config import (
+from max.nn.legacy.float8_config import (
     Float8Config,
     Float8InputScaleSpec,
     Float8WeightScaleSpec,
@@ -122,7 +122,7 @@ GPTQ (Group-wise Post-Training Quantization) enables memory-efficient 4-bit infe
 
 ```python
 from max.graph.quantization import QuantizationConfig, QuantizationEncoding
-from max.nn.linear import GPTQLinear
+from max.nn.legacy.linear import GPTQLinear
 from max.dtype import DType
 
 # Standard GPTQ configuration
@@ -205,7 +205,6 @@ result = qmatmul(
 | `QuantizationEncoding.Q4_K` | 4 | 256 | K-quant 4-bit (recommended) |
 | `QuantizationEncoding.Q5_K` | 5 | 256 | K-quant 5-bit |
 | `QuantizationEncoding.Q6_K` | 6 | 256 | K-quant 6-bit |
-| `QuantizationEncoding.Q8_0` | 8 | 32 | Graph-level input pre-quantization |
 | `QuantizationEncoding.GPTQ` | 4 | per-group | Group-wise PTQ for LLMs |
 
 ---
@@ -346,7 +345,7 @@ high_accuracy_config = QuantizationConfig(
 
 ### Graph Quantization
 
-- **QuantizationEncoding**: Enum with `Q4_0`, `Q4_K`, `Q5_K`, `Q6_K`, `Q8_0`, `GPTQ`
+- **QuantizationEncoding**: Enum with `Q4_0`, `Q4_K`, `Q5_K`, `Q6_K`, `GPTQ`
 - **Weight**: Set `quantization_encoding=QuantizationEncoding.Q4_K` on `Weight` constructor
 - **qmatmul**: `qmatmul(encoding, config, lhs, rhs)` for quantized matrix multiplication
 
@@ -391,7 +390,7 @@ high_accuracy_config = QuantizationConfig(
 
 **Stable (v26.1):**
 ```python
-from max.nn.float8_config import (
+from max.nn.legacy.float8_config import (
     Float8Config,
     Float8InputScaleSpec,
     Float8WeightScaleSpec,
@@ -409,7 +408,7 @@ input_spec = Float8InputScaleSpec(
 
 **Nightly (v26.2+):**
 ```python
-from max.nn.float8_config import (
+from max.nn.legacy.float8_config import (
     Float8Config,
     Float8InputScaleSpec,
     Float8WeightScaleSpec,
@@ -447,4 +446,4 @@ input_spec = Float8InputScaleSpec(
 ## References
 
 - [MAX Documentation](https://docs.modular.com/max/)
-- Source: `max/nn/float8_config.py`, `max/graph/quantization.py`
+- Source: `max/nn/legacy/float8_config.py`, `max/graph/quantization.py`

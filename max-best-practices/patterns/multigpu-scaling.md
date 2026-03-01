@@ -290,14 +290,14 @@ KV cache ≈ 2 × num_layers × num_heads × head_dim × max_seq_len × batch_si
 max serve --model meta-llama/Llama-3.1-8B-Instruct \
   --devices gpu:0 \
   --enable-kvcache-swapping-to-host \
-  --max-cache-batch-size 4 \
+  --max-batch-size 4 \
   --max-length 32768
 ```
 
 **Recommendations:**
 - For 32K+ context: Use `--enable-kvcache-swapping-to-host` to offload inactive KV cache to CPU memory
 - Monitor GPU memory usage during peak load, not just at startup
-- Reduce `--max-batch-size` or `--max-cache-batch-size` if hitting OOM during inference
+- Reduce `--max-batch-size` if hitting OOM during inference
 - Consider quantized KV cache (when available) for further memory reduction
 
 ---
