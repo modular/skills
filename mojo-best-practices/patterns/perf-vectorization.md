@@ -10,7 +10,7 @@ error_patterns:
   - "cannot vectorize"
   - "unaligned access"
   - "vector type"
-  - "simdwidthof"
+  - "simd_width_of"
   - "slow performance"
   - "cannot be converted from.*capturing.*to.*func"
 scenarios:
@@ -51,19 +51,18 @@ comptime AVX512_FLOAT32_WIDTH: Int = 16 # 512-bit / 32-bit = 16 elements
 comptime AVX512_FLOAT64_WIDTH: Int = 8  # 512-bit / 64-bit = 8 elements
 ```
 
-### Using simdwidthof for Optimal Width
+### Using simd_width_of for Optimal Width
 
-The `simdwidthof[T]()` helper function returns the optimal SIMD width for type `T` on the current target architecture. This is preferred over hardcoded constants for portable code.
+The `simd_width_of[T]()` helper function returns the optimal SIMD width for type `T` on the current target architecture. This is preferred over hardcoded constants for portable code.
 
 ```mojo
-# nocompile
-from sys import simdwidthof
+from sys import simd_width_of
 from memory import UnsafePointer
 
 fn sum_array_portable[T: DType](data: UnsafePointer[Scalar[T]], size: Int) -> Scalar[T]:
     """Sum using architecture-optimal SIMD width."""
     # Runtime width detection - adapts to AVX, AVX-512, NEON, etc.
-    comptime WIDTH = simdwidthof[T]()
+    comptime WIDTH = simd_width_of[T]()
 
     var partial_sum = SIMD[T, WIDTH]()
     var i = 0
@@ -82,26 +81,25 @@ fn sum_array_portable[T: DType](data: UnsafePointer[Scalar[T]], size: Int) -> Sc
     return total
 ```
 
-**When to use `simdwidthof` vs compile-time constants:**
+**When to use `simd_width_of` vs compile-time constants:**
 
 | Approach | Use Case | Example |
 |----------|----------|---------|
-| `simdwidthof[T]()` | Portable code targeting multiple architectures | Libraries, cross-platform kernels |
+| `simd_width_of[T]()` | Portable code targeting multiple architectures | Libraries, cross-platform kernels |
 | Hardcoded constant | Known target architecture, maximum control | Performance-critical inner loops on specific hardware |
-| `simdwidthof[T]() * 2` | Manually tuned unrolling | When profiling shows benefit from larger vectors |
+| `simd_width_of[T]() * 2` | Manually tuned unrolling | When profiling shows benefit from larger vectors |
 
 ```mojo
-# nocompile
-from sys import simdwidthof
+from sys import simd_width_of
 
 # PORTABLE: Adapts to target (8 on AVX, 16 on AVX-512)
-comptime PORTABLE_WIDTH = simdwidthof[DType.float32]()
+comptime PORTABLE_WIDTH = simd_width_of[DType.float32]()
 
 # FIXED: Always 8, regardless of target
-comptime FIXED_WIDTH: Int = 8  # Both alias and comptime work in v26.1+
+comptime FIXED_WIDTH: Int = 8  # x86 AVX; use simd_width_of for portable code
 
 # DOUBLED: 2x optimal for manual unrolling
-comptime UNROLLED_WIDTH = simdwidthof[DType.float32]() * 2
+comptime UNROLLED_WIDTH = simd_width_of[DType.float32]() * 2
 ```
 
 **SIMD width by type:**
@@ -114,11 +112,32 @@ comptime UNROLLED_WIDTH = simdwidthof[DType.float32]() * 2
 | Int16 | 16 | 32 |
 | Int8 | 32 | 64 |
 
+### Using `algorithm.vectorize`
+
+The `vectorize` higher-order function automatically handles SIMD width and remainder elements:
+
+```mojo
+# nocompile
+from algorithm import vectorize
+from sys.info import simdwidthof
+
+fn process_array(mut data: UnsafePointer[Float32], n: Int):
+    @parameter
+    fn op[width: Int](idx: Int):
+        var v = data.load[width=width](idx)
+        data.store(idx, v * 2.0)
+
+    vectorize[op, simdwidthof[DType.float32]()](n)
+```
+
+**When to use:** Prefer `vectorize` over manual SIMD loops — it handles tail elements and picks optimal width. Use manual SIMD only when you need non-standard access patterns (gather/scatter, interleaved).
+
 ### Basic SIMD Loop Pattern
 
 **Pattern:**
 
 ```mojo
+from sys import simd_width_of
 from memory import UnsafePointer
 from builtin.type_aliases import MutAnyOrigin
 
@@ -130,7 +149,7 @@ fn add_arrays_simd(
     result: Float32Ptr,
     size: Int
 ):
-    comptime WIDTH: Int = 8  # AVX width for Float32
+    comptime WIDTH = simd_width_of[DType.float32]()  # Portable: 8 on AVX, 16 on AVX-512
 
     # Process WIDTH elements at a time
     var i = 0
@@ -234,8 +253,8 @@ Use `reduce_or()` or `reduce_and()` to check if any/all lanes need to continue.
 
 **Do:**
 ```mojo
-fn mandelbrot_early_exit(output: UnsafePointer[Int32], width: Int, height: Int, max_iter: Int):
-    comptime WIDTH: Int = 8
+fn mandelbrot_early_exit(output: UnsafePointer[mut=True, type=Int32, origin=MutAnyOrigin], width: Int, height: Int, max_iter: Int):
+    comptime WIDTH: Int = 8  # x86 AVX; for portable code use simd_width_of[DType.float64]()
 
     for row in range(height):
         var y0 = Float64(row) / Float64(height) * 3.0 - 1.5
@@ -245,6 +264,7 @@ fn mandelbrot_early_exit(output: UnsafePointer[Int32], width: Int, height: Int, 
             var x0_vec = SIMD[DType.float64, WIDTH]()
             # ... initialize x0_vec ...
 
+            var y0_vec = SIMD[DType.float64, WIDTH](y0)
             var x = SIMD[DType.float64, WIDTH]()
             var y = SIMD[DType.float64, WIDTH]()
             var iteration = SIMD[DType.int32, WIDTH]()
@@ -359,8 +379,8 @@ Grid-stride loops allow a fixed number of threads to process arbitrary-sized dat
 ```mojo
 # nocompile
 fn naive_kernel(
-    output: UnsafePointer[Float32],
-    input: UnsafePointer[Float32],
+    output: UnsafePointer[Float32, _],
+    input: UnsafePointer[Float32, _],
     size: Int,
 ):
     var tid = block_idx.x * block_dim.x + thread_idx.x
@@ -374,8 +394,8 @@ fn naive_kernel(
 ```mojo
 # nocompile
 fn grid_stride_kernel(
-    output: UnsafePointer[Float32],
-    input: UnsafePointer[Float32],
+    output: UnsafePointer[Float32, _],
+    input: UnsafePointer[Float32, _],
     size: Int,
 ):
     var tid = block_idx.x * block_dim.x + thread_idx.x
@@ -392,8 +412,8 @@ fn grid_stride_kernel(
 ```mojo
 # nocompile
 fn vectorized_grid_stride_kernel[VEC_WIDTH: Int](
-    output: UnsafePointer[Float32],
-    input: UnsafePointer[Float32],
+    output: UnsafePointer[Float32, _],
+    input: UnsafePointer[Float32, _],
     size: Int,
 ):
     var tid = block_idx.x * block_dim.x + thread_idx.x
@@ -438,7 +458,7 @@ Not all operations benefit from SIMD. SIMD versions of transcendental functions 
 # nocompile
 # SLOWER: SIMD exp() approach (14.95s vs 10.06s baseline - 49% regression!)
 fn silu_simd_direct(result: Float32Ptr, x: Float32Ptr, n: Int):
-    comptime WIDTH: Int = 8
+    comptime WIDTH: Int = 8  # x86 AVX; for portable code use simd_width_of[DType.float32]()
     var i = 0
     while i + WIDTH <= n:
         var v = x.load[width=WIDTH](i)
@@ -449,7 +469,7 @@ fn silu_simd_direct(result: Float32Ptr, x: Float32Ptr, n: Int):
 
 # FASTER: Scalar loop inside SIMD
 fn silu_simd_scalar(result: Float32Ptr, x: Float32Ptr, n: Int):
-    comptime WIDTH: Int = 8
+    comptime WIDTH: Int = 8  # x86 AVX; for portable code use simd_width_of[DType.float32]()
     var i = 0
     while i + WIDTH <= n:
         var v = x.load[width=WIDTH](i)
@@ -507,14 +527,15 @@ fn cos_taylor_simd[WIDTH: Int](x: SIMD[DType.float64, WIDTH]) -> SIMD[DType.floa
 **Fast inverse square root (Quake III style, ~1% error):**
 
 ```mojo
-# nocompile
+from memory import bitcast
+
 fn fast_inv_sqrt_simd[WIDTH: Int](x: SIMD[DType.float32, WIDTH]) -> SIMD[DType.float32, WIDTH]:
     """Fast 1/sqrt(x) - 4x faster than 1/sqrt(x)."""
     comptime MAGIC: Int32 = 0x5f3759df
 
-    var i = x.bitcast[DType.int32]()
+    var i = bitcast[DType.int32, WIDTH](x)
     i = MAGIC - (i >> 1)
-    var y = i.bitcast[DType.float32]()
+    var y = bitcast[DType.float32, WIDTH](i)
 
     # One Newton-Raphson iteration for better accuracy
     return y * (1.5 - 0.5 * x * y * y)
@@ -552,7 +573,8 @@ fn fast_inv_sqrt_simd[WIDTH: Int](x: SIMD[DType.float32, WIDTH]) -> SIMD[DType.f
 
 **Do (4 independent accumulators):**
 ```mojo
-# nocompile - Float32Ptr type alias not available in stable v26.1
+# nocompile
+# Float32Ptr comptime type not available in stable v26.1
 fn sum_with_accumulators[width: Int = 8](data: Float32Ptr, n: Int) -> Float32:
     """Sum array using 4 independent accumulators for maximum ILP."""
     var stride = width * 4
@@ -583,7 +605,8 @@ fn sum_with_accumulators[width: Int = 8](data: Float32Ptr, n: Int) -> Float32:
 
 **Don't (single accumulator):**
 ```mojo
-# nocompile - Float32Ptr type alias not available in stable v26.1
+# nocompile
+# Float32Ptr comptime type not available in stable v26.1
 fn sum_single_accumulator[width: Int = 8](data: Float32Ptr, n: Int) -> Float32:
     """SLOWER: Each load waits for previous add to complete."""
     var sum = SIMD[DType.float32, width](0.0)
@@ -628,7 +651,8 @@ Common scalar bottleneck patterns and their vectorized alternatives:
 **Fast polynomial approximations:**
 
 ```mojo
-# nocompile - SIMD.bitcast() method not available in stable v26.1
+from memory import bitcast
+
 fn fast_exp_simd[width: Int](x: SIMD[DType.float32, width]) -> SIMD[DType.float32, width]:
     """Fast exp() approximation using Schraudolph's method (~1e-4 relative error).
 
@@ -642,7 +666,7 @@ fn fast_exp_simd[width: Int](x: SIMD[DType.float32, width]) -> SIMD[DType.float3
     comptime b = SIMD[DType.float32, width](1065353216.0)  # 127 * 2^23
 
     var i = (a * clamped + b).cast[DType.int32]()
-    return i.bitcast[DType.float32]()
+    return bitcast[DType.float32, width](i)
 
 
 fn fast_tanh_simd[width: Int](x: SIMD[DType.float32, width]) -> SIMD[DType.float32, width]:
@@ -707,7 +731,7 @@ vectorize[simd_width](size, body)
 
 | Scenario | Approach | See Also |
 |----------|----------|----------|
-| Large numeric arrays | Manual SIMD loop with WIDTH=8 | [`perf-parallelization.md`](perf-parallelization.md) |
+| Large numeric arrays | Manual SIMD loop with `simd_width_of` | [`perf-parallelization.md`](perf-parallelization.md) |
 | Escape-time algorithms | Early exit with reduce_or() | - |
 | Fixed small arrays | @parameter unrolling | - |
 | GPU arbitrary data | Grid-stride loop | [`gpu-fundamentals.md`](gpu-fundamentals.md) |
@@ -734,8 +758,8 @@ vectorize[simd_width](size, body)
 | `unaligned memory access` | Pointer not aligned for SIMD width | Use `ptr.load[width, alignment=1]()` or align data with `@align(32)` |
 | `SIMD width mismatch` | Loop count not divisible by SIMD width | Handle remainder with scalar loop or `width=1` fallback |
 | `cannot vectorize loop` | Loop has dependencies or non-contiguous access | Restructure for contiguous access; use `@parameter` for constant bounds |
-| `slow vectorized code` | Wrong SIMD width for architecture | Use `simdwidthof[T]()` to get optimal width for target |
-| `illegal instruction (AVX-512)` | Running AVX-512 code on non-supporting CPU | Check `sys.has_avx512f()` before using 512-bit vectors |
+| `slow vectorized code` | Wrong SIMD width for architecture | Use `simd_width_of[T]()` to get optimal width for target |
+| `illegal instruction (AVX-512)` | Running AVX-512 code on non-supporting CPU | Check `CompilationTarget.has_avx512f()` before using 512-bit vectors (it is a static method on `CompilationTarget` from `sys`) |
 | `reduce produces wrong result` | Uninitialized accumulator or wrong identity | Initialize accumulator to identity (0 for sum, 1 for product) |
 
 ---
@@ -746,8 +770,8 @@ vectorize[simd_width](size, body)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Constants** | `alias` or `comptime` | Both work in v26.1+ |
-| **simdwidthof** | `simdwidthof[T]()` | Unchanged |
+| **Constants** | `comptime` | Preferred over deprecated `alias` |
+| **simd_width_of** | `simd_width_of[T]()` | Unchanged |
 | **SIMD operations** | All stable | `load`, `store`, `reduce_*` |
 | **Heap allocation** | `from memory import alloc; alloc[T](n)` | Unchanged |
 
@@ -756,8 +780,7 @@ vectorize[simd_width](size, body)
 from memory import UnsafePointer
 from builtin.type_aliases import MutAnyOrigin
 
-# Both alias and comptime work in v26.1+
-comptime WIDTH = 8  # AVX width for Float32
+comptime WIDTH = 8  # AVX width for Float32; for portable code use simd_width_of[DType.float32]()
 comptime Float32Ptr = UnsafePointer[mut=True, type=Float32, origin=MutAnyOrigin]
 
 fn add_arrays_simd(a: Float32Ptr, b: Float32Ptr, result: Float32Ptr, size: Int):
@@ -770,9 +793,9 @@ fn add_arrays_simd(a: Float32Ptr, b: Float32Ptr, result: Float32Ptr, size: Int):
 ```
 
 **Notes:**
-- Both `alias` and `comptime` work for constants in v26.1 and nightly
+- Use `comptime` for compile-time constants (preferred over deprecated `alias`)
 - SIMD operations (`load`, `store`, `reduce_add`, etc.) are stable across versions
-- `simdwidthof[T]()` for optimal width detection is stable
+- `simd_width_of[T]()` for optimal width detection is stable
 - Alignment requirements and patterns are stable
 
 ---

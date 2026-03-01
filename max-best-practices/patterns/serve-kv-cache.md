@@ -140,6 +140,15 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
   --device-memory-utilization 0.85
 ```
 
+### Cache Eviction
+
+When KV cache memory is exhausted, MAX Serve uses LRU (Least Recently Used) eviction to free cache blocks from the oldest idle sequences. Active sequences are never evicted.
+
+To minimize eviction impact:
+- Size `--max-cache-batch-size` to your expected concurrent request count
+- Monitor cache utilization via metrics endpoint
+- For long-context models, increase `--max-cache-batch-size` proportionally
+
 ---
 
 ## Common Patterns

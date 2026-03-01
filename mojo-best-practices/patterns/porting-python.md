@@ -92,8 +92,8 @@ These Python features have **no Mojo equivalent** — do not attempt to port the
 | `str[i]` | `String(s[byte=i])` | Returns `StringSlice`, wrap in `String()` |
 | `str[a:b]` | Manual substring construction | No slicing — build char by char |
 | `bytes` | `List[UInt8]` | Or `UnsafePointer[UInt8]` |
-| `list[int]` | `List[Int]` | Generic, heap-allocated |
-| `[1, 2, 3]` | `List[Int](1, 2, 3)` | Or `List[Int]()` + `.append()` for non-trivial types |
+| `list[int]` | `List[Int]` | Generic, heap-allocated. `T` must be `Copyable`; move-only types cannot go in `List` |
+| `[1, 2, 3]` | `var x: List[Int] = [1, 2, 3]` | List literal syntax (type annotation required); or `List[Int]()` + `.append()` |
 | `tuple[int, str]` | `Tuple[Int, String]` | Fixed-type tuple |
 | `dict[str, int]` | `Dict[String, Int]` | Hash map |
 | `set[int]` | `Set[Int]` | Hash set |
@@ -101,6 +101,8 @@ These Python features have **no Mojo equivalent** — do not attempt to port the
 | `float('inf')` | `math.inf` | Import from `math`; NOT `Float64.MAX` (that's largest finite) |
 | `float('-inf')` | `-math.inf` | Negated infinity |
 | `float('nan')` | `math.nan` | NaN sentinel |
+
+> **Warning: List and InlineArray construction syntax.** `List[Int](1, 2, 3)` and `InlineArray[Int, 3](1, 2, 3)` do NOT compile. Use list literal syntax with a type annotation: `var x: List[Int] = [1, 2, 3]` or `var x: InlineArray[Int, 3] = [1, 2, 3]`. For empty lists use `List[Int]()`. For pre-sized lists use `List[Int](length=N, fill=0)`.
 
 **Optional usage:**
 
@@ -119,7 +121,7 @@ These Python features have **no Mojo equivalent** — do not attempt to port the
 | `class Foo(Base):` | `struct Foo(Trait):` | Traits, not inheritance (see Pattern 7) |
 | `self.x = x` | `self.x = x` | Same in `__init__` |
 | `a, b = 1, 2` | `var a = 1; var b = 2` | Separate declarations |
-| `for k, v in d.items():` | `for key in d: var v = d[key]` | Dict iteration |
+| `for k, v in d.items():` | `for entry in d: var k = String(entry); var v = d[k]` | Dict iteration yields references — wrap in `String()` for owned key |
 | `x, y = tuple` | `var x = t[0]; var y = t[1]` | Index access |
 | `return (a, b)` | Return a result struct, or use `mut` out-params | No tuple unpacking on returns |
 | `[x*2 for x in data]` | `for x in data: result.append(x*2)` | Explicit loop |
@@ -130,14 +132,14 @@ These Python features have **no Mojo equivalent** — do not attempt to port the
 | `map(fn, data)` | `for x in data: result.append(fn(x))` | Explicit loop |
 | `filter(fn, data)` | `for x in data: if fn(x): result.append(x)` | Loop + guard |
 | `functools.reduce(fn, data, init)` | `var acc = init; for x in data: acc = fn(acc, x)` | Accumulator |
-| `lambda x: x*2` | `fn(x: Int) -> Int: return x*2` | No dynamic closure capture, no runtime function creation |
+| `lambda x: x*2` | `fn(x: Int) -> Int: return x*2` | Mojo has **no anonymous lambda syntax** — all closures must be named `fn` declarations. No dynamic closure capture, no runtime function creation |
 | `@decorator` | Inline the logic | See decorator note below |
 | `with open(f):` | RAII struct with `__del__` | Deterministic destruction at end of scope |
 | `json.dumps(obj)` | Python interop or manual String building | No built-in JSON |
 | `yield x` | Struct with state + `next()` method | See Pattern 6 |
 | `collections.deque` | `List[T]` + front index tracking | No deque — simulate with List |
 | `collections.Counter` | `Dict[String, Int]` + increment pattern | See Dict gotchas above |
-| `collections.namedtuple` | Struct with `@fieldwise_init` | Add `Copyable + Movable` for collections |
+| `collections.namedtuple` | Struct with `@fieldwise_init` | Add `Copyable + Movable` for collections; add `ImplicitlyCopyable` for Dict keys or `var b = a` assignment |
 | `heapq` | Manual min-heap implementation | No heapq — ~40 lines to reimplement |
 
 > **Decorator note:** Mojo does not support runtime function wrapping. Python decorators that modify function behavior at runtime have no direct equivalent. Mojo `@` decorators (`@fieldwise_init`, `@parameter`) are compiler directives, not user-definable wrappers. Alternatives: memoization → struct with `Dict` cache field and `lookup_or_compute()` method; retry → explicit while loop with try/except; timer → call `time.now()` before/after.
@@ -165,9 +167,9 @@ These Python features have **no Mojo equivalent** — do not attempt to port the
 | `raise Exception("msg")` | `raise "msg"` | Functions must declare `raises` |
 | `raise ValueError("...")` | `raise "ValueError: ..."` | No exception types — use string prefixes |
 | `try: ... except Exception as e:` | `try: ... except e:` | `e` is a `String`, not an exception object |
-| `except TypeError:` | `if "TypeError" in str(e):` | Match on string prefix |
+| `except TypeError:` | `if "TypeError" in String(e):` | Match on string prefix |
 | `finally:` | Not yet supported | Use RAII (`__del__`) for cleanup |
-| `raise X from Y` | `raise "X, caused by: " + str(prev)` | No exception chaining — embed in message |
+| `raise X from Y` | `raise "X, caused by: " + String(prev)` | No exception chaining — embed in message |
 | `with ctx:` | RAII struct with `__del__` | See Pattern 8 |
 
 ### Modules and Imports
@@ -412,12 +414,11 @@ fn main() raises:
 Python has no concept of SIMD. Even NumPy uses C extensions under the hood.
 
 ```mojo
-# nocompile
 # SIMD is a built-in type — not a library, not an intrinsic
 var v = SIMD[DType.float32, 8](1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0)
 var doubled = v * 2        # 8 multiplications in ONE instruction
 var total = v.reduce_add()  # Sum all 8 lanes
-var mask = v > 4.0          # Element-wise comparison
+var mask = v.gt(4.0)        # Element-wise comparison → SIMD[DType.bool, 8]
 var filtered = mask.select(v, SIMD[DType.float32, 8](0))  # Branchless select
 ```
 
@@ -451,7 +452,6 @@ fn matmul_tiled[TILE_M: Int, TILE_N: Int, TILE_K: Int](
 Python uses garbage collection — no compile-time memory safety guarantees.
 
 ```mojo
-# nocompile
 fn process(var data: List[Int]):
     """Takes ownership — caller can't use data after this call."""
     for i in range(len(data)):
@@ -466,7 +466,7 @@ fn analyze(data: List[Int]) -> Int:
     return total
 
 fn main():
-    var my_data = List[Int](1, 2, 3)
+    var my_data: List[Int] = [1, 2, 3]
     var sum = analyze(my_data)       # Borrow — my_data still valid
     process(my_data^)                # Transfer ownership with ^
     # my_data is invalid here — compiler enforces this
@@ -501,7 +501,6 @@ fn main():
 Python allocates ALL objects on the heap. Mojo can stack-allocate.
 
 ```mojo
-# nocompile
 from collections import InlineArray
 
 fn fast_computation():
@@ -602,7 +601,6 @@ class Point:
 **Mojo:**
 
 ```mojo
-# nocompile
 from math import sqrt
 
 @fieldwise_init
@@ -691,6 +689,7 @@ fn count_words(words: List[String]) -> Dict[String, Int]:
 
 > **Dict gotchas:**
 >
+> - **`Dict[key]` can raise:** `Dict.__getitem__` raises if the key is not found. Any function that uses `dict[key]` needs `raises` in its signature, or wrap access in `try/except`. Use `if key in dict:` before access to avoid.
 > - **Value type constraint:** Dict values must be `Copyable & Movable`. `Dict[String, List[Int]]` works but has poor ergonomics — prefer flat parallel arrays (`List[String]` keys + `List[Int]` values) for Dict-of-Lists patterns.
 > - **Value mutation:** `dict[key].append(val)` may copy, not mutate in-place. Build complete values before insertion, or extract → modify → reinsert.
 > - **`Counter` pattern:** `if key in d: d[key] = d[key] + 1; else: d[key] = 1` — no `.get(key, default)`.
@@ -918,7 +917,6 @@ finally:
 **Mojo:**
 
 ```mojo
-# nocompile
 # Strategy: use string prefixes for error "types"
 fn process(item_id: Int) raises -> String:
     if item_id < 0:
@@ -941,7 +939,7 @@ fn main():
         var result = process(-1)
         print(result)
     except e:
-        var msg = str(e)
+        var msg = String(e)
         if msg.startswith("ValidationError"):
             print("Validation:", msg)
         elif msg.startswith("NotFoundError"):
@@ -959,7 +957,7 @@ fn main():
 **Context manager / RAII rules:**
 
 - Mojo guarantees deterministic destruction — resources are freed when the variable goes out of scope
-- Destruction order is **reverse declaration order** (LIFO — same as Python `with` stack)
+- Mojo uses **ASAP destruction** (last-use semantics) — values are freed at their last use point, not at scope end. Do NOT rely on reverse-declaration-order (LIFO) destruction as in Python's `with` stack
 - Multiple `var` declarations = nested resource management (no `ExitStack` needed)
 - No exception suppression (Python `__exit__` returning `True`) — RAII `__del__` cannot know *why* destruction is happening. Use explicit `try/except` at the call site instead
 - No `ExitStack` — use multiple `var` declarations for nested resource management
@@ -1180,9 +1178,11 @@ fn main():
 | `int("42")` | `atol("42")` | String to integer |
 | `float("3.14")` | `parse_float()` helper below | No `atof()` built-in |
 | `round(x, 4)` | `round_to(x, 4)` helper below | No built-in `round()` |
-| `str(3.0)` → `"3"` | `str(Float64(3.0))` → `"3.0"` | Mojo keeps decimal — write `format_number()` if you need `"3"` |
-| `s.split(",")` | `split_by()` helper below | `String.split()` may exist for simple delimiters |
+| `str(3.0)` → `"3"` | `String(Float64(3.0))` → `"3.0"` | Mojo keeps decimal — write `format_number()` if you need `"3"` |
+| `s.split(",")` | `split_by()` helper below | `String.split()` exists but returns `List[StringSlice]` -- see warning below |
 | `len(s)` | `len(s)` | Same! (byte length) |
+
+> **`String.split()` gotcha:** `String.split()` returns `List[StringSlice]`, NOT `List[String]`. StringSlice elements cannot be used as Dict keys or stored beyond the source String's lifetime. Wrap elements with `String(slice)` when you need owned strings: `var owned = String(parts[i])`.
 
 **Text Parsing Toolkit** — reusable helpers for CSV/data processing ports:
 
@@ -1456,7 +1456,8 @@ python3.14t --version  # Free-threaded Python 3.14
 | **Constants** | `alias` (deprecated) or `comptime` | `comptime` preferred | Replace `alias` with `comptime` in fn/struct scope |
 | **Struct init** | `@fieldwise_init` | `@fieldwise_init` | Same — **`@fieldwise_init` is the preferred replacement for `@value`** |
 | **`__del__` signature** | `fn __del__(deinit self):` | `fn __del__(deinit self):` | Same in both |
-| **`__moveinit__` signature** | `fn __moveinit__(out self, deinit take: Self):` | `fn __moveinit__(out self, deinit take: Self):` | Same — param must be named `take` |
+| **Move constructor** | `fn __moveinit__(out self, deinit take: Self):` | **Deprecated** — use `fn __init__(out self, *, deinit take: Self)` | Nightly prefers unified `__init__` overload; old form still accepted |
+| **Copy constructor** | `fn __copyinit__(out self, copy: Self, /):` | **Deprecated** — use `fn __init__(out self, *, copy: Self)` | Nightly prefers unified `__init__` overload; old form still accepted |
 | **Ownership params** | `fn foo(var x: T):` | `fn foo(var x: T):` | Same in both |
 | **Memory allocation** | `UnsafePointer[T].alloc(n)` may work | **Removed** — use `List[T]` + `.unsafe_ptr()` | Use List-based allocation |
 | **List element traits** | `CollectionElement` was removed | Use `Copyable & Movable` trait composition | Add explicit trait conformance |
@@ -1477,7 +1478,7 @@ Replace these patterns immediately — they produce warnings on v26.1 and errors
 comptime N = 10                          comptime N = 10
 fn __del__(var self):               fn __del__(deinit self):
 fn __moveinit__(out self,             fn __moveinit__(out self,
-    var existing: Self):                deinit existing: Self):
+    var existing: Self):                deinit take: Self):
 fn foo(var x: List[Int]):           fn foo(var x: List[Int]):
 UnsafePointer[T].alloc(n)            List[T](length=n, fill=default_val)
                                       # then .unsafe_ptr() for pointer access

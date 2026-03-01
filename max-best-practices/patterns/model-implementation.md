@@ -58,15 +58,16 @@ Comprehensive patterns for implementing neural network models in MAX, including 
 - You need explicit graph construction with symbolic dimensions
 - Working with `PipelineModel` integration
 
-| Aspect | `max.nn.Module (eager API)` | `max.nn.Module` |
-|--------|-----------------|------------------------|
+| Aspect | Eager API (`max.nn`) | Graph API (`max.nn.legacy`) |
+|--------|---------------------|----------------------------|
 | **Tensor type** | `Tensor` (eager) | `TensorValue` (symbolic) |
 | **Define forward** | `forward()` method | `__call__()` method |
 | **Weight type** | `Tensor` attributes | `Weight` objects |
 | **Compilation** | `module.compile(*input_types)` | `InferenceSession.load(graph)` |
 | **Device handling** | `module.to(device)` | `DeviceRef` in constructors |
-| **Production use** | Not yet in pipelines | All production models |
-| **Docs recommend** | Yes — for new models | Legacy, backward compat |
+| **Production use** | New — standalone models | All production pipeline models |
+| **MAX Serve** | Not yet used in pipeline models | Required for `max serve` |
+| **API reference** | [`max.nn`](https://docs.modular.com/max/api/python/nn/) | [`max.nn.module_v3`](https://docs.modular.com/max/api/python/nn/module_v3/) |
 
 **❌ WRONG:** Mixing tensor types across APIs
 
@@ -124,7 +125,6 @@ class MLP(Module[[Tensor], Tensor]):
     """Simple feedforward network."""
 
     def __init__(self, dim: int, hidden_dim: int):
-        super().__init__()
         self.gate = Linear(dim, hidden_dim, bias=False)
         self.up = Linear(dim, hidden_dim, bias=False)
         self.down = Linear(hidden_dim, dim, bias=False)
@@ -137,7 +137,7 @@ class MLP(Module[[Tensor], Tensor]):
 **Key points:**
 
 - Generic `Module[[InputTypes], ReturnType]` declares the forward signature
-- `@F.functional` decorator enables graph tracing during compilation
+- `@F.functional` decorator is required — enables graph tracing during compilation
 - `Tensor` attributes are auto-discovered as parameters via `vars(self)`
 - `Module` attributes are auto-discovered as children
 
@@ -278,13 +278,13 @@ Compile an eager model into an optimized inference graph:
 ```python
 from max.nn import Module, Linear
 from max.tensor import Tensor
-from max.graph import TensorType, DeviceRef
+from max.graph import TensorType
+from max.driver import CPU
 from max.dtype import DType
 from max import functional as F
 
 class SimpleModel(Module[[Tensor], Tensor]):
     def __init__(self):
-        super().__init__()
         self.linear = Linear(10, 5, bias=False)
 
     @F.functional
@@ -294,7 +294,7 @@ class SimpleModel(Module[[Tensor], Tensor]):
 # Create and compile
 model = SimpleModel()
 compiled = model.compile(
-    TensorType(DType.float32, ("batch", 10), device=DeviceRef.CPU())
+    TensorType(DType.float32, ("batch", 10), device=CPU())
 )
 
 # Execute
@@ -359,7 +359,6 @@ from max.dtype import DType
 
 class LegacyLinear(Module):
     def __init__(self, in_dim: int, out_dim: int, dtype: DType, device: DeviceRef):
-        super().__init__()
         self.weight = Weight("weight", dtype, (in_dim, out_dim), DeviceRef.CPU())
 
     def __call__(self, x: TensorValue) -> TensorValue:
@@ -659,7 +658,6 @@ from max.dtype import DType
 
 class Attention(Module[[Tensor], Tensor]):
     def __init__(self, dim: int, n_heads: int, n_kv_heads: int):
-        super().__init__()
         self.n_heads = n_heads
         self.n_kv_heads = n_kv_heads
         self.head_dim = dim // n_heads
@@ -682,7 +680,6 @@ class Attention(Module[[Tensor], Tensor]):
 
 class TransformerBlock(Module[[Tensor], Tensor]):
     def __init__(self, dim: int, n_heads: int, n_kv_heads: int, ff_dim: int, eps: float):
-        super().__init__()
         self.self_attn = Attention(dim, n_heads, n_kv_heads)
         self.mlp = MLP(dim, ff_dim)
         self.input_layernorm = RMSNorm(dim, eps=eps)
@@ -714,7 +711,7 @@ class TransformerBlock(Module[[Tensor], Tensor]):
 
 - **Eager API Module** (`max.nn`): `class MyModel(Module[[Tensor], Tensor])` with `forward()` and `@F.functional`
 - **Graph API Module** (`max.nn`): `class MyModel(Module)` with `__call__()` and `Weight` objects
-- **Compile new API**: `compiled = model.compile(TensorType(dtype, shape, device=DeviceRef.CPU()))`
+- **Compile new API**: `compiled = model.compile(TensorType(dtype, shape, device=CPU()))`
 - **Compile legacy**: `session = InferenceSession(); model = session.load(graph, weights_registry=state_dict)`
 - **Load weights**: `model.load_state_dict(state_dict)` (both APIs)
 - **Parameter discovery**: `for name, param in model.parameters:` (new API)
@@ -744,8 +741,8 @@ class TransformerBlock(Module[[Tensor], Tensor]):
 
 ```python
 # Old (pre-v26.1)
-from max.driver import Tensor as DriverTensor  # nocompile
-t = DriverTensor(shape=[2, 3], dtype=DType.float32)  # nocompile
+from max.driver import Tensor as DriverTensor  # removed in v26.1+
+t = DriverTensor(shape=[2, 3], dtype=DType.float32)  # removed in v26.1+
 
 # New (v26.1+)
 from max.driver import Buffer
@@ -757,7 +754,8 @@ b = Buffer(shape=[2, 3], dtype=DType.float32)
 Stable (v26.1):
 
 ```mojo
-# nocompile - foreach callback signature snippet, not standalone
+# nocompile
+# foreach callback signature snippet (v26.1 stable)
 # Stable v26.1 foreach callback
 fn my_kernel[width: Int, element_alignment: Int](
     idx: IndexList[rank],
@@ -768,12 +766,243 @@ fn my_kernel[width: Int, element_alignment: Int](
 Nightly (v26.2+):
 
 ```mojo
-# nocompile - Nightly v26.2+ only
+# nocompile
+# Nightly v26.2+ only
 fn my_kernel[width: Int](
     idx: IndexList[rank],
 ) -> SIMD[dtype, width]:
     return rebind[SIMD[dtype, width]](inp[idx])
 ```
+
+---
+
+## Practical Learnings (from GPT-2 Implementation)
+
+These patterns were discovered while implementing GPT-2 (124M) from scratch using both the eager and graph APIs. They represent real issues encountered during standalone model development.
+
+### ops.layer_norm Crashes on Apple Silicon (BLOCKER) [Temporary]
+
+**Problem:** `ops.layer_norm` / `F.layer_norm` triggers the Metal GPU device context path even during CPU-only graph compilation on Apple Silicon, hitting `"Unimplemented at device_context.mojo:1950"`. This prevents CPU execution of any model using LayerNorm on macOS with Metal GPU. This is a backend bug that will be fixed in a future MAX release.
+
+**Workaround — ManualLayerNorm (eager API):**
+
+```python
+from max.nn import Module
+from max.tensor import Tensor
+from max import functional as F
+
+class ManualLayerNorm(Module[[Tensor], Tensor]):
+    """LayerNorm using basic arithmetic ops (avoids Metal GPU dispatch)."""
+
+    def __init__(self, dim: int, eps: float = 1e-5):
+        self.dim = dim
+        self.eps = eps
+        self.weight = Tensor.ones([dim])
+        self.bias = Tensor.zeros([dim])
+
+    @F.functional
+    def forward(self, x: Tensor) -> Tensor:
+        mu = F.mean(x, axis=-1)
+        x_centered = x - mu
+        var = F.mean(x_centered * x_centered, axis=-1)
+        eps_t = Tensor.constant(self.eps, dtype=x.dtype, device=x.device)
+        inv_std = F.rsqrt(var + eps_t)
+        normed = x_centered * inv_std
+        return normed * self.weight + self.bias
+```
+
+**Workaround — ManualLayerNorm (graph API):**
+
+```python
+from max.nn import Module
+from max.graph import Weight, TensorValue, ops, DeviceRef
+from max.dtype import DType
+
+class ManualLayerNorm(Module):
+    def __init__(self, dim: int, dtype: DType, device: DeviceRef, eps: float = 1e-5):
+        self.eps = eps
+        self.weight = Weight("weight", dtype, [dim], device)
+        self.bias = Weight("bias", dtype, [dim], device)
+
+    def __call__(self, x: TensorValue) -> TensorValue:
+        mu = ops.mean(x, axis=-1)
+        x_centered = x - mu
+        var = ops.mean(x_centered * x_centered, axis=-1)
+        inv_std = ops.rsqrt(var + self.eps)
+        return (x_centered * inv_std) * self.weight + self.bias
+```
+
+**Note:** All other basic ops (mean, rsqrt, mul, add, matmul, softmax) compile and execute correctly on CPU with Apple Metal present. Only `layer_norm` triggers this issue.
+
+### CPU-Only Session on Apple Silicon [Temporary]
+
+**Problem:** The internal `_session()` function scans all available devices including Metal GPU. On Apple Silicon, the GPU device context is initialized even when only CPU execution is desired. This will be addressed when a public API for device targeting is added.
+
+**Workaround (both APIs):**
+
+```python
+import max._realization_context as _rc_module
+import max.engine.api as _engine_api
+import max.nn.module as _nn_module
+from max.driver import CPU, DeviceSpec, load_devices
+
+def _cpu_only_session() -> _engine_api.InferenceSession:
+    """Returns a CPU-only InferenceSession, creating one if needed."""
+    if not (session := _rc_module._SESSION.get(None)):
+        device_specs = [DeviceSpec.cpu()]
+        devices = load_devices(device_specs)
+        _rc_module._SESSION.set(
+            session := _engine_api.InferenceSession(devices=devices)
+        )
+    return session
+
+# Apply BEFORE any model construction
+_cpu_session = _cpu_only_session()
+_rc_module._session = _cpu_only_session
+_nn_module._session = _cpu_only_session
+```
+
+**Important:** This is a temporary workaround that depends on internal module structure. Apply it at module load time, before constructing any models.
+
+### Weight Layout Mismatch When Porting from HuggingFace
+
+**Problem:** Some HuggingFace models (GPT-2, GPT-J, GPT-Neo) use Conv1D layers that store weights as `[in_features, out_features]`, but MAX's `Linear` layer expects `[out_features, in_features]`. This applies to any model using OpenAI-style Conv1D projections. If missed, the model produces garbage output with **no error**.
+
+```python
+# Weight names that need transposition (Conv1D -> Linear format)
+TRANSPOSE_WEIGHTS = {
+    "attn.c_attn.weight",   # Fused QKV projection
+    "attn.c_proj.weight",   # Output projection
+    "mlp.c_fc.weight",      # MLP up-projection
+    "mlp.c_proj.weight",    # MLP down-projection
+}
+
+def load_weights(model, safetensors_path):
+    raw = load_safetensors(str(safetensors_path))
+    state_dict = {}
+    for name, weight in raw.items():
+        # Strip prefix, remap names...
+        if any(name.endswith(p) for p in TRANSPOSE_WEIGHTS):
+            weight = weight.T.copy()  # Conv1D -> Linear
+        state_dict[name] = weight
+    model.load_state_dict(state_dict, strict=False)
+```
+
+**Tip:** Bias vectors do NOT need transposition — only weight matrices.
+
+### Tied Weights (lm_head = embedding)
+
+Many models (GPT-2, GPT-J, etc.) tie the output projection (`lm_head.weight`) with the input embedding (`wte.weight`). In MAX, these must be loaded as separate parameters:
+
+```python
+# Weight tying: copy embedding weights to lm_head
+state_dict["lm_head.weight"] = state_dict["wte.weight"].copy()
+```
+
+### Eager vs Compiled Mode Performance
+
+**Without `compile()`:** Each `@F.functional` sub-module creates its own compilation context per forward call. For GPT-2 124M, this means ~60s per token — impractical for inference.
+
+**With `compile()`:** The entire model is traced and compiled as a single optimized graph. GPT-2 124M runs at ~19 tok/s on M3 Max CPU after compilation.
+
+```python
+# Compile once (takes ~20-55s), then fast inference
+compiled = model.compile(
+    TensorType(DType.int64, ("batch", "seq_len"), device=CPU())
+)
+# Each call is now fast
+result = compiled(input_tensor)
+```
+
+### Missing Functional Wrappers
+
+`F.mean` is available in the eager API (used by ManualLayerNorm above), but several other operations lack `F.*` wrappers:
+
+| Need | Graph API (`ops.*`) | Functional (`F.*`) | Workaround |
+|------|--------------------|--------------------|------------|
+| Mean | `ops.mean(x, axis)` | `F.mean(x, axis)` (eager) | Available — works in `@F.functional` methods |
+| Sum | `ops.sum(x, axis)` | Missing | `_F_sum = F.functional(ops.sum)` |
+| Triangular mask | No `ops.tril` / `ops.triu` | No `F.tril` / `F.triu` | `F.band_part` (eager) or `F.select` + range comparison (graph) |
+| Ones tensor | — | No `F.ones()` | `Tensor.ones([dim])` with `default_device()` context |
+
+### Layer Containers (ModuleList Absence in Graph API)
+
+In the graph API, sub-modules stored in a plain Python list are **not** discovered by parameter introspection:
+
+```python
+# WRONG: Parameters not discovered
+class Model(Module):
+    def __init__(self):
+        self.blocks = [TransformerBlock() for _ in range(12)]
+
+# CORRECT: Use setattr for named attributes
+class Model(Module):
+    def __init__(self):
+        for i in range(12):
+            setattr(self, f"block_{i}", TransformerBlock())
+
+    def __call__(self, x):
+        for i in range(12):
+            x = getattr(self, f"block_{i}")(x)
+        return x
+```
+
+**Note:** The eager API provides `Sequential` and `ModuleList` which handle this correctly. Use `Sequential` when blocks chain outputs, or `ModuleList` when you need indexed access.
+
+### Tensor vs Buffer Output Inconsistency
+
+- **Eager mode** (`model(tensor)`): Returns `Tensor` objects — use `np.array(tensor)` or `np.from_dlpack(tensor)`
+- **Compiled mode** (`compiled.execute(buffer)`): Returns `Buffer` objects — use `result[0].to(CPU()).to_numpy()`
+
+```python
+# Eager output
+logits = model(x)  # Returns Tensor
+np_logits = np.from_dlpack(logits)  # NumPy 2.x compatible
+
+# Compiled output
+results = compiled.execute(buffer)  # Returns list[Buffer]
+np_logits = results[0].to(CPU()).to_numpy()  # Must transfer to CPU first
+```
+
+### Manual Graph Construction (Advanced)
+
+When `model.compile()` fails (e.g., due to GPU context issues), use manual graph construction:
+
+```python
+from max.graph import Graph, TensorType
+from max.nn._realization_context import (
+    GraphRealizationContext,
+    realization_context,
+    as_weight,  # Converts Tensor parameters to graph Weights
+)
+from max.tensor import Tensor
+from max.driver import CPU, Buffer
+from max.engine import InferenceSession
+from max.dtype import DType
+
+# 1. Create graph with input types
+graph = Graph("my_model", input_types=[
+    TensorType(DType.int64, ("batch", "seq_len"), device=CPU())
+])
+
+# 2. Trace model within realization context
+with realization_context(GraphRealizationContext(graph)) as ctx, ctx:
+    sym_input = Tensor.from_graph_value(graph.inputs[0])
+    # _mapped_parameters converts eager Tensor weights to graph Weight nodes
+    with model._mapped_parameters(as_weight):
+        outputs = model(sym_input)
+    graph.output(outputs)
+
+# 3. Build weights registry from model parameters
+cpu_weights = {name: param for name, param in model.parameters}
+
+# 4. Compile and execute
+session = InferenceSession(devices=[CPU()])
+compiled = session.load(graph, weights_registry=cpu_weights)
+result = compiled.execute(Buffer.from_numpy(input_np))
+```
+
+> **[Temporary]** This pattern uses internal APIs (`_realization_context`, `_mapped_parameters`, `as_weight`) and may change between versions. Use `model.compile()` when possible.
 
 ---
 
@@ -789,6 +1018,10 @@ fn my_kernel[width: Int](
 | `Cannot compile module` | Missing `@F.functional` on `forward()` | Add `@F.functional` decorator |
 | `no matching function in call to 'foreach'` | Wrong callback signature for version | Check stable vs nightly `foreach` signature |
 | `KeyError` in weight loading | HF names not remapped to MAX names | Add weight adapter with proper name mapping |
+| `Unimplemented at device_context.mojo:1950` | `ops.layer_norm` dispatching to Metal GPU | Use ManualLayerNorm workaround (see above) |
+| `LookupError: '_CONTEXT'` | Using `Graph()` context manager without `realization_context` | Use `realization_context(GraphRealizationContext(graph))` |
+| Garbage output, no error | Conv1D weight transposition missed | Transpose `[in, out]` weights to `[out, in]` for Linear |
+| ~60s per token | Eager mode without `compile()` | Use `model.compile(input_types)` for compiled inference |
 
 ---
 

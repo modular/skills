@@ -104,7 +104,7 @@ struct Container:
 **Pattern (explicit origin tracking):**
 
 ```mojo
-# nocompile - Origin parameter syntax changed in nightly v26.2+
+# Origin parameter syntax changed in nightly v26.2+
 from builtin.type_aliases import MutAnyOrigin, ImmutAnyOrigin
 
 struct Container:
@@ -235,7 +235,7 @@ fn good_container():
     var ptr = alloc[String](10)
 
     # Initialize with init_pointee_move (transfers ownership)
-    (ptr + 0).init_pointee_move(String("hello")^)
+    (ptr + 0).init_pointee_move(String("hello"))
 
     # Or initialize with init_pointee_copy (copies value)
     var source = String("world")
@@ -405,7 +405,7 @@ fn reduction_kernel[dtype: DType](...):
 | Single exclusive owner | Use `OwnedPointer` | Safe pointers |
 | Shared ownership | Use `ArcPointer` | memory-refcounting.md |
 | Low-level memory management | Use `UnsafePointer` with proper lifecycle | Pointee lifecycle |
-| Deferred initialization | Use `UnsafeMaybeUninitialized` | memory-collections.md |
+| Deferred initialization | Use `UnsafeMaybeUninit` | memory-collections.md |
 | Track pointer lifetime | Use explicit origin parameters | Origin tracking |
 | Collection with owned elements | Implement proper `__del__` | memory-collections.md |
 
@@ -460,6 +460,35 @@ comptime Float32Ptr = UnsafePointer[mut=True, type=Float32, origin=MutAnyOrigin]
 fn allocate_buffer(size: Int) -> Float32Ptr:
     var ptr = alloc[Float32](size)
     return ptr
+```
+
+---
+
+### Mutation During Iteration
+
+**Never modify a collection while iterating over it.** This causes undefined behavior.
+
+```mojo
+# ❌ WRONG: Modifying list during iteration
+# nocompile
+for i in range(len(items)):
+    if should_remove(items[i]):
+        items.pop(i)  # Shifts indices — skips elements or crashes
+```
+
+```mojo
+# nocompile
+# ✅ CORRECT: Build new list or iterate in reverse
+# Option 1: Filter into new list
+var kept = List[Int]()
+for item in items:
+    if not should_remove(item[]):
+        kept.append(item[])
+
+# Option 2: Remove in reverse (indices stay valid)
+for i in range(len(items) - 1, -1, -1):
+    if should_remove(items[i]):
+        _ = items.pop(i)
 ```
 
 ---

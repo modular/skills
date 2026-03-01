@@ -453,7 +453,7 @@ fn benchmark_parallel_benefit(size: Int):
 |---------|--------|-------|
 | **parallelize** | `from algorithm import parallelize` | Stable |
 | **num_physical_cores** | `from sys import num_physical_cores` | Stable |
-| **Constants** | `alias` or `comptime` | Both work in v26.1+ |
+| **Constants** | `comptime` | Preferred over deprecated `alias` |
 | **Heap allocation** | `from memory import alloc; alloc[T](n)` | v26.1+ |
 
 **Example (v26.1+):**
@@ -480,16 +480,16 @@ fn parallel_work[func: fn(Int) -> None](size: Int):
 **Notes:**
 - `parallelize[]` API is stable across versions
 - `num_physical_cores()` is stable across versions
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (preferred over deprecated `alias`)
 - Work distribution and chunking patterns are stable
 
 ### Alternative: sync_parallelize
 
-Modular's internal kernels use `sync_parallelize` from `algorithm.sync` for some workloads:
+Modular's internal kernels use `sync_parallelize` from `algorithm` for some workloads:
 
 ```mojo
 # nocompile
-from algorithm.sync import sync_parallelize
+from algorithm import sync_parallelize
 
 @parameter
 fn task_func(task_id: Int):

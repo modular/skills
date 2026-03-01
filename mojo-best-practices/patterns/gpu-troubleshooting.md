@@ -37,8 +37,8 @@ Systematic diagnosis of GPU build failures, runtime errors, performance bottlene
 
 | API | Import Path | Notes |
 |-----|-------------|-------|
-| `LayoutTensor`, `Layout` | `from layout import LayoutTensor, Layout` | Type-safe tensor with compile-time layout |
-| `AddressSpace` | `from gpu.memory import AddressSpace` | Address space enum (SHARED, GENERIC) |
+| `LayoutTensor`, `Layout` | `from layout import LayoutTensor, Layout` | Type-safe tensor with compile-time layout (from MAX kernels `layout` package) |
+| `AddressSpace` | `from gpu.memory import AddressSpace` (or `from memory import AddressSpace`) | Address space enum (SHARED, GENERIC) |
 | `rebind` | Built-in (prelude) | Type reinterpretation, no runtime cost |
 | `stack_allocation` | `from memory import stack_allocation` | Shared memory (compile-time size) |
 | `external_memory` | `from gpu.memory import external_memory` | Dynamic shared memory (NVIDIA/AMD only) |
@@ -75,7 +75,6 @@ For accumulation, rebind both sides:
 
 ```mojo
 # nocompile
-
 # CORRECT — rebind both reads in an expression
 shared[tid] = rebind[Scalar[dtype]](shared[tid]) + rebind[Scalar[dtype]](shared[tid + stride])
 ```
@@ -92,7 +91,6 @@ cannot implicitly convert value of type '...AddressSpace.GENERIC...' to '...Addr
 **Fix:** Match the address space to the allocation method — shared memory requires `AddressSpace.SHARED`, global memory uses `AddressSpace.GENERIC` (default):
 
 ```mojo
-# nocompile
 from gpu.memory import AddressSpace
 from memory import stack_allocation
 
@@ -126,7 +124,7 @@ See [`gpu-block-collectives.md`](gpu-block-collectives.md) for all collective op
 | `from gpu.id import thread_idx` | `from gpu import thread_idx` | `gpu.id` removed in v26.1+ |
 | `from gpu.id import block_idx` | `from gpu import block_idx` | Same |
 | `from gpu.host import DeviceContext, Dim` | `from gpu.host import DeviceContext, Dim` | Unchanged |
-| `from gpu import AddressSpace` | `from gpu.memory import AddressSpace` | AddressSpace is in `gpu.memory` |
+| `from gpu import AddressSpace` | `from gpu.memory import AddressSpace` or `from memory import AddressSpace` | AddressSpace is in `gpu.memory` and `memory` |
 
 ---
 
@@ -211,6 +209,55 @@ var val = rebind[Scalar[dtype]](data[row * N + thread_idx.x])
 - Reduce local arrays — use shared memory instead of register arrays
 - Minimize live variables — recompute rather than storing intermediates
 
+### Thread Divergence
+
+**Symptom:** Kernel produces correct results but runs much slower than expected.
+
+**Cause:** When threads in the same warp take different branches, all branches execute serially (divergent execution).
+
+```mojo
+# ❌ WRONG: High divergence — each thread takes different path
+# nocompile
+if thread_idx.x % 2 == 0:
+    # Even threads do work A
+    ...
+else:
+    # Odd threads do work B — warp executes BOTH paths
+    ...
+```
+
+```mojo
+# ✅ CORRECT: Minimize divergence — group work by warp
+var warp_id = thread_idx.x // WARP_SIZE
+if warp_id % 2 == 0:
+    # Entire warps do work A (no divergence within warp)
+    ...
+else:
+    # Entire warps do work B
+    ...
+```
+
+**Fix strategies:**
+1. **Predication over branching** — use `select()` or ternary instead of `if/else`
+2. **Data layout** — sort/partition data so adjacent threads take same branch
+3. **Warp-uniform conditions** — ensure all 32 threads in a warp agree on branch
+
+### Illegal Memory Access
+
+**Symptom:** Runtime crash with "illegal memory access" or "misaligned address".
+
+**Common causes:**
+1. **Out-of-bounds indexing** — thread index exceeds buffer size
+2. **Integer overflow** — `Int32` arithmetic overflows for large N (>2B elements)
+3. **Uninitialized pointers** — accessing freed or never-allocated memory
+4. **Alignment violation** — unaligned SIMD loads on addresses not divisible by vector width
+
+**Debugging steps:**
+1. Add bounds checks: `if global_idx < n:` before every memory access
+2. Use `compute-sanitizer` (NVIDIA): `compute-sanitizer --tool memcheck ./my_program`
+3. Check integer types: use `Int` (64-bit) instead of `Int32` for index arithmetic with large buffers
+4. Verify alignment: ensure `load[width=N]()` addresses are `N * sizeof(T)`-aligned
+
 ---
 
 ## Profiling Methodology
@@ -276,7 +323,6 @@ Custom ops registered with `@compiler.register` have specific requirements that 
 **Double-generic `enqueue_function` requirement:**
 
 ```mojo
-# nocompile
 
 # WRONG — fails in custom op context
 ctx.enqueue_function[my_kernel](args..., grid_dim=grid, block_dim=block)
@@ -293,12 +339,13 @@ See [`gpu-kernels.md`](gpu-kernels.md) for the full custom op registration patte
 
 ```mojo
 # nocompile
-from max.tensor import InputTensor, OutputTensor
+# InputTensor, OutputTensor, and DeviceContextPtr are provided by the MOGG
+# custom op system — they appear as parameters in @compiler.register methods.
 
 @compiler.register("my_op")
 struct MyOp:
     @staticmethod
-    fn execute[dtype: DType, rank: Int](
+    fn execute[target: StaticString, dtype: DType, rank: Int](
         output: OutputTensor[rank=rank],
         input: InputTensor[rank=rank],
         ctx: DeviceContextPtr,
@@ -377,7 +424,6 @@ Apple Metal requires compile-time known shared memory sizes. `external_memory` (
 AMD GPUs use 64-thread wavefronts. Block sizes must be multiples of 64:
 
 ```mojo
-# nocompile
 
 # NVIDIA: warp size = 32
 comptime NVIDIA_BLOCK = 256  # 8 warps

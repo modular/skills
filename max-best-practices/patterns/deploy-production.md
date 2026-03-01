@@ -77,6 +77,14 @@ End-to-end runbook for deploying MAX Serve to production: containers, volumes, K
 | `modular/max-nvidia-full` | NVIDIA GPU |
 | `modular/max-amd` | AMD GPU |
 
+> **Important:** Always mount the HuggingFace cache to avoid re-downloading models on container restart:
+> ```bash
+> docker run -p 8000:8000 --gpus all \
+>   -v ~/.cache/huggingface:/root/.cache/huggingface \
+>   modular/max-openai-api:latest \
+>   --model-path modularai/Llama-3.1-8B-Instruct-GGUF
+> ```
+
 **NVIDIA GPUs:**
 ```bash
 docker run --gpus=1 \
@@ -348,21 +356,21 @@ export MAX_SERVE_MW_HEALTH_FAIL=60  # Restart if no heartbeat for 60s
 
 | Metric | Level | Description |
 |--------|-------|-------------|
-| `maxserve.request_count` | BASIC | HTTP request count |
-| `maxserve.request_time` | BASIC | Request latency (ms) |
-| `maxserve.time_to_first_token` | BASIC | TTFT latency (ms) |
-| `maxserve.num_input_tokens` | BASIC | Input token count |
-| `maxserve.num_output_tokens` | BASIC | Output token count |
-| `maxserve.model_load_time` | BASIC | Model load time (ms) |
-| `maxserve.num_requests_queued` | BASIC | Requests waiting |
-| `maxserve.num_requests_running` | BASIC | Requests processing |
-| `maxserve.itl` | DETAILED | Inter-token latency (ms) |
-| `maxserve.batch_size` | DETAILED | Batch size distribution |
-| `maxserve.batch_execution_time` | DETAILED | Batch execution time |
-| `maxserve.cache.hit_rate` | DETAILED | Prefix cache hit rate |
-| `maxserve.cache.preemption_count` | DETAILED | Memory preemption events |
-| `maxserve.cache.num_used_blocks` | DETAILED | KV cache block usage |
-| `maxserve.cache.num_total_blocks` | DETAILED | Total KV cache blocks |
+| `maxserve_request_count_total` | BASIC | HTTP request count (labels: `code`, `path`) |
+| `maxserve_request_time_milliseconds` | BASIC | Request latency histogram (ms) |
+| `maxserve_time_to_first_token_milliseconds` | BASIC | TTFT latency histogram (ms) |
+| `maxserve_num_input_tokens_total` | BASIC | Input token count |
+| `maxserve_num_output_tokens_total` | BASIC | Output token count |
+| `maxserve_model_load_time_milliseconds` | BASIC | Model load time (ms) |
+| `maxserve_num_requests_queued` | BASIC | Requests waiting (gauge) |
+| `maxserve_num_requests_running` | BASIC | Requests processing (gauge) |
+| `maxserve_itl_milliseconds` | DETAILED | Inter-token latency histogram (ms) |
+| `maxserve_batch_size` | DETAILED | Batch size distribution (histogram) |
+| `maxserve_batch_execution_time_milliseconds` | DETAILED | Batch execution time |
+| `maxserve_cache_hit_rate` | DETAILED | Prefix cache hit rate |
+| `maxserve_cache_preemption_count_total` | DETAILED | Memory preemption events |
+| `maxserve_cache_num_used_blocks` | DETAILED | KV cache block usage (gauge) |
+| `maxserve_cache_num_total_blocks` | DETAILED | Total KV cache blocks (gauge) |
 
 ### Recording Methods
 
@@ -558,9 +566,9 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 ### Monitoring Disaggregated Deployments
 
 Monitor using standard metrics with special attention to:
-- `maxserve.time_to_first_token` — higher due to KV transfer overhead
-- `maxserve.num_requests_queued` — separate prefill/decode queue pressure
-- `maxserve.cache.num_used_blocks` — cache utilization across workers
+- `maxserve_time_to_first_token_milliseconds` — higher due to KV transfer overhead
+- `maxserve_num_requests_queued` — separate prefill/decode queue pressure
+- `maxserve_cache_num_used_blocks` — cache utilization across workers
 
 ---
 

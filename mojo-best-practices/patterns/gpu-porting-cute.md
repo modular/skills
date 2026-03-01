@@ -35,15 +35,15 @@ Maps NVIDIA's CuTe DSL (part of CUTLASS 3.x) concepts to their Mojo equivalents.
 | `Layout<Shape, Stride>` | `Layout(shape, stride)` | Mojo uses `IntTuple`; CuTe uses variadic templates |
 | `Tensor<Engine, Layout>` | `LayoutTensor[dtype, layout, origin, address_space]` | Mojo encodes address space + dtype in type |
 | `make_layout(shape, stride)` | `Layout(IntTuple(shape), IntTuple(stride))` | Same semantics, different syntax |
-| `composition(A, B)` | `layout.compose(other)` | Layout composition |
-| `complement(layout, size)` | `layout.complement(size)` | Layout complement |
+| `composition(A, B)` | `composition(a, b)` | Freestanding function: `from layout import composition` |
+| `complement(layout, size)` | `complement(layout, size)` | Freestanding function: `from layout.layout import complement` |
 | `logical_product(A, B)` | `logical_product(A, B)` | Available in `layout.layout` |
 | `blocked_product(A, B)` | `blocked_product(A, B)` | Available in `layout.layout` |
 | `TiledCopy` | `TMATensorTile` / `ScatterGather` | TMA replaces cp.async; ScatterGather for AMD |
 | `TiledMMA` | `TensorCoreAsync` (SM90) / TCGen05 (SM100) | Wraps WGMMA/TCGen05 instructions |
 | `local_partition` | `LayoutTensor.distribute[thread_layout]()` | Thread-level partitioning |
 | `local_tile` | `LayoutTensor.tile[tile_shape]()` | Tile-level partitioning |
-| `Swizzle<B,M,S>` | `Swizzle[B,M,S]` | Same parameterization |
+| `Swizzle<B,M,S>` | `Swizzle(bits=B, base=M, shift=S)` | Runtime args, not compile-time params |
 | `Pipeline` | `RingBuffer` + `PipelineBarrier` | Context manager based |
 | `PipelineState` | `PipelineState` | Same concept, Mojo struct |
 
@@ -108,13 +108,13 @@ comptime my_layout = Layout(IntTuple(64, 32), IntTuple(32, 1))
 |------|------|-------------|
 | `size(layout)` | `layout.size()` | Total number of elements |
 | `rank(layout)` | `layout.rank()` | Number of dimensions |
-| `depth(layout)` | `layout.depth()` | Nesting depth |
+| `depth(layout)` | No direct equivalent | CuTe nesting depth has no Mojo API |
 | `shape(layout)` | `layout.shape` | Shape tuple |
 | `stride(layout)` | `layout.stride` | Stride tuple |
 | `cosize(layout)` | `layout.cosize()` | Domain size (max index + 1) |
 | `layout(coord)` | `layout(coord)` | Map coordinate → offset |
-| `composition(A, B)` | `a.compose(b)` | Compose two layouts |
-| `complement(A, size)` | `a.complement(size)` | Complement layout |
+| `composition(A, B)` | `composition(a, b)` | Compose two layouts (freestanding function) |
+| `complement(A, size)` | `complement(a, size)` | Freestanding function: `from layout.layout import complement` |
 | `product(A, B)` | `logical_product(a, b)` | Logical product |
 | `blocked_product(A, B)` | `blocked_product(a, b)` | Blocked product |
 | `coalesce(layout)` | `coalesce(layout)` | Merge contiguous modes |
@@ -255,11 +255,10 @@ auto swizzled_layout = composition(SmemSwizzle{}, base_layout);
 ### Mojo: Swizzle
 
 ```mojo
-# nocompile
 from layout.swizzle import Swizzle, make_swizzle
 
-# Mojo: Same parameterization
-comptime swizzle = Swizzle[3, 3, 3]()  # B=3, M=3, S=3
+# Mojo: Same parameterization, but uses runtime constructor args
+comptime swizzle = Swizzle(bits=3, base=3, shift=3)  # bits=3, base=3, shift=3
 
 # Or use the tile_layout_k_major helper which applies swizzle automatically
 from layout.tensor_core_async import tile_layout_k_major
@@ -351,7 +350,7 @@ from gpu.memory import async_copy, async_copy_commit_group, async_copy_wait_grou
 # Mojo: cp.async equivalent (for SM80 / Ampere)
 async_copy(dst_smem_ptr, src_gmem_ptr, bytes)
 async_copy_commit_group()        # Commit outstanding copies
-async_copy_wait_group[0]()       # Wait for all committed groups
+async_copy_wait_group(0)         # Wait for all committed groups
 ```
 
 ---
@@ -388,14 +387,12 @@ from layout.tensor_core_async import TensorCoreAsync, warpgroup_fence, tile_layo
 
 # Mojo: Configure WGMMA operation
 comptime WgmmaOp = TensorCoreAsync[
-    DType.float32,    # Accumulator type (C)
-    DType.float16,    # A matrix type
-    DType.float16,    # B matrix type
-    a_smem_layout,    # A tile layout in shared memory
-    b_smem_layout,    # B tile layout in shared memory
-    64,               # M dimension of MMA
-    128,              # N dimension of MMA
-    16,               # K dimension of MMA
+    DType.float32,    # Accumulator type (c_type)
+    DType.float16,    # A matrix type (a_type)
+    DType.float16,    # B matrix type (b_type)
+    mma_shape=Index(64, 128, 16),  # MMA instruction shape (M, N, K)
+    a_swizzle=TensorMapSwizzle.SWIZZLE_128B,
+    b_swizzle=TensorMapSwizzle.SWIZZLE_128B,
     transpose_b=True,
 ]
 
@@ -414,9 +411,9 @@ fn compute_tiles(
 
 | CuTe MMA Atom | Mojo Equivalent | GPU |
 |----------------|-----------------|-----|
-| `SM90_64x128x16_F32F16F16_SS` | `TensorCoreAsync[f32, f16, f16, ..., 64, 128, 16]` | H100 |
-| `SM90_64x64x16_F32F16F16_SS` | `TensorCoreAsync[f32, f16, f16, ..., 64, 64, 16]` | H100 |
-| `SM90_64x128x32_F32E4M3E4M3_SS` | `TensorCoreAsync[f32, f8e4m3, f8e4m3, ..., 64, 128, 32]` | H100 |
+| `SM90_64x128x16_F32F16F16_SS` | `TensorCoreAsync[f32, f16, f16, Index(64, 128, 16)]` | H100 |
+| `SM90_64x64x16_F32F16F16_SS` | `TensorCoreAsync[f32, f16, f16, Index(64, 64, 16)]` | H100 |
+| `SM90_64x128x32_F32E4M3E4M3_SS` | `TensorCoreAsync[f32, f8e4m3, f8e4m3, Index(64, 128, 32)]` | H100 |
 | SM100 `tcgen05.mma` | TCGen05 MMA API | B200 |
 
 ---
@@ -556,8 +553,9 @@ struct GemmKernel[
     # MMA operation
     comptime WgmmaOp = TensorCoreAsync[
         DType.float32, DType.float16, DType.float16,
-        Self.a_smem_layout, Self.b_smem_layout,
-        wgmma_m, wgmma_n, wgmma_k,
+        mma_shape=Index(wgmma_m, wgmma_n, wgmma_k),
+        a_swizzle=TensorMapSwizzle.SWIZZLE_128B,
+        b_swizzle=TensorMapSwizzle.SWIZZLE_128B,
         transpose_b=True,
     ]
 
@@ -629,6 +627,28 @@ struct GemmKernel[
 | **Swizzle** | Composed into layout | Applied via `tile_layout_k_major` helper or `Swizzle` struct |
 | **Warp specialization** | Manual `if (warp_id == ...)` | Same pattern, but with `warpgroup_reg_alloc/dealloc` |
 | **Address space** | Pointer wrappers (`smem_ptr`) | Type parameter (`address_space=AddressSpace.SHARED`) |
+
+---
+
+## Version-Specific Features
+
+### Nightly (v26.2+)
+
+All APIs in this pattern require the Mojo nightly toolchain (v26.2+). This includes:
+
+- `LayoutTensor`, `Layout`, `IntTuple` from the `layout` module
+- Layout algebra operations: `composition`, `complement`, `logical_product`, `blocked_product`, `coalesce`
+- `TensorCoreAsync` (SM90 WGMMA wrapper) from `layout.tensor_core_async`
+- `TMATensorTile` and `SharedMemBarrier` from `layout.tma_async`
+- `RingBuffer` and `PipelineBarrier` from `linalg.structuring`
+- `ScatterGatherAmd` from `linalg.structuring`
+- `Swizzle` and `make_swizzle` from `layout.swizzle`
+- `tile_layout_k_major` helper from `layout.tensor_core_async`
+- TCGen05 MMA APIs for SM100 (Blackwell) from `gpu.compute.arch.tcgen05`
+
+### Stable (v26.1)
+
+Core layout algebra (`Layout`, `IntTuple`, `composition`, `complement`) and `LayoutTensor` are available in v26.1 stable. SM90 WGMMA patterns via `TensorCoreAsync` and TMA via `TMATensorTile` are also available in v26.1. SM100 UMMA/TCGen05 patterns are nightly-only (v26.2+). The `RingBuffer` context manager API and `ScatterGatherAmd` are available in v26.1. If porting CuTe code on stable, the basic layout algebra and SM90 tensor core patterns will work; SM100-specific features require nightly.
 
 ---
 

@@ -45,7 +45,6 @@ Explicitly annotate functions that can raise errors with `raises` so callers kno
 **Pattern:**
 
 ```mojo
-# nocompile
 fn parse_int(s: String) raises -> Int:
     if len(s) == 0:
         raise "empty string cannot be parsed as integer"
@@ -56,11 +55,11 @@ fn parse_int(s: String) raises -> Int:
 
     for i in range(len(bytes)):
         var byte = bytes[i]
-        if i == 0 and byte == ord("-"):
+        if i == 0 and byte == UInt8(ord("-")):
             negative = True
             continue
 
-        var digit = Int(byte) - Int(ord("0"))
+        var digit = Int(byte) - Int(UInt8(ord("0")))
         if digit < 0 or digit > 9:
             raise "invalid character at position " + String(i)
 
@@ -108,12 +107,12 @@ fn main():
 
 **Do:**
 ```mojo
-# nocompile
 fn safe_divide(a: Float64, b: Float64) -> Optional[Float64]:
+    var result: Float64 = 0.0
     try:
         if b == 0:
             raise "division by zero"
-        var result = a / b
+        result = a / b
     except e:
         # Log or handle the error
         print("Division failed:", e)
@@ -180,7 +179,7 @@ fn complex_operation() raises -> Result:
             return fallback_operation()
 
     except e:
-        raise "Invalid configuration: " + str(e)
+        raise "Invalid configuration: " + String(e)
 ```
 
 ---
@@ -188,6 +187,10 @@ fn complex_operation() raises -> Result:
 ## Context Managers
 
 Context managers ensure resources are properly cleaned up, even when errors occur. Use the `with` statement for any resource that needs cleanup.
+
+### `with` Statement Value Requirements
+
+When using `with expr as name`, the value bound to `name` must be either `ImplicitlyCopyable` or transferred with `^`. If your context manager's `__enter__` returns a non-copyable type, you may get a compile error. Solutions: make the type `ImplicitlyCopyable`, have `__enter__` return `ref [self] Self`, or restructure to avoid binding.
 
 ### Basic Context Manager Usage
 
@@ -215,21 +218,23 @@ fn process_file(path: String) raises:
 ### Creating Custom Context Managers
 
 ```mojo
+from time import perf_counter_ns
+
 struct Timer:
-    var start_time: Float64
+    var start_time: Int
     var name: String
 
     fn __init__(out self, name: String):
         self.name = name
         self.start_time = 0
 
-    fn __enter__(mut self) -> Self:
-        self.start_time = time.now()
+    fn __enter__(mut self) -> ref [self] Self:
+        self.start_time = perf_counter_ns()
         return self
 
     fn __exit__(mut self):
-        var elapsed = time.now() - self.start_time
-        print(self.name, "took", elapsed, "seconds")
+        var elapsed = perf_counter_ns() - self.start_time
+        print(self.name, "took", elapsed, "ns")
 
 # Usage
 fn benchmark():
@@ -321,13 +326,10 @@ With typed raises (v26.1+), you can define custom error types and use them in `r
 ```mojo
 # nocompile
 @fieldwise_init
-struct ValidationError(Writable, Stringable):
+struct ValidationError(Writable):
     """Custom error type for validation failures."""
     var field: String
     var message: String
-
-    fn __str__(self) -> String:
-        return "Validation error in '" + self.field + "': " + self.message
 
     fn write_to[W: Writer](self, mut writer: W):
         writer.write("Validation error in '", self.field, "': ", self.message)
@@ -372,15 +374,14 @@ fn get_element(ref self, index: Int) -> ref [self] T:
 
 ```mojo
 # nocompile
-# "safe" mode (default): enabled in debug builds, disabled in release
+# "safe" mode: enabled in debug builds and when -D ASSERT=safe or -D ASSERT=all
 debug_assert[assert_mode="safe"](condition, message)
 
-# "warn" mode: prints warning but continues execution
-debug_assert[assert_mode="warn"](condition, "Warning: condition failed")
-
-# "none" mode: assertion completely removed (explicit no-op)
+# "none" mode (default): assertion only enabled when -D ASSERT=all or in debug builds
 debug_assert[assert_mode="none"](condition, message)
 ```
+
+> **Note:** Only `"safe"` and `"none"` are valid per-assertion `assert_mode` values. The `"warn"` mode is a *global* compile-time flag (`-D ASSERT=warn`) that affects all assertions, not a per-assertion parameter.
 
 ### Examples by Category
 
@@ -414,12 +415,12 @@ fn load_simd[width: Int](ptr: UnsafePointer[Float32]) -> SIMD[DType.float32, wid
 
 ```mojo
 # nocompile
-from builtin.debug_assert import _is_debug_build
+from sys._build import is_debug_build
 
 fn complex_operation(data: List[Int]):
     # Expensive validation only in debug
     @parameter
-    if _is_debug_build():
+    if is_debug_build():
         for i in range(len(data)):
             debug_assert(data[i] >= 0, "Negative value at index ", i)
 
@@ -511,7 +512,6 @@ except err:  # "err" is automatically typed as CustomError
 
 **Generic error propagation:**
 ```mojo
-# nocompile
 fn parametric_raise_example[ErrorType: AnyType](
     fp: fn () raises ErrorType
 ) raises ErrorType:

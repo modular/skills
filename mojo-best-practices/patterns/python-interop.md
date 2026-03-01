@@ -75,8 +75,8 @@ fn slow_stats(data: List[Float64]) -> Tuple[Float64, Float64]:
         py_data.append(item)  # Crossing for each element
 
     var arr = np.array(py_data)
-    var mean = arr.mean().to_float64()  # Crossing
-    var std = arr.std().to_float64()    # Crossing
+    var mean = Float64(py=arr.mean())  # Crossing
+    var std = Float64(py=arr.std())    # Crossing
     return (mean, std)
 
 fn slow_element_wise(data: List[Float64]) -> List[Float64]:
@@ -85,10 +85,10 @@ fn slow_element_wise(data: List[Float64]) -> List[Float64]:
 
     for item in data:
         # Crossing for EVERY element operation!
-        var py_val = np.sqrt(item).to_float64()
+        var py_val = Float64(py=np.sqrt(item))
         result.append(py_val)
 
-    return result
+    return result^
 ```
 
 ### Correct: Compute in Pure Mojo
@@ -108,8 +108,8 @@ fn fast_stats(data: List[Float64]) -> Tuple[Float64, Float64]:
         sum += val
         sum_sq += val * val
 
-    var mean = sum / n
-    var variance = sum_sq / n - mean * mean
+    var mean = sum / Float64(n)
+    var variance = sum_sq / Float64(n) - mean * mean
     var std = sqrt(variance)  # Use sqrt() function from math
 
     return (mean, std)
@@ -140,7 +140,7 @@ fn batch_python_operation(data: List[Float64]) -> List[Float64]:
     # One crossing to get results back
     var result = List[Float64](capacity=len(data))
     for i in range(len(data)):
-        result.append(py_result[i].to_float64())
+        result.append(Float64(py=py_result[i]))
 
     return result^
 
@@ -189,10 +189,10 @@ struct PythonModules:
 
     fn __init__(out self):
         self._initialized = False
-        # Use PythonObject(none=None) for uninitialized placeholder
-        self.np = PythonObject(none=None)
-        self.pd = PythonObject(none=None)
-        self.plt = PythonObject(none=None)
+        # Use PythonObject(None) for uninitialized placeholder
+        self.np = PythonObject(None)
+        self.pd = PythonObject(None)
+        self.plt = PythonObject(None)
 
     fn ensure_initialized(mut self):
         if not self._initialized:
@@ -266,13 +266,13 @@ fn process_data() -> Float64:
     var total: Float64 = 0.0
     for i in range(1000):
         # Conversion happens every iteration!
-        total += arr[i].to_float64()
+        total += Float64(py=arr[i])
     return total
 
 fn find_max(py_list: PythonObject) -> Float64:
-    var max_val: Float64 = py_list[0].to_float64()
-    for i in range(1, int(len(py_list))):
-        var val = py_list[i].to_float64()  # Repeated conversion
+    var max_val: Float64 = Float64(py=py_list[0])
+    for i in range(1, Int(py=len(py_list))):
+        var val = Float64(py=py_list[i])  # Repeated conversion
         if val > max_val:
             max_val = val
     return max_val
@@ -291,7 +291,7 @@ fn process_data() -> Float64:
     # Convert to Mojo list once at the boundary
     var arr = List[Float64](capacity=1000)
     for i in range(1000):
-        arr.append(py_arr[i].to_float64())
+        arr.append(Float64(py=py_arr[i]))
 
     # Now use native Mojo operations - no conversion overhead
     var total: Float64 = 0.0
@@ -301,10 +301,10 @@ fn process_data() -> Float64:
 
 fn find_max(py_list: PythonObject) -> Float64:
     # Convert entire list at boundary
-    var size = int(len(py_list))
+    var size = Int(py=len(py_list))
     var data = List[Float64](capacity=size)
     for i in range(size):
-        data.append(py_list[i].to_float64())
+        data.append(Float64(py=py_list[i]))
 
     # Native Mojo search
     var max_val = data[0]
@@ -318,18 +318,18 @@ fn find_max(py_list: PythonObject) -> Float64:
 
 ```mojo
 fn python_list_to_mojo[T: DType](py_list: PythonObject) -> List[Scalar[T]]:
-    var size = int(len(py_list))
+    var size = Int(py=len(py_list))
     var result = List[Scalar[T]](capacity=size)
 
     for i in range(size):
         @parameter
         if T == DType.float64:
-            result.append(py_list[i].to_float64())
+            result.append(Float64(py=py_list[i]))
         elif T == DType.int64:
-            result.append(py_list[i].__int__())
+            result.append(Int(py=py_list[i]))
         # ... other types
 
-    return result
+    return result^
 
 # Usage
 var py_data = Python.evaluate("[1.0, 2.0, 3.0]")
@@ -468,14 +468,14 @@ fn process_image(path: String) raises -> List[Float32]:
     var arr = np.array(img)
 
     # Convert at boundary
-    var height = int(arr.shape[0])
-    var width = int(arr.shape[1])
+    var height = Int(py=arr.shape[0])
+    var width = Int(py=arr.shape[1])
     var pixels = List[Float32](capacity=height * width * 3)
 
     for y in range(height):
         for x in range(width):
             for c in range(3):
-                pixels.append(arr[y][x][c].to_float64())
+                pixels.append(Float64(py=arr[y][x][c]))
 
     # Mojo: Process pixels (no crossings)
     return process_pixels_fast(pixels)
@@ -494,7 +494,7 @@ struct LazyPython:
 
     fn __init__(out self):
         self._initialized = False
-        self._np = PythonObject(none=None)
+        self._np = PythonObject(None)
 
     fn numpy(mut self) -> PythonObject:
         if not self._initialized:
@@ -508,13 +508,13 @@ fn maybe_use_numpy(use_python: Bool, data: List[Float64]) -> Float64:
     if use_python:
         # Only initialize Python if needed
         var arr = py.numpy().array(data)
-        return arr.mean().to_float64()
+        return Float64(py=arr.mean())
     else:
         # Pure Mojo path
         var sum: Float64 = 0.0
         for item in data:
             sum += item
-        return sum / len(data)
+        return sum / Float64(len(data))
 ```
 
 ### Pattern: Bulk Transfer
@@ -527,7 +527,7 @@ fn maybe_use_numpy(use_python: Bool, data: List[Float64]) -> Float64:
 fn transfer_numpy_array(py_arr: PythonObject) -> List[Float64]:
     """Transfer numpy array to Mojo list efficiently."""
     # Get shape once
-    var size = int(py_arr.size)
+    var size = Int(py=py_arr.size)
 
     # Flatten if needed (one Python call)
     var flat = py_arr.flatten()
@@ -537,9 +537,9 @@ fn transfer_numpy_array(py_arr: PythonObject) -> List[Float64]:
 
     # Single loop transfer
     for i in range(size):
-        result.append(flat[i].to_float64())
+        result.append(Float64(py=flat[i]))
 
-    return result
+    return result^
 ```
 
 ---
@@ -570,10 +570,12 @@ fn transfer_numpy_array(py_arr: PythonObject) -> List[Float64]:
 
 ## Common Errors
 
+> **List literal gotcha:** Mojo `[1, 2, 3]` creates an `InlineArray`, NOT a Python list. To create a Python list from Mojo, use `Python.evaluate("[1, 2, 3]")` or build it incrementally with `var lst = Python.evaluate("[]"); lst.append(1)`.
+
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `PythonObject is None` | Failed import or attribute access | Check module exists; use `try/except` around imports |
-| `type conversion failed` | Incompatible Python→Mojo type | Use explicit conversion: `int(py_obj)`, `str(py_obj)` |
+| `type conversion failed` | Incompatible Python→Mojo type | Use explicit conversion: `Int(py=py_obj)`, `String(py_obj)` |
 | `GIL not held` | Calling Python without GIL | Ensure GIL acquired before any Python calls |
 | `numpy array not contiguous` | Non-contiguous memory layout | Call `np.ascontiguousarray()` before passing to Mojo |
 | `module not found` | Python path not set | Set `PYTHONPATH` or use `sys.path.append()` |
@@ -589,12 +591,11 @@ fn transfer_numpy_array(py_arr: PythonObject) -> List[Float64]:
 |---------|--------|-------|
 | **PythonObject** | `PythonObject` | Stable |
 | **Import syntax** | `Python.import_module()` | Stable |
-| **Type conversion** | `int(py_obj)`, `str(py_obj)` | Stable |
+| **Type conversion** | `Int(py=py_obj)`, `String(py_obj)` | Stable |
 | **Compile-time constants** | `alias` or `comptime` | Both work in v26.1+ |
 
 **Example (v26.1+):**
 ```mojo
-# nocompile
 from python import Python, PythonObject
 
 fn process_data() raises:
@@ -604,7 +605,7 @@ fn process_data() raises:
     comptime BATCH_SIZE = 1000
 
     var arr = np.zeros(BATCH_SIZE)
-    var result: Float64 = arr.sum().to_float64()
+    var result: Float64 = Float64(py=arr.sum())
 ```
 
 **Notes:**

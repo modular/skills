@@ -27,7 +27,8 @@ This file contains minimal compilable examples of critical APIs. It serves as an
 | Constants | `alias` or `comptime` | Both work in v26.1+ |
 | memcpy args | Keyword supported | Named params recommended |
 | Struct alignment | `@align(N)` | v26.2+ nightly |
-| TrivialRegisterType | Trait-based register passable | v26.2+ nightly |
+| TrivialRegisterPassable | Trait-based register passable | v26.2+ nightly |
+| `sys.ffi.external_call` | Stable v26.1 only | `sys.ffi` module removed in nightly v26.2 |
 
 **Note:** This canary file uses syntax compatible with both versions. If compilation fails on nightly, check the changelog for API changes.
 
@@ -109,12 +110,12 @@ fn main():
     test_fieldwise_init()
 ```
 
-### TrivialRegisterType (replaces @register_passable)
+### TrivialRegisterPassable (replaces @register_passable)
 
 ```mojo
-# nocompile - Nightly v26.2+ only
+# nocompile - Nightly v26.2+ only (TrivialRegisterPassable not in stable v26.1)
 # For stable v26.1, use: @register_passable("trivial")
-struct SmallValue(TrivialRegisterType):
+struct SmallValue(TrivialRegisterPassable):
     var value: Int
 
     fn __init__(out self, v: Int):
@@ -158,8 +159,8 @@ fn main():
 ### external_call
 
 ```mojo
-# nocompile
-from ffi import external_call
+# nocompile - sys.ffi module removed in nightly v26.2; stable v26.1 only
+from sys.ffi import external_call
 
 fn test_external_call():
     # Simple libc call
@@ -257,12 +258,10 @@ fn main():
 ### Span (safe view into contiguous memory)
 
 ```mojo
-# nocompile - variadic List constructor nightly-only
-# For stable v26.1, use: var data = List[Int](); data.append(1); ...
 from memory import Span
 
 fn test_span():
-    var data = List[Int](1, 2, 3, 4, 5)
+    var data: List[Int] = [1, 2, 3, 4, 5]
     var span = Span(data)
 
     var sum = 0
@@ -482,7 +481,7 @@ fn main():
 ### Basic Python import
 
 ```mojo
-# nocompile - Python interop type inference issue in stable v26.1
+# nocompile - requires numpy in test environment
 from python import Python
 
 fn test_python_interop() raises:
@@ -588,8 +587,6 @@ fn main():
 ### Optional
 
 ```mojo
-# nocompile - variadic List constructor nightly-only
-# For stable v26.1, use: var items = List[Int](); items.append(10); ...
 fn find_value(items: List[Int], target: Int) -> Optional[Int]:
     for i in range(len(items)):
         if items[i] == target:
@@ -597,7 +594,7 @@ fn find_value(items: List[Int], target: Int) -> Optional[Int]:
     return None
 
 fn test_optional():
-    var items = List[Int](10, 20, 30, 40)
+    var items: List[Int] = [10, 20, 30, 40]
     var result = find_value(items, 30)
     if result:
         var idx = result.value()

@@ -51,7 +51,7 @@ Complete guide for porting C++ code to Mojo with side-by-side examples. Covers s
 | `using T = int;` | `alias T = Int` | Type alias |
 | `nullptr` | `UnsafePointer[T]()` | Null pointer |
 | `static_assert(cond)` | `comptime assert cond` | Compile-time assert |
-| `sizeof(T)` | `sizeof[T]()` | Compile-time size |
+| `sizeof(T)` | `size_of[T]()` | Compile-time size (`from sys import size_of`) |
 
 ### Functions
 
@@ -79,31 +79,33 @@ Complete guide for porting C++ code to Mojo with side-by-side examples. Covers s
 | `struct Foo { };` | `struct Foo:` | Same in Mojo |
 | `template<typename T>` | `struct Foo[T: AnyType]:` | Parametric |
 | `template<typename T> requires Concept<T>` | `struct Foo[T: Trait]:` | Constrained |
-| `concept Printable = requires(T t) { t.print(); }` | `trait Printable: fn print(self):` | Explicit trait |
+| `concept Printable = requires(T t) { t.print(); }` | `trait Writable: fn write_to[W: Writer](self, mut writer: W):` | Explicit trait |
 | `std::variant<int, string>` | `Variant[Int, String]` | Sum type |
 | `std::optional<int>` | `Optional[Int]` | Nullable |
 | `std::expected<int, Error>` | `fn foo() raises -> Int` | Error handling |
 | `std::array<int, 4>` | `InlineArray[Int, 4]` | Stack-allocated |
-| `std::vector<int>` | `List[Int]` | Dynamic array |
+| `std::vector<int>` | `List[Int]` | Dynamic array. `T` must be `Copyable` (not just `Movable`); move-only types cannot go in `List` |
 | `std::unordered_map<K, V>` | `Dict[K, V]` | Hash map |
 | `std::unique_ptr<T>` | Ownership semantics built-in | No wrapper needed |
-| `std::shared_ptr<T>` | Manual ref counting | `Arc` pattern |
+| `std::shared_ptr<T>` | Manual ref counting | `ArcPointer` pattern |
 | `std::span<T>` | `Span[T]` | Non-owning view |
 | `std::tuple<A, B, C>` | `Tuple[A, B, C]` | Heterogeneous |
+
+> **Warning: List and InlineArray construction syntax.** `List[Int](1, 2, 3)` and `InlineArray[Int, 3](1, 2, 3)` do NOT compile. Use list literal syntax with a type annotation: `var v: List[Int] = [1, 2, 3]` or `var a: InlineArray[Int, 3] = [1, 2, 3]`. For empty lists use `List[Int]()`. For pre-sized lists use `List[Int](length=N, fill=0)`.
 
 ### Memory and Pointers
 
 | C++23 | Mojo | Notes |
 |-------|------|-------|
 | `T* ptr` | `UnsafePointer[T]` | Raw pointer |
-| `new T(args)` | `UnsafePointer[T].alloc(1)` + `__init__` | Manual allocation |
+| `new T(args)` | `alloc[T](1)` + `__init__` | `from memory import alloc` |
 | `delete ptr` | `ptr.free()` | Manual deallocation |
 | `ptr->member` | `ptr[].member` | Dereference |
 | `*ptr` | `ptr[]` | Dereference |
 | `ptr + offset` | `ptr + offset` | Pointer arithmetic |
 | `reinterpret_cast<U*>(p)` | `ptr.bitcast[U]()` | Type cast |
 | `memcpy(dst, src, n)` | `memcpy(dst, src, count=n)` | `from memory import memcpy` |
-| `malloc(n)` | `UnsafePointer[T].alloc(n)` | Typed allocation |
+| `malloc(n)` | `alloc[T](n)` | `from memory import alloc` |
 | `free(ptr)` | `ptr.free()` | Deallocation |
 
 ---
@@ -128,9 +130,8 @@ std::cout << ref;       // DANGLING REFERENCE — undefined behavior
 **Mojo (safe by default):**
 
 ```mojo
-# nocompile
 fn main():
-    var vec = List[Int](1, 2, 3)
+    var vec: List[Int] = [1, 2, 3]
     # Mojo's ownership system prevents dangling references.
     # Borrowing vec[0] while mutating vec is a compile-time error.
     # The borrow checker catches this before your code ever runs.
@@ -207,7 +208,6 @@ public:
 **Mojo:**
 
 ```mojo
-# nocompile
 struct FileHandle:
     var fd: Int
 
@@ -225,6 +225,8 @@ struct FileHandle:
             pass  # Close file
     # No Rule of Five — Mojo generates safe defaults
     # No copy constructor needed (non-copyable by default)
+    # Copyable → explicit .copy() method; ImplicitlyCopyable → var b = a works
+    # For implicit copy (var b = a), structs need the ImplicitlyCopyable trait
 ```
 
 ---
@@ -256,12 +258,12 @@ void add_arrays_avx(float* a, float* b, float* c, int n) {
 
 ```mojo
 # nocompile
-from sys import simdwidthof
+from sys import simd_width_of
 from memory import UnsafePointer
 
 fn add_arrays(a: UnsafePointer[Float32], b: UnsafePointer[Float32],
-              c: UnsafePointer[Float32], n: Int):
-    comptime WIDTH = simdwidthof[DType.float32]()  # Adapts to AVX/NEON/SVE
+              mut c: UnsafePointer[Float32], n: Int):
+    comptime WIDTH = simd_width_of[DType.float32]()  # Adapts to AVX/NEON/SVE
 
     var i = 0
     while i + WIDTH <= n:
@@ -381,12 +383,11 @@ fn main() raises:
 C++ static analyzers catch some issues. Mojo catches all ownership violations at compile time.
 
 ```mojo
-# nocompile
 fn takes_ownership(var data: List[Int]):
     pass  # data is destroyed here
 
 fn main():
-    var list = List[Int](1, 2, 3)
+    var list: List[Int] = [1, 2, 3]
     takes_ownership(list^)
     # print(list[0])  # COMPILE ERROR: list was moved
     # C++ would compile this and crash at runtime
@@ -409,13 +410,12 @@ fn use_python_library() raises:
 ### 3. SIMD as First-Class Type (Not Intrinsics)
 
 ```mojo
-# nocompile
 # SIMD is a type, not a platform-specific intrinsic
 var a = SIMD[DType.float32, 8](1.0)
 var b = SIMD[DType.float32, 8](2.0)
 var c = a + b                     # Operator overloading on SIMD
 var d = c.reduce_add()            # Built-in reductions
-var mask = a > 1.5
+var mask = a.gt(SIMD[DType.float32, 8](1.5))
 var selected = mask.select(a, b)  # Branchless select
 # Same code works on x86 (AVX), ARM (NEON), GPU
 ```
@@ -480,15 +480,16 @@ auto size = vec.size();
 **Mojo:**
 
 ```mojo
-# nocompile
 var vec = List[Int]()
 vec.append(1)
 vec.append(2)
 vec.reserve(100)
 for x in vec:
-    print(x[])
+    print(x)
 var size = len(vec)
 ```
+
+> **Warning:** `Copyable` and `ImplicitlyCopyable` are different traits. `Copyable` only provides `.copy()` (explicit clone). For `var b = a` (implicit copy assignment), the type must also conform to `ImplicitlyCopyable`. Use `.copy()` as the safe default when porting C++ copy semantics.
 
 ### Pattern 2: std::unique_ptr → Ownership
 
@@ -529,11 +530,11 @@ void print_item(const T& item) {
 
 ```mojo
 # nocompile
-trait Printable:
+trait Writable:
     fn write_to[W: Writer](self, mut writer: W):
         ...
 
-fn print_item[T: Printable](item: T):
+fn print_item[T: Writable](item: T):
     print(item)
 ```
 
@@ -566,10 +567,10 @@ fn compute_table_size(entries: Int) -> Int:
 comptime TABLE_SIZE = compute_table_size(100)  # 201
 
 struct FixedBuffer[N: Int]:
-    var data: InlineArray[Float32, N]
+    var data: InlineArray[Float32, Self.N]
 
     fn __init__(out self):
-        self.data = InlineArray[Float32, N](fill=0.0)
+        self.data = InlineArray[Float32, Self.N](fill=0.0)
 
 var buf = FixedBuffer[BUFFER_SIZE]()
 ```

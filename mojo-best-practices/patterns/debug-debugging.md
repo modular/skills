@@ -74,9 +74,9 @@ When porting numerical C code to Mojo, small differences can compound through de
 ```mojo
 # nocompile
 # Looking for non-existent keys, silently defaults to zeros
-var mean = data.find("latent_mean")  # Returns UNKNOWN
-if mean.dtype != DataType.UNKNOWN:
-    config.mean = data.get_f32(mean)
+var mean = data.find("latent_mean")  # Key doesn't exist!
+if mean:
+    config.mean = data.get_f32(mean.value())
 else:
     # Silently uses zeros - CORRUPTS ALL DOWNSTREAM COMPUTATION
     config.mean = alloc[Float32](128)
@@ -89,8 +89,8 @@ else:
 # nocompile
 # Use exact keys from the data file
 var mean = data.find("running_mean")  # Actual key in file
-if mean.dtype != DataType.UNKNOWN:
-    config.mean = data.get_f32(mean)
+if mean:
+    config.mean = data.get_f32(mean.value())
 ```
 
 **How to debug:** Use Python to inspect actual keys in the data file.
@@ -111,18 +111,21 @@ var pad_value = 151643  # Check reference code for actual value!
 
 **Impact:** Wrong constants can cause completely different computation paths and outputs.
 
-#### 3. Float64 vs Float32 Literals
+#### 3. Float64 vs Float32 — Variable Assignment Without Type Annotation
 
-**Problem:** Mojo's `1.0` defaults to Float64, causing precision differences.
+**Problem:** Assigning `1.0` to an untyped variable materializes as Float64, which can cause precision mismatches when mixed with Float32 later.
+
+**Note:** In Mojo, `1.0` is a `FloatLiteral` — an infinite-precision compile-time type. In binary operations like `1.0 / sum_val`, it implicitly converts to match the other operand (Float32 here). However, assigning to an untyped variable (`var x = 1.0`) materializes as Float64.
 
 **Don't:**
 ```mojo
 fn softmax_row(row: Float32Ptr, cols: Int):
     var sum_val: Float32 = 0.0
     # ... compute sum ...
-    var inv_sum = 1.0 / sum_val  # Float64 division!
+    var scale = 1.0              # Float64! (no type annotation)
+    var inv_sum = scale / sum_val # Mixed Float64/Float32
     for i in range(cols):
-        row[i] = row[i] * inv_sum  # Implicit cast back to Float32
+        row[i] = row[i] * inv_sum
 ```
 
 **Do:**
@@ -130,7 +133,7 @@ fn softmax_row(row: Float32Ptr, cols: Int):
 fn softmax_row(row: Float32Ptr, cols: Int):
     var sum_val: Float32 = 0.0
     # ... compute sum ...
-    var inv_sum: Float32 = Float32(1.0) / sum_val  # Float32 throughout
+    var inv_sum = 1.0 / sum_val  # FloatLiteral adapts to Float32
     for i in range(cols):
         row[i] = row[i] * inv_sum
 ```
@@ -354,7 +357,7 @@ gpu_compute(x, weights_f32, ...)
 - **Binary search**: Halve the search space with each debug iteration
 - **Print stats**: min/max/mean quickly reveals divergence
 - **Position matters**: Check boundaries and edge cases first
-- **Precision**: Mojo `1.0` is Float64; use `Float32(1.0)` for consistency
+- **Precision**: Mojo `1.0` is a `FloatLiteral` that adapts to context; but `var x = 1.0` without annotation materializes as Float64
 - **GPU sync**: Always sync before reading GPU buffers
 
 ---
@@ -400,7 +403,7 @@ if DEBUG:
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Debug flag** | `alias` or `comptime` | Both work in v26.1+ |
+| **Debug flag** | `comptime` (preferred) | `alias` is deprecated and triggers a compiler warning; use `comptime` instead |
 | **debug_assert** | `debug_assert(cond, msg)` | Stable |
 | **comptime assert** | `comptime assert cond, "msg"` | Stable |
 | **print** | `print(...)` | Stable |

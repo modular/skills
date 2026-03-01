@@ -66,11 +66,11 @@ struct Vector2D(Copyable, Movable, Writable, Equatable):
         self.x = x
         self.y = y
 
-    fn __init__(out self, *, copy: Self):
+    fn __copyinit__(out self, copy: Self, /):
         self.x = copy.x
         self.y = copy.y
 
-    fn __init__(out self, *, deinit take: Self):
+    fn __moveinit__(out self, deinit take: Self, /):
         self.x = take.x
         self.y = take.y
 
@@ -85,11 +85,17 @@ struct Vector2D(Copyable, Movable, Writable, Equatable):
 
 # Now it works everywhere
 var v1 = Vector2D(1.0, 2.0)
-var v2 = v1  # Copy works
+var v2 = v1.copy()  # Explicit copy (use ImplicitlyCopyable trait for var v2 = v1)
 print(v1)    # Printing works (via Writable)
 if v1 == v2: # Comparison works
     print("Equal")
 ```
+
+> **Warning: `Copyable` vs `ImplicitlyCopyable`** — This is the #1 source of porting errors.
+> - `Copyable`: provides `.copy()` method only. `var b = a` does NOT compile.
+> - `ImplicitlyCopyable` (refines `Copyable` + `ImplicitlyDestructible`): allows `var b = a` and implicit return-by-value in generic functions.
+> - `List[T]` requires `T: Copyable` — move-only types cannot go in `List`.
+> - Use `.copy()` as the safe default; only rely on implicit copy when the type is known to be `ImplicitlyCopyable`.
 
 ### Trait Bounds for Generics
 
@@ -98,7 +104,6 @@ Trait bounds (`[T: TraitName]`) specify what capabilities a generic type must ha
 **Pattern:**
 
 ```mojo
-# nocompile
 # T must implement Writable to be printed
 fn print_value[T: Writable](value: T):
     print(value)
@@ -133,10 +138,12 @@ struct TrivialPoint(Copyable, Movable):
     var y: Float32
 
     # Declare that copy/move are just bitwise copies
-    comptime __copy_ctor_is_trivial: Bool = True
-    comptime __move_ctor_is_trivial: Bool = True
+    comptime __copyinit__is_trivial: Bool = True
+    comptime __moveinit__is_trivial: Bool = True
     comptime __del__is_trivial: Bool = True
 ```
+
+> **Note**: `__copyinit__is_trivial` enables optimized bitwise copies but does NOT enable implicit copy assignment (`var b = a`). For that, add the `ImplicitlyCopyable` trait to the struct declaration, or use explicit `var b = a.copy()`.
 
 Generic code can check these flags:
 
@@ -144,7 +151,7 @@ Generic code can check these flags:
 # nocompile
 fn copy_array[T: Copyable](dest: UnsafePointer[T], src: UnsafePointer[T], n: Int):
     @parameter
-    if T.__copy_ctor_is_trivial:
+    if T.__copyinit__is_trivial:
         memcpy(dest=dest, src=src, count=n)  # Fast path
     else:
         for i in range(n):
@@ -155,16 +162,17 @@ fn copy_array[T: Copyable](dest: UnsafePointer[T], src: UnsafePointer[T], n: Int
 
 | Trait | Purpose | Required Methods |
 |-------|---------|-----------------|
-| Copyable | Allow copying | `__init__(copy=)` |
-| Movable | Allow moving | `__init__(move=)` |
+| Copyable | Allow explicit `.copy()` (does NOT enable `var b = a`) | `__copyinit__(out self, copy: Self, /)` |
+| Movable | Allow moving | `__moveinit__(out self, deinit take: Self, /)` |
 | Writable | Print/output support | `write_to[W: Writer]` |
-| Stringable | String conversion | `__str__` |
 | Representable | Debug representation | `__repr__` |
 | Equatable | Equality comparison | `__eq__`, `__ne__` |
 | Hashable | Use in Dict/Set | `__hash__` |
 | Sized | Report size | `__len__` |
 
 > **Note**: For `print()` to work, implement `Writable` trait with `write_to`. `Stringable` provides `__str__` for explicit string conversion.
+
+> **Note**: In v26.1 (stable), use `__copyinit__`/`__moveinit__`. In v26.2+ (nightly), the preferred form is unified `__init__` overloads: `fn __init__(out self, *, copy: Self)` (replaces `__copyinit__`) and `fn __init__(out self, *, deinit take: Self)` (replaces `__moveinit__`). Both forms are accepted in nightly.
 
 ### Minimal Bounds Principle
 
@@ -228,20 +236,16 @@ Combine traits to define reusable requirement sets.
 
 ```mojo
 # nocompile
-# Definition from stdlib
-comptime KeyElement = Copyable & Hashable & Equatable
-"""A trait composition for dictionary keys."""
-
-# Custom compositions
+# Custom trait compositions for reuse
 comptime PrintableValue = Copyable & ImplicitlyDestructible & Writable
 comptime SortableElement = Copyable & Comparable
 
-# Usage in generic code
-fn print_dict[K: KeyElement, V: PrintableValue](d: Dict[K, V]):
+# Usage in generic code — Dict keys require Copyable & Hashable & Equatable
+fn print_dict[K: Copyable & Hashable & Equatable, V: PrintableValue](d: Dict[K, V]):
     for entry in d.items():
         print(entry.key, ":", entry.value)
 
-fn lookup_or_insert[K: KeyElement, V: Copyable](
+fn lookup_or_insert[K: Copyable & Hashable & Equatable, V: Copyable](
     mut dict: Dict[K, V],
     key: K,
     default: V,
@@ -262,7 +266,6 @@ Create wrappers that forward trait requirements.
 **Do:**
 
 ```mojo
-# nocompile
 # Modern Mojo requires Self.T syntax and explicit traits
 struct Container[T: Movable & ImplicitlyDestructible & ImplicitlyCopyable](
     ImplicitlyDestructible
@@ -290,6 +293,18 @@ struct Wrapper[T: Movable & ImplicitlyDestructible & Writable](
         writer.write(")")
 ```
 
+### Traits with Default Methods
+
+```mojo
+trait Describable:
+    fn name(self) -> String: ...  # Required — implementor must provide
+
+    fn describe(self) -> String:  # Default — can be overridden
+        return "I am " + self.name()
+```
+
+> **Note:** Default methods can call other trait methods. Implementors override defaults by providing their own implementation.
+
 ### Conditional Conformance
 
 Add methods conditionally based on type parameter traits.
@@ -299,7 +314,6 @@ Add methods conditionally based on type parameter traits.
 **Do:**
 
 ```mojo
-# nocompile
 struct Pair[T: Movable & ImplicitlyDestructible & Equatable](
     ImplicitlyDestructible
 ):
@@ -333,6 +347,8 @@ Check trait conformance and downcast at runtime when needed.
 
 **Do:**
 
+> **Note:** `_constrained_conforms_to` and `trait_downcast` are internal APIs (prefixed with `_` or not publicly documented) and are not intended for general use. They are shown here for illustrative purposes only. Prefer using trait bounds in function signatures to statically enforce conformance.
+
 ```mojo
 # nocompile
 fn compare_elements[T: Copyable](a: T, b: T) -> Bool:
@@ -356,7 +372,7 @@ fn compare_elements[T: Copyable](a: T, b: T) -> Bool:
 |----------|----------|----------|
 | Type used in collections | Implement Copyable, Movable | [`memory-ownership.md`](memory-ownership.md) |
 | Type needs printing | Implement Writable | - |
-| Type used as Dict key | Implement KeyElement traits | [`type-system.md`](type-system.md) |
+| Type used as Dict key | Implement Copyable & Hashable & Equatable | [`type-system.md`](type-system.md) |
 | Generic function | Use minimal trait bounds | [`fn-design.md`](fn-design.md) |
 | Generic container | Require ImplicitlyDestructible | [`memory-ownership.md`](memory-ownership.md) |
 | Common trait combos | Define comptime compositions | [`meta-programming.md`](meta-programming.md) |
@@ -370,42 +386,42 @@ fn compare_elements[T: Copyable](a: T, b: T) -> Bool:
 - **Self.T syntax**: Use inside struct bodies to reference type parameters
 - **Minimal bounds**: Only require traits you actually use
 - **ImplicitlyDestructible**: Required when struct contains generic fields
-- **Writable vs Stringable**: Use Writable for `print()`, Stringable for `str()`
+- **Writable**: Use Writable for `print()` and string output via `write_to`
 - **Trait composition**: Use `comptime MyTraits = Trait1 & Trait2 & Trait3` (or `alias`, both valid)
 
 ---
 
 ## Version-Specific Features
 
-### v26.1 (Stable): Stringable Trait
+### v26.1 (Stable): Writable Trait for Output
 
-Implement `Stringable` with `__str__` for explicit string conversion via `str()`. Note: `print()` uses `Writable` (not `Stringable`).
+Implement `Writable` with `write_to` for output. `print()` uses `Writable`.
 
 ```mojo
 # nocompile
-struct Point(Stringable):
+struct Point(Writable):
     var x: Float64
     var y: Float64
 
-    fn __str__(self) -> String:
-        return "Point(" + str(self.x) + ", " + str(self.y) + ")"
+    fn write_to[W: Writer](self, mut writer: W):
+        writer.write("Point(", self.x, ", ", self.y, ")")
 
-# Works with str() for explicit string conversion
+# Works with print() and String conversion
 var p = Point(1.0, 2.0)
-var s = str(p)  # Calls __str__()
-# print(p)  # ONLY works if also Writable - print() uses Writable, not Stringable
+print(p)  # Calls write_to()
+var s = String(p)  # Converts to String
 ```
 
 **With Representable for debug output:**
 
 ```mojo
 # nocompile
-struct User(Stringable, Representable):
+struct User(Writable):
     var name: String
     var email: String
 
-    fn __str__(self) -> String:
-        return self.name + " <" + self.email + ">"
+    fn write_to[W: Writer](self, mut writer: W):
+        writer.write(self.name, " <", self.email, ">")
 
     fn __repr__(self) -> String:
         return "User(name=" + repr(self.name) + ", email=" + repr(self.email) + ")"
@@ -471,7 +487,7 @@ Understanding what traits are **not** available helps avoid confusion when comin
 | `Display` (Rust) | `Writable` (v26.1+) or `Stringable` | Different naming |
 | `Debug` (Rust) | `Representable` | Similar purpose |
 | `Default` (Rust) | `Defaultable` | Available in stdlib |
-| `Clone` (Rust) | `Copyable` with `__init__(copy=)` | Mojo uses copy constructors |
+| `Clone` (Rust) | `Copyable` with `__copyinit__` | Mojo uses copy constructors |
 | `Drop` (Rust) | `__del__` destructor | Automatic with ASAP destruction |
 | `Send` / `Sync` (Rust) | Not available | No trait-based thread safety |
 | `Deref` (Rust) | Not available | Use explicit `.value` access |
@@ -542,11 +558,11 @@ struct SmartPtr[T: Movable & ImplicitlyDestructible]:
 Mojo supports both trait composition with `&` and trait inheritance (refinement):
 
 ```mojo
-# Works: combining traits with &
-comptime KeyElement = Copyable & Hashable & Equatable
+# Works: combining traits with & (e.g. for Dict keys)
+comptime DictKey = Copyable & Hashable & Equatable
 
 # Works: using composed traits as bounds
-fn process[T: KeyElement](value: T): ...
+fn process[T: Copyable & Hashable & Equatable](value: T): ...
 
 # SUPPORTED: trait inheritance (refinement)
 # The stdlib uses this extensively:
@@ -573,14 +589,14 @@ fn process[T: MyTrait](value: T): ...  # T is guaranteed Copyable
 | `trait bound not satisfied` | Generic param missing trait | Add trait to constraint: `T: Movable & MyTrait` |
 | `cannot compose traits with &` | Old syntax or conflicting traits | Use `T: Trait1 & Trait2`; ensure no method conflicts |
 | `default method not found` | Missing `pass` in trait body | Use `pass` for empty default or `...` for required (v26.1+) |
-| `KeyElement requires hash and equality` | Missing methods for Dict/Set | Implement both `__hash__` and `__eq__` for KeyElement |
+| `Dict key requires hash and equality` | Missing methods for Dict/Set | Implement both `__hash__` and `__eq__` (Copyable & Hashable & Equatable) |
 | `Copyable requires Movable` | Only implementing Copyable | In v26.1+, Copyable refines Movable; implement both |
 
 ---
 
 ## Related Patterns
 
-- [`type-system.md`](type-system.md) — KeyElement and basic type patterns
+- [`type-system.md`](type-system.md) — Dict key requirements and basic type patterns
 - [`type-simd.md`](type-simd.md) — Register-passable and trivial types
 - [`memory-ownership.md`](memory-ownership.md) — Copyable/Movable implementation
 

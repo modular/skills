@@ -48,7 +48,7 @@ LayoutTensor provides type-safe, multi-dimensional tensor access with compile-ti
 
 **This is the #1 most common LayoutTensor error.** Reading an element from a LayoutTensor via indexing (e.g., `tensor[i]`) returns `SIMD[dtype, symbolic_size]`, not `Scalar[dtype]`. This happens with most layouts -- concrete and generic. The compiler cannot implicitly convert the symbolic SIMD width to a scalar.
 
-> **Alternative:** Some LayoutTensor APIs (e.g., `load_scalar`) may return `Scalar[dtype]` directly without needing `rebind`. However, basic indexing (`tensor[i]`) always requires `rebind`, and this is by far the most common access pattern.
+> **Alternative:** `load_scalar()` reliably returns `Scalar[dtype]` directly with no `rebind` needed. However, basic indexing (`tensor[i]`) always requires `rebind`, and this is by far the most common access pattern.
 
 **The error looks like:**
 ```
@@ -104,7 +104,6 @@ fn reduction_kernel[dtype: DType](
 **Multi-dimensional read -- same rule applies:**
 ```mojo
 # nocompile
-
 fn matmul_accumulate[dtype: DType](
     A: LayoutTensor[dtype, layout_a, MutAnyOrigin],
     B: LayoutTensor[dtype, layout_b, MutAnyOrigin],
@@ -163,7 +162,7 @@ fn tiled_kernel[dtype: DType, TILE_SIZE: Int](
     output: LayoutTensor[dtype, layout, MutAnyOrigin],
     size: Int,
 ):
-    var tile_idx = block_idx.x
+    var tile_idx = Int(block_idx.x)  # block_idx.x returns UInt, tile() expects Int
     var tid = thread_idx.x
 
     # Create a tile view -- no data copy, just pointer + offset
@@ -244,6 +243,8 @@ fn vectorized_kernel[dtype: DType, WIDTH: Int](
 
 ## Shared Memory LayoutTensor
 
+> **Warning:** `AddressSpace.SHARED` is only valid inside GPU kernel functions. Using `AddressSpace.SHARED` in host-side code (outside a GPU kernel) causes an LLVM BitCastInst crash. All shared memory examples below must appear inside functions that run on the GPU.
+
 LayoutTensor provides a clean API for shared memory allocation via `stack_allocation()`. This replaces the lower-level `stack_allocation` + manual offset math pattern.
 
 **1D shared memory:**
@@ -266,6 +267,8 @@ fn block_reduce[dtype: DType, BLOCK_SIZE: Int](
     var tid = thread_idx.x
 
     # Load into shared memory
+    # Note: block_idx.x returns UInt; use Int() cast to avoid mixed UInt/Int
+    # deprecation warnings: input[Int(block_idx.x) * BLOCK_SIZE + Int(tid)]
     shared[tid] = rebind[Scalar[dtype]](input[block_idx.x * BLOCK_SIZE + tid])
     barrier()
 
@@ -417,6 +420,25 @@ fn reshape_2d_to_3d[dtype: DType](
 | Reshape 1D to 2D | Construct from `.ptr` or go through non-owning `DeviceBuffer` | `rebind` fails across ranks; `.ptr` is simplest |
 | Custom op output | `rebind[LayoutTensor[...]](output.to_layout_tensor())` | Match dtype and layout exactly |
 | Accumulation in shared memory | `rebind` both operands | `shared[i] = rebind[...](shared[i]) + rebind[...](shared[i+s])` |
+
+---
+
+## Version-Specific Features
+
+### Nightly (v26.2+)
+
+All APIs in this pattern require the Mojo nightly toolchain (v26.2+). This includes:
+
+- `LayoutTensor` and `Layout` from the `layout` module
+- `LayoutTensor.stack_allocation()` for shared memory allocation
+- `LayoutTensor.tile[size](idx)` for zero-copy tile views
+- `load[width]` and `store[width]` with `IndexList`/`Index` coordinates
+- `rebind` for element type reinterpretation (builtin, always available)
+- Cross-rank reshape via non-owning `DeviceBuffer`
+
+### Stable (v26.1)
+
+`LayoutTensor` and `Layout` are available in v26.1 stable (`from layout import LayoutTensor, Layout`). The core indexing pattern, `rebind` requirement for reads, and shared memory allocation via `stack_allocation()` are stable. The `tile` API and `load`/`store` with `IndexList` are also available in v26.1. Cross-rank reshape via `DeviceBuffer` works in stable. Import paths are the same between v26.1 and v26.2+.
 
 ---
 

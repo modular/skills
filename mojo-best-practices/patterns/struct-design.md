@@ -95,6 +95,8 @@ struct Rectangle(Writable):
 ```
 
 > **Note**: Use `@fieldwise_init` with explicit trait conformances like `Copyable`, `Movable`. The `@value` decorator has been removed - use `@fieldwise_init` with explicit traits instead.
+>
+> **Warning:** `@fieldwise_init` generates `__init__` that takes all fields as `var` parameters. For `Copyable`-only fields (not `ImplicitlyCopyable`), callers must pass values via `.copy()` or `^` (transfer) — implicit copy assignment won't work in the generated constructor.
 
 ### Encapsulation: Private Fields with Accessor Methods
 
@@ -194,7 +196,6 @@ struct Pair[K: Movable & ImplicitlyDestructible, V: Movable & ImplicitlyDestruct
 **Functions vs Structs:**
 
 ```mojo
-# nocompile
 # Functions: Can use unqualified T
 fn identity[T: Movable](var value: T) -> T:
     return value^  # OK in functions
@@ -221,7 +222,7 @@ The official Modular style guide prescribes a specific section header format for
 # ===-----------------------------------------------------------------------===#
 
 
-struct MyStruct(Sized, Stringable):
+struct MyStruct(Sized, Writable):
     """Description of the struct and its purpose."""
 
     # ===-------------------------------------------------------------------===#
@@ -305,7 +306,7 @@ struct MyStruct:
 
 1. **Aliases** - Type aliases and compile-time constants
 2. **Fields** - Instance variables (`var` declarations)
-3. **Life cycle methods** - `__init__`, `__moveinit__`, `__copyinit__`, `__del__` (Note: a proposal to unify `__copyinit__`/`__moveinit__` into `__init__` overloads has been accepted but is not yet implemented)
+3. **Life cycle methods** - `__init__`, `__moveinit__`, `__copyinit__`, `__del__` (Note: in v26.2+ nightly, `__moveinit__` and `__copyinit__` are deprecated in favor of unified `__init__` overloads: `fn __init__(out self, *, deinit take: Self)` and `fn __init__(out self, *, copy: Self)`. Both forms work in v26.1 stable.)
 4. **Factory methods** - `@staticmethod` constructors returning `Self`
 5. **Operator dunders** - `__getitem__`, `__setitem__`, `__add__`, `__iter__`, etc.
 6. **Trait implementations** - `__len__`, `__str__`, `__bool__`, `__hash__`, etc.
@@ -520,7 +521,6 @@ struct Vector:
 **Comparison operators:**
 
 ```mojo
-# nocompile
 struct Point(Equatable, Comparable):
     var x: Int
     var y: Int
@@ -797,7 +797,6 @@ for item in reversed(list):
 The stdlib defines a formal `Iterator` trait that uses typed raises with `StopIteration`:
 
 ```mojo
-# nocompile
 # From stdlib std/iter/__init__.mojo:
 trait Iterator(ImplicitlyDestructible, Movable):
     comptime Element: Movable
@@ -873,7 +872,8 @@ struct Config(Copyable, Movable):
 
 # Only __init__ is generated - traits provide copy/move
 var config = Config("localhost", 8080, 30.0)
-var config_copy = config  # Uses Copyable trait
+var config_copy = config.copy()  # Copyable requires explicit .copy()
+# For implicit `var copy = original`, use ImplicitlyCopyable trait instead
 ```
 
 **Register-passable types:**
@@ -907,7 +907,6 @@ struct LegacyPoint:
 Control struct memory alignment for cache and SIMD optimization.
 
 ```mojo
-# nocompile
 from sys import align_of
 
 @align(64)
@@ -928,7 +927,6 @@ fn main():
 | GPU buffers | 256+ bytes | Meet device memory requirements |
 
 ```mojo
-# nocompile
 # Cache line alignment for thread safety
 @align(64)
 struct CacheLinePadded:

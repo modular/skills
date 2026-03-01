@@ -153,12 +153,18 @@ fn amd_matmul_kernel(...):
 # nocompile
 
 struct AMDScheduleBarrierMask:
-    comptime NONE = Self(0)           # Full barrier
-    comptime MFMA = Self(1 << 3)      # Matrix multiply
-    comptime VALU = Self(1 << 4)      # Vector ALU operations
-    comptime VMEM_READ = Self(1 << 5) # Vector memory reads
-    comptime DS_READ = Self(1 << 8)   # LDS reads
-    comptime DS_WRITE = Self(1 << 9)  # LDS writes
+    comptime NONE = Self(0)               # Full barrier
+    comptime ALL_ALU = Self(1 << 0)       # All arithmetic/logic
+    comptime VALU = Self(1 << 1)          # Vector ALU operations
+    comptime SALU = Self(1 << 2)          # Scalar ALU operations
+    comptime MFMA = Self(1 << 3)          # Matrix multiply
+    comptime ALL_VMEM = Self(1 << 4)      # All vector memory ops
+    comptime VMEM_READ = Self(1 << 5)     # Vector memory reads
+    comptime VMEM_WRITE = Self(1 << 6)    # Vector memory writes
+    comptime ALL_DS = Self(1 << 7)        # All LDS operations
+    comptime DS_READ = Self(1 << 8)       # LDS reads
+    comptime DS_WRITE = Self(1 << 9)      # LDS writes
+    comptime TRANS = Self(1 << 10)        # Transcendental instructions
 
     # Combine with |
     fn __or__(self, other: Self) -> Self:
@@ -309,7 +315,7 @@ rocm-smi --showproductname
 
 # Verify GPU detection
 rocminfo | grep "gfx"
-# Output: gfx90a (MI100/MI210), gfx942 (MI300X)
+# Output: gfx908 (MI100), gfx90a (MI210/MI250), gfx942 (MI300X)
 
 # Check ROCm version
 cat /opt/rocm/.info/version
@@ -325,7 +331,8 @@ export HIP_VISIBLE_DEVICES=0,1,2,3  # Select GPUs
 
 ```bash
 # Target AMD GPU architecture
-mojo build --target-accelerator=amd:gfx90a kernel.mojo   # MI100/MI210
+mojo build --target-accelerator=amd:gfx908 kernel.mojo   # MI100
+mojo build --target-accelerator=amd:gfx90a kernel.mojo   # MI210/MI250
 mojo build --target-accelerator=amd:gfx942 kernel.mojo   # MI300X
 mojo build --target-accelerator=amd:gfx950 kernel.mojo   # MI355X (CDNA4)
 ```

@@ -13,6 +13,7 @@ Quick reference for common MAX pitfalls. Each entry shows the wrong approach, th
 - [KV Cache](#kv-cache)
 - [Multi-GPU](#multi-gpu)
 - [Graph API](#graph-api)
+- [Model Implementation](#model-implementation)
 - [Custom Operations](#custom-operations)
 
 ---
@@ -269,6 +270,148 @@ graph.output(y)  # Mark as output
 
 ---
 
+## Model Implementation
+
+### ops.layer_norm Crashes on Apple Silicon
+
+**❌ WRONG:** Using `ops.layer_norm` or `F.layer_norm` on Apple Silicon
+```python
+# nocompile - Crashes on macOS with Metal GPU
+from max.nn.norm import LayerNorm
+
+norm = LayerNorm(768)  # Triggers Metal GPU dispatch
+# Error: Unimplemented at device_context.mojo:1950
+```
+
+**✅ CORRECT:** Use ManualLayerNorm with basic arithmetic ops (`F.mean` + `F.rsqrt` + arithmetic)
+
+```python
+# Abbreviated — see model-implementation.md for full implementation
+class ManualLayerNorm(Module[[Tensor], Tensor]):
+    @F.functional
+    def forward(self, x: Tensor) -> Tensor:
+        mu = F.mean(x, axis=-1)
+        var = F.mean((x - mu) * (x - mu), axis=-1)
+        return ((x - mu) * F.rsqrt(var + self.eps)) * self.weight + self.bias
+```
+
+See [model-implementation.md](../patterns/model-implementation.md#opslayer_norm-crashes-on-apple-silicon-blocker-temporary) for full eager and graph API implementations.
+
+**Why?** `ops.layer_norm` dispatches to the Metal GPU device context path even during CPU-only compilation. All other basic ops work correctly. **[Temporary]** — will be fixed in a future MAX release.
+
+---
+
+### Conv1D Weight Transposition (GPT-2 / OpenAI Models)
+
+**❌ WRONG:** Loading GPT-2 weights without transposition
+```python
+# nocompile - Silent correctness bug
+state_dict["attn.c_attn.weight"] = raw_weights["attn.c_attn.weight"]
+# Model produces garbage output — no error raised
+```
+
+**✅ CORRECT:** Transpose Conv1D weights for Linear layers
+```python
+if name.endswith(("c_attn.weight", "c_proj.weight", "c_fc.weight")):
+    weight = weight.T.copy()  # [in, out] -> [out, in]
+state_dict[name] = weight
+```
+
+**Why?** GPT-2 Conv1D stores weights as `[in_features, out_features]`, but MAX Linear expects `[out_features, in_features]`. The mismatch produces wrong outputs with no error.
+
+---
+
+### Graph API: ModuleList Not Available
+
+**❌ WRONG:** Storing sub-modules in a plain list (graph API)
+```python
+# nocompile - Parameters not discovered
+class Model(Module):
+    def __init__(self):
+        self.blocks = [Block() for _ in range(12)]
+```
+
+**✅ CORRECT:** Use setattr for named attributes
+```python
+class Model(Module):
+    def __init__(self):
+        for i in range(12):
+            setattr(self, f"block_{i}", Block())
+
+    def __call__(self, x):
+        for i in range(12):
+            x = getattr(self, f"block_{i}")(x)
+        return x
+```
+
+**Why?** Graph API Module parameter discovery uses attribute introspection. List elements are not iterated. Use `Sequential` or `ModuleList` in the eager API instead.
+
+---
+
+### F.arange Requires out_dim with Symbolic Shapes
+
+**❌ WRONG:** F.arange without out_dim for dynamic shapes
+```python
+# nocompile - Graph compiler can't infer output shape
+positions = F.arange(0, seq_len, step=1)  # Fails with symbolic seq_len
+```
+
+**✅ CORRECT:** Provide out_dim matching the symbolic dimension
+```python
+positions = F.arange(0, seq_len, step=1, out_dim=seq_len, dtype=DType.int64, device=device)
+```
+
+**Why?** With symbolic dimensions, the graph compiler cannot infer the output shape from the inputs alone. `out_dim` explicitly declares the symbolic output size.
+
+---
+
+### No F.tril/F.triu for Causal Masks
+
+**❌ WRONG:** Expecting PyTorch-like tril/triu
+```python
+# nocompile - F.tril does not exist
+mask = F.tril(F.ones(seq_len, seq_len))
+```
+
+**✅ CORRECT:** Build causal mask using range comparison or F.band_part
+```python
+# Option 1: F.band_part (eager API)
+mask = Tensor.constant(float("-inf"), dtype=dtype, device=device)
+mask = F.broadcast_to(mask, shape=(seq_len, seq_len))
+mask = F.band_part(mask, num_lower=None, num_upper=0, exclude=True)
+
+# Option 2: Range comparison (graph API)
+rows = F.arange(0, seq_len, out_dim=seq_len).unsqueeze(1)
+cols = F.arange(0, seq_len, out_dim=seq_len).unsqueeze(0)
+is_masked = F.greater(cols, rows)  # True where cols > rows (upper triangle)
+# Use F.select to avoid NaN from 0 * -inf:
+zero = Tensor.constant(0.0, dtype=dtype, device=device)
+neg_inf = Tensor.constant(float("-inf"), dtype=dtype, device=device)
+mask = F.select(is_masked, neg_inf, zero)
+# Use: attn_weights = attn_weights + mask
+```
+
+**Why?** MAX does not provide `F.tril`/`F.triu`. Use `F.band_part` (eager) or range comparison (graph) as alternatives.
+
+---
+
+### CPU-Only Session on Apple Silicon
+
+**❌ WRONG:** Relying on default session (includes Metal GPU)
+```python
+# nocompile - _session() detects Metal GPU, initializes GPU context
+model = MyModel()
+compiled = model.compile(input_types)  # May hit GPU context errors
+```
+
+**✅ CORRECT:** Force CPU-only session via monkey-patch
+
+See [model-implementation.md](../patterns/model-implementation.md#cpu-only-session-on-apple-silicon-temporary) for the full workaround code.
+
+**Why?** On Apple Silicon, the internal `_session()` function detects Metal GPU and initializes the GPU device context. Some ops (e.g., `layer_norm`) then incorrectly dispatch to GPU even for CPU tensors. **[Temporary]** — will be addressed when a public device-targeting API is added.
+
+---
+
 ## Custom Operations
 
 ### Wrong `ops.custom()` Signature (26.2+)
@@ -322,6 +465,11 @@ fn my_kernel(...):
 | Custom op not found | Missing @compiler.register | [Custom Operations](#custom-operations) |
 | "not enough GPUs" | TP > available GPUs | [Tensor Parallel](#tensor-parallel-without-enough-gpus) |
 | CLI flag ignored | Deprecated flag name | [Deprecated Flags](#deprecated-cli-flags) |
+| "Unimplemented at device_context.mojo:1950" | ops.layer_norm on Apple Silicon | [ops.layer_norm Crashes](#opslayer_norm-crashes-on-apple-silicon) |
+| Garbage output, no error | Conv1D weight transposition | [Conv1D Weight Transposition](#conv1d-weight-transposition-gpt-2--openai-models) |
+| Parameters not found in graph API | Modules stored in plain list | [ModuleList Not Available](#graph-api-modulelist-not-available) |
+| Graph compiler can't infer shape | Missing out_dim on F.arange | [F.arange out_dim](#farange-requires-out_dim-with-symbolic-shapes) |
+| ~60s per token | Eager mode without compile() | [model-implementation.md](../patterns/model-implementation.md#eager-vs-compiled-mode-performance) |
 
 ---
 

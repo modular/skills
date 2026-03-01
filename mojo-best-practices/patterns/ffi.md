@@ -56,7 +56,7 @@ WHEN: Writing C FFI bindings, calling external libraries, vendoring C/C++ code, 
 KEY_TYPES: UnsafePointer, external_call, OwnedDLHandle, RTLD, Byte
 SYNTAX:
   - external_call["func_name", return_type](args)
-  - UnsafePointer[T].alloc(n) / .free()
+  - alloc[T](n) / .free()
   - OwnedDLHandle("lib.so", RTLD.NOW).get_function[FnType]("symbol")
   - s.unsafe_ptr() for String -> C string pointer
 PITFALLS: Must free manually, no RAII for C pointers, Int is 64-bit but C int is 32-bit, CString lifetime tied to String, BF16+F32 not supported on MPS, ASAP destroys OwnedDLHandle after get_function() — pass lib as `read` parameter to helper to keep alive
@@ -377,12 +377,12 @@ fn copy_correct(dest: UInt8Ptr, src: UInt8Ptr, count: Int):
 # nocompile
 fn float32_to_bytes(val: Float32) -> UInt32:
     """Reinterpret float bits as integer."""
-    var ptr = UnsafePointer.address_of(val)
+    var ptr = UnsafePointer(to=val)
     return ptr.bitcast[UInt32]()[]
 
 fn bytes_to_float32(val: UInt32) -> Float32:
     """Reinterpret integer bits as float."""
-    var ptr = UnsafePointer.address_of(val)
+    var ptr = UnsafePointer(to=val)
     return ptr.bitcast[Float32]()[]
 
 fn read_float32_le(data: UInt8Ptr) -> Float32:
@@ -582,7 +582,7 @@ blr  x19        ; ← call fn_echo — crashes, library is unmapped
 A borrow cannot be ASAP-destroyed — it keeps the library mapped for the entire helper body:
 
 ```mojo
-# nocompile — CORRECT
+# nocompile
 from ffi import OwnedDLHandle, RTLD
 
 fn _call_echo(
@@ -641,6 +641,8 @@ fn decompress(data: Span[UInt8]) raises -> List[UInt8]:
 
 ```mojo
 # nocompile
+from sys.info import CompilationTarget
+
 fn load_platform_library() raises -> OwnedDLHandle:
     """Load appropriate library for current platform."""
     @parameter
@@ -884,6 +886,7 @@ fn linear_layer_blas(
 ```mojo
 # nocompile
 from ffi import OwnedDLHandle, RTLD
+from sys.info import CompilationTarget
 
 fn load_blas() raises -> OwnedDLHandle:
     @parameter
@@ -1382,6 +1385,7 @@ vendor_matmul(f32_input, f32_weights, f32_output)
 | `GIL deadlock` | Mojo code calling Python without GIL | Always acquire GIL before Python calls: `Python.acquire_gil()` |
 | `MPS BF16 error` | Mixing BF16 weights with F32 input | Convert BF16 to F16 or use consistent BF16 pipeline |
 | `cuBLAS/rocBLAS error` | Handle not initialized or wrong dimensions | Check cublasCreate() return code; verify matrix dimensions |
+| Corrupted numeric output from `printf` | `external_call` with C variadic functions (e.g., `printf`) may mishandle argument promotion | Use Mojo's `print()` instead, or build strings and pass to `puts`. C variadic functions expect specific ABI promotions that `external_call` may not apply correctly |
 
 ---
 

@@ -43,11 +43,13 @@ Register custom operations that integrate with the MAX Graph compiler, dispatch 
 | `DeviceContextPtr` | Compiler-injected type (no explicit import needed) | GPU context handle passed to ops |
 | `LayoutTensor`, `Layout` | `from layout import LayoutTensor, Layout` | Type-safe tensor with compile-time layout |
 | `DeviceBuffer` | `from gpu.host import DeviceBuffer` | Non-owning GPU buffer wrapper |
-| `rebind` | Built-in (prelude) | Type-level reinterpret cast |
+| `rebind` | Builtin (no import needed) | Type-level reinterpret cast; available in the prelude |
 | `enqueue_function` | via `DeviceContext` | Submit GPU kernel for execution |
 | `enqueue_memset` | via `DeviceContext` | Zero or fill GPU memory |
 
 > **Import note:** `OutputTensor`, `InputTensor`, and `DeviceContextPtr` are compiler-injected types available inside `@compiler.register` structs. You do not need to import them explicitly. Import paths may vary between Mojo versions -- adapt for your toolchain.
+
+> **Build system note:** Custom ops require the MAX build system (bazel). They cannot be run as standalone `mojo` files because `compiler`, `tensor`, and related modules are not available to the standalone Mojo compiler.
 
 ---
 
@@ -86,8 +88,9 @@ struct MyOp:
 
 ```mojo
 # nocompile
-from utils import rebind
 from layout import LayoutTensor
+
+# Note: `rebind` is a builtin function available in the prelude — no import needed.
 
 # Convert OutputTensor (mutable) to LayoutTensor
 var out_lt = rebind[LayoutTensor[dtype, layout, MutAnyOrigin]](
@@ -112,7 +115,7 @@ var in_lt = rebind[LayoutTensor[dtype, layout, ImmutAnyOrigin]](
 Launch GPU kernels from custom ops via `enqueue_function`. The exact parameter form depends on the context:
 
 - Inside custom ops with `DeviceContextPtr`: use the form shown below
-- From `DeviceContext` directly: `ctx.enqueue_function[kernel](args, grid_dim=G, block_dim=B)`
+- From `DeviceContext` directly: `ctx.enqueue_function[kernel, kernel](args, grid_dim=G, block_dim=B)`
 
 ```mojo
 # nocompile
@@ -133,7 +136,7 @@ fn gpu_impl(output: OutputTensor[rank=1], input: InputTensor[rank=1], ctx: Devic
     var in_lt = rebind[LayoutTensor[dtype, layout, ImmutAnyOrigin]](input.to_layout_tensor())
 
     comptime kernel = my_kernel[layout, dtype]
-    gpu_ctx.enqueue_function[kernel](
+    gpu_ctx.enqueue_function[kernel, kernel](
         out_lt,
         in_lt,
         grid_dim=grid_size,
@@ -146,6 +149,7 @@ fn gpu_impl(output: OutputTensor[rank=1], input: InputTensor[rank=1], ctx: Devic
 - The kernel function must be fully specialized (all type parameters resolved) before passing to `enqueue_function`
 - Use `comptime` to bind specialized kernel, then pass as parameter
 - If you encounter compilation errors about parameter count, check the `enqueue_function` overloads available in your Mojo version
+- If your kernel uses `exp`, `log`, or other math functions on a generic `dtype`, add `comptime assert dtype.is_floating_point()` at the top of the kernel to provide compile-time evidence that the type supports those operations
 
 ---
 
@@ -174,7 +178,7 @@ struct MyOp:
                 input.to_layout_tensor()
             )
             comptime kernel = my_kernel[layout, dtype]
-            gpu_ctx.enqueue_function[kernel](
+            gpu_ctx.enqueue_function[kernel, kernel](
                 out_lt, in_lt,
                 grid_dim=(size + BLOCK_SIZE - 1) // BLOCK_SIZE,
                 block_dim=BLOCK_SIZE,
@@ -189,6 +193,26 @@ struct MyOp:
 - Development and debugging (easier to print values, set breakpoints)
 - Platforms without GPU support
 - Numerical validation against a known-correct reference
+
+### Element-Wise Ops: Use `foreach`
+
+For simple element-wise custom ops, `foreach` is the easiest approach -- it handles grid/block sizing, striding, and CPU/GPU dispatch automatically:
+
+```mojo
+# nocompile
+from compiler import foreach
+
+fn execute[target: StaticString, ...](
+    output: OutputTensor[rank=1], input: InputTensor[rank=1], ctx: DeviceContextPtr,
+) raises:
+    @parameter
+    fn elementwise[width: Int](idx: StaticIntTuple[1]):
+        output.store(idx, input.load[width](idx) * 2)
+
+    foreach[elementwise, target=target](output, ctx)
+```
+
+Most real custom ops in the codebase use `foreach` rather than manual `enqueue_function` for element-wise work.
 
 ---
 
@@ -227,6 +251,8 @@ def build_graph(device: DeviceRef, size: int, dtype: DType) -> Graph:
 - `parameters` passes compile-time constants (integers, dtypes, strings) to the Mojo op
 - `ops.custom()` returns a list of results; use `[0].tensor` to extract the first output tensor
 - The `device` argument controls whether the `target` parameter in Mojo is `"gpu"` or `"cpu"`
+
+> **Direct Mojo invocation:** You can also call a custom op directly from Mojo for testing or benchmarking, bypassing the Python graph: `MyOp.execute[target="cpu"](out_slice, in_slice, ctx)`. This is useful for unit tests and microbenchmarks.
 
 ---
 
@@ -272,21 +298,21 @@ fn attention_gpu_impl(
     # Step 1: Compute QK^T scores
     var scores_buf = DeviceBuffer[score_dtype](gpu_ctx, seq_len * seq_len)
     comptime qk_kernel = qk_matmul_kernel[layout, dtype]
-    gpu_ctx.enqueue_function[qk_kernel](
+    gpu_ctx.enqueue_function[qk_kernel, qk_kernel](
         q_lt, k_lt, scores_buf,
         grid_dim=grid_qk, block_dim=BLOCK_SIZE,
     )
 
     # Step 2: Softmax over scores (in-place)
-    comptime softmax_kernel = softmax_kernel[layout, score_dtype]
-    gpu_ctx.enqueue_function[softmax_kernel](
+    comptime softmax_k = softmax_kernel[layout, score_dtype]
+    gpu_ctx.enqueue_function[softmax_k, softmax_k](
         scores_buf, seq_len,
         grid_dim=grid_softmax, block_dim=BLOCK_SIZE,
     )
 
     # Step 3: Multiply scores by values
     comptime sv_kernel = score_value_kernel[layout, dtype]
-    gpu_ctx.enqueue_function[sv_kernel](
+    gpu_ctx.enqueue_function[sv_kernel, sv_kernel](
         scores_buf, v_lt, out_lt,
         grid_dim=grid_sv, block_dim=BLOCK_SIZE,
     )
@@ -334,7 +360,7 @@ fn gpu_impl(output: OutputTensor[rank=1], input: InputTensor[rank=1], ctx: Devic
 
     # Now launch the kernel (output is guaranteed zeroed)
     comptime kernel = accumulate_kernel[layout, dtype]
-    gpu_ctx.enqueue_function[kernel](
+    gpu_ctx.enqueue_function[kernel, kernel](
         out_lt, in_lt,
         grid_dim=(size + BLOCK_SIZE - 1) // BLOCK_SIZE,
         block_dim=BLOCK_SIZE,
@@ -358,7 +384,7 @@ fn gpu_impl(output: OutputTensor[rank=1], input: InputTensor[rank=1], ctx: Devic
 |------|---------|------------|
 | Add a new op to MAX Graph | Custom Op Registration | `@compiler.register` + `ops.custom()` in Python |
 | Use LayoutTensor inside custom op | LayoutTensor Conversion | `rebind` + `to_layout_tensor()` |
-| Launch GPU kernel from custom op | enqueue_function | `enqueue_function[kernel](args, grid_dim=G, block_dim=B)` |
+| Launch GPU kernel from custom op | enqueue_function | `enqueue_function[kernel, kernel](args, grid_dim=G, block_dim=B)` |
 | Support both CPU and GPU | Target Dispatch | `@parameter if target == "gpu"` |
 | Chain kernels (attention, etc.) | Multi-Kernel Pipeline | Sequential `enqueue_function` on same context |
 | Intermediate buffers between kernels | DeviceBuffer | `owning=False` for non-owning views |
@@ -373,7 +399,7 @@ fn gpu_impl(output: OutputTensor[rank=1], input: InputTensor[rank=1], ctx: Devic
 |-------|-------|-----|
 | `op not found` / `unknown custom op` | Name mismatch between `@compiler.register` and `ops.custom(name=...)` | Ensure strings match exactly (case-sensitive) |
 | `rebind` type error | Wrong origin type in `rebind` target | Use `MutAnyOrigin` for `OutputTensor`, `ImmutAnyOrigin` for `InputTensor` |
-| `enqueue_function` compilation error | Kernel not fully specialized or wrong parameter form | Use `comptime kernel = my_fn[params]` then `enqueue_function[kernel](...)` |
+| `enqueue_function` compilation error | Kernel not fully specialized or wrong parameter form | Use `comptime kernel = my_fn[params]` then `enqueue_function[kernel, kernel](...)` |
 | Kernel produces all zeros | Output buffer not written, or wrong grid/block dims | Check `grid_dim` covers all elements; verify kernel indexing |
 | Kernel results not changing after edit | Stale `.mojopkg` or compilation cache | Re-run `mojo package`; purge `~/.modular/.max_cache`, `~/.modular/.mojo_cache`, `~/.modular/.mogg_cache` |
 | `DeviceBuffer` use-after-free | Owning buffer freed while non-owning view still in use | Ensure owning buffer outlives all `owning=False` views |
@@ -381,6 +407,8 @@ fn gpu_impl(output: OutputTensor[rank=1], input: InputTensor[rank=1], ctx: Devic
 | `parameters` not received in Mojo | Parameter name/type mismatch | Ensure Python `parameters={"key": val}` keys match Mojo op parameter names |
 | GPU kernel runs but wrong results | CPU fallback running instead of GPU | Verify `device=DeviceRef.from_device(device)` points to GPU in `ops.custom()` |
 | `to_layout_tensor()` fails | Tensor not on expected device | Confirm tensor device matches target dispatch path |
+| `exp()` method not found on SIMD | `(-val).exp()` is not valid -- `exp` is a free function | Use `exp(-val)` after `from math import exp` |
+| `select()` fails after `>` comparison | `val > 0` returns scalar `Bool`, not `SIMD[DType.bool, width]` | Use `val.gt(0).select(val, 0)` for element-wise comparison, or `max(val, 0)` for ReLU |
 
 ---
 
@@ -388,11 +416,30 @@ fn gpu_impl(output: OutputTensor[rank=1], input: InputTensor[rank=1], ctx: Devic
 
 - **Register:** `@compiler.register("name")` on a struct with `execute` static method
 - **Convert tensors:** `rebind[LayoutTensor[..., MutAnyOrigin]](output.to_layout_tensor())`
-- **Launch kernel:** `comptime k = my_fn[params]` then `enqueue_function[k](args, grid_dim=G, block_dim=B)`
+- **Launch kernel:** `comptime k = my_fn[params]` then `enqueue_function[k, k](args, grid_dim=G, block_dim=B)`
 - **Python call:** `ops.custom(name="name", device=dev, values=[...], out_types=[...])`
 - **Package:** `mojo package path/to/op -o path/to/op.mojopkg`
 - **Zero buffer:** `enqueue_memset(DeviceBuffer[dtype](ctx, ptr, size, owning=False), 0)`
 - **Cache purge:** `rm -rf ~/.modular/.max_cache ~/.modular/.mojo_cache ~/.modular/.mogg_cache`
+
+---
+
+## Version-Specific Features
+
+### Nightly (v26.2+)
+
+All APIs in this pattern require the Mojo nightly toolchain (v26.2+). This includes:
+
+- `@compiler.register` decorator for custom op registration
+- `OutputTensor`, `InputTensor`, and `DeviceContextPtr` compiler-injected types
+- `to_layout_tensor()` conversion from OutputTensor/InputTensor to LayoutTensor
+- `enqueue_function` and `enqueue_memset` on DeviceContext
+- `ops.custom()` Python graph integration
+- `mojo package` for `.mojopkg` generation
+
+### Stable (v26.1)
+
+The MAX Graph custom op system (`@compiler.register`, `ops.custom()`) is available in v26.1 stable. Core patterns -- registration, target dispatch, Python integration, and mojopkg packaging -- work in stable. However, some LayoutTensor APIs and DeviceBuffer overloads used in the examples may have different signatures. If using stable, verify import paths and method signatures against the v26.1 documentation.
 
 ---
 

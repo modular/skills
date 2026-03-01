@@ -49,7 +49,7 @@ GPU programming in Mojo provides 10-100x speedups for parallel workloads. This p
 | `gpu.barrier` (also `gpu.sync.barrier`) | PUBLIC | Block-level synchronization (both import paths work) |
 | `gpu.host.DeviceContext`, `gpu.host.DeviceBuffer` | PUBLIC | Device management |
 | `stack_allocation[N, T, address_space=AddressSpace.SHARED]()` | PUBLIC | Shared memory allocation |
-| `gpu.memory.shared_memory[N, T, alignment=A]()` | PUBLIC | Shared memory allocation (alternative API, used in Apple structured kernels) |
+| `stack_allocation` with `AddressSpace.SHARED` | PUBLIC | Shared memory allocation (use `from memory import stack_allocation`) |
 | `memory.UnsafePointer` | PUBLIC | Standard library |
 | `sys.has_accelerator` | PUBLIC | System capability check |
 | `sys.is_nvidia_gpu`, `sys.is_amd_gpu`, `sys.is_apple_gpu` | PUBLIC | GPU vendor detection (compile-time) |
@@ -90,25 +90,25 @@ Grid (entire kernel launch)
 **Pattern:**
 
 ```mojo
-# nocompile
 
 from gpu import thread_idx, block_idx, block_dim, grid_dim, global_idx, barrier
 from gpu.host import DeviceContext
 from memory import UnsafePointer
 
 fn gpu_kernel(
-    data: UnsafePointer[Float32],
-    result: UnsafePointer[Float32],
+    data: UnsafePointer[Float32, MutAnyOrigin],
+    result: UnsafePointer[Float32, MutAnyOrigin],
     size: Int
 ):
     """Basic GPU kernel pattern."""
     # Calculate global thread index (two equivalent approaches)
     var tid = block_idx.x * block_dim.x + thread_idx.x  # Manual calculation
-    # Or use: var tid = global_idx.x  # Pre-computed by runtime
+    # Or use: var tid = global_idx.x  # Equivalent: block_dim * block_idx + thread_idx
 
-    # CRITICAL: Always bounds check
-    if tid < size:
-        result[tid] = data[tid] * 2.0
+    # CRITICAL: Always bounds check (tid is UInt, size is Int — cast to match)
+    if tid >= UInt(size):
+        return
+    result[tid] = data[tid] * 2.0
 
 fn main() raises:
     comptime SIZE: Int = 1_000_000
@@ -123,10 +123,10 @@ fn main() raises:
     # Calculate grid dimensions
     var num_blocks = (SIZE + BLOCK_SIZE - 1) // BLOCK_SIZE
 
-    # Launch kernel
-    ctx.enqueue_function[gpu_kernel](
-        d_data.unsafe_ptr(),
-        d_result.unsafe_ptr(),
+    # Launch kernel — pass DeviceBuffer directly, not .unsafe_ptr()
+    ctx.enqueue_function_experimental[gpu_kernel](
+        d_data,
+        d_result,
         SIZE,
         grid_dim=(num_blocks,),
         block_dim=(BLOCK_SIZE,)
@@ -140,6 +140,8 @@ fn main() raises:
 
 ## Common Patterns
 
+> **Warning: GPU kernel pointer mutability.** For GPU kernel parameters that need mutable (writable) access via raw pointers, `UnsafePointer` may require the `LegacyUnsafePointer` alias with explicit `mut=True`. Import it as: `from memory import LegacyUnsafePointer` and declare as `comptime Ptr = LegacyUnsafePointer[mut=True, type=Float32, origin=MutAnyOrigin]`. Prefer `LayoutTensor` (see [`gpu-layout-tensor.md`](gpu-layout-tensor.md)) over raw pointers when possible -- it handles mutability and origin annotations automatically.
+
 ### Memory Coalescing
 
 **When:** All global memory access in GPU kernels
@@ -151,18 +153,19 @@ Memory coalescing combines multiple thread memory accesses into single transacti
 # nocompile
 
 fn row_major_access_kernel(
-    matrix: UnsafePointer[Float32],
-    output: UnsafePointer[Float32],
+    matrix: UnsafePointer[Float32, MutAnyOrigin],
+    output: UnsafePointer[Float32, MutAnyOrigin],
     rows: Int, cols: Int,
 ):
     """GOOD: Row-major access enables coalesced memory access."""
     var row = block_idx.y * block_dim.y + thread_idx.y
     var col = block_idx.x * block_dim.x + thread_idx.x
 
-    if row < rows and col < cols:
-        # Thread 0 accesses [row*cols], Thread 1 accesses [row*cols+1], etc.
-        var val = matrix[row * cols + col]  # COALESCED!
-        output[row * cols + col] = val * 2.0
+    if row >= UInt(rows) or col >= UInt(cols):
+        return
+    # Thread 0 accesses [row*cols], Thread 1 accesses [row*cols+1], etc.
+    var val = matrix[row * cols + col]  # COALESCED!
+    output[row * cols + col] = val * 2.0
 ```
 
 **Don't:**
@@ -170,18 +173,19 @@ fn row_major_access_kernel(
 # nocompile
 
 fn column_major_access_kernel(
-    matrix: UnsafePointer[Float32],
-    output: UnsafePointer[Float32],
+    matrix: UnsafePointer[Float32, MutAnyOrigin],
+    output: UnsafePointer[Float32, MutAnyOrigin],
     rows: Int, cols: Int,
 ):
     """BAD: Column-major access causes uncoalesced memory access."""
     var col = block_idx.x * block_dim.x + thread_idx.x
     var row = block_idx.y * block_dim.y + thread_idx.y
 
-    if row < rows and col < cols:
-        # Thread 0 accesses [0], Thread 1 accesses [rows] - stride!
-        var val = matrix[col * rows + row]  # UNCOALESCED - 10-32x slower!
-        output[col * rows + row] = val * 2.0
+    if row >= UInt(rows) or col >= UInt(cols):
+        return
+    # Thread 0 accesses [0], Thread 1 accesses [rows] - stride!
+    var val = matrix[col * rows + row]  # UNCOALESCED - 10-32x slower!
+    output[col * rows + row] = val * 2.0
 ```
 
 ### Shared Memory for Data Reuse
@@ -196,8 +200,8 @@ from gpu.memory import AddressSpace
 from memory import stack_allocation
 
 fn matrix_transpose_shared(
-    input: UnsafePointer[Float32],
-    output: UnsafePointer[Float32],
+    input: UnsafePointer[Float32, MutAnyOrigin],
+    output: UnsafePointer[Float32, MutAnyOrigin],
     width: Int, height: Int
 ):
     """Efficient transpose using shared memory."""
@@ -267,26 +271,28 @@ fn matrix_transpose_layout[TILE_DIM: Int](
 
 # BAD: Array of Structures (AoS) - uncoalesced
 @fieldwise_init
-struct ParticleAoS(TrivialRegisterType, Copyable):
+struct ParticleAoS(TrivialRegisterPassable, Copyable):
     var x: Float32
     var y: Float32
     var z: Float32
 
-fn update_aos_slow(particles: UnsafePointer[ParticleAoS], n: Int):
+fn update_aos_slow(particles: UnsafePointer[ParticleAoS, MutAnyOrigin], n: Int):
     var tid = block_idx.x * block_dim.x + thread_idx.x
-    if tid < n:
-        particles[tid].x += 1.0  # Strided access!
+    if tid >= UInt(n):
+        return
+    particles[tid].x += 1.0  # Strided access!
 
 # GOOD: Structure of Arrays (SoA) - coalesced
 fn update_soa_fast(
-    x: UnsafePointer[Float32],
-    y: UnsafePointer[Float32],
-    z: UnsafePointer[Float32],
+    x: UnsafePointer[Float32, MutAnyOrigin],
+    y: UnsafePointer[Float32, MutAnyOrigin],
+    z: UnsafePointer[Float32, MutAnyOrigin],
     n: Int
 ):
     var tid = block_idx.x * block_dim.x + thread_idx.x
-    if tid < n:
-        x[tid] += 1.0  # Coalesced access!
+    if tid >= UInt(n):
+        return
+    x[tid] += 1.0  # Coalesced access!
 ```
 
 ### Native DeviceContext Pattern
@@ -307,15 +313,15 @@ fn forward_with_native(x: UnsafePointer[Float32], size: Int) raises:
 
     # Create GPU buffer once
     var d_x = ctx.enqueue_create_buffer[DType.float32](size)
-    ctx.enqueue_copy(d_x, x, size)
+    ctx.enqueue_copy(d_x, x)
 
-    # All kernel launches use native dispatch
-    ctx.enqueue_function[my_kernel](d_x.unsafe_ptr(), size,
+    # All kernel launches use native dispatch — pass DeviceBuffer directly
+    ctx.enqueue_function_experimental[my_kernel](d_x, size,
                                      grid_dim=blocks, block_dim=threads)
 
     # Single sync at end
     ctx.synchronize()
-    ctx.enqueue_copy(x, d_x, size)
+    ctx.enqueue_copy(x, d_x)
 ```
 
 ### Buffer Pooling
@@ -363,23 +369,6 @@ fn process_blocks(blocks: List[Block], hidden: UnsafePointer[Float32]):
     pool.release()
 ```
 
-### GPU State Reset
-
-**When:** Between major computation phases to free memory
-
-```mojo
-# nocompile
-
-fn execute_phases():
-    phase_one()
-    mps.reset()     # Free phase one caches
-
-    phase_two()
-    mps.reset()     # Free phase two caches
-
-    phase_three()   # Now has memory headroom
-```
-
 ---
 
 ## Memory Coalescing
@@ -392,7 +381,7 @@ Memory coalescing combines multiple thread accesses into a single wide memory tr
 ```mojo
 # nocompile
 
-fn column_major_kernel(matrix: UnsafePointer[Float32], rows: Int, cols: Int):
+fn column_major_kernel(matrix: UnsafePointer[Float32, MutAnyOrigin], rows: Int, cols: Int):
     var col = block_idx.x * block_dim.x + thread_idx.x
     var row = block_idx.y * block_dim.y + thread_idx.y
 
@@ -404,7 +393,7 @@ fn column_major_kernel(matrix: UnsafePointer[Float32], rows: Int, cols: Int):
 ```mojo
 # nocompile
 
-fn row_major_kernel(matrix: UnsafePointer[Float32], rows: Int, cols: Int):
+fn row_major_kernel(matrix: UnsafePointer[Float32, MutAnyOrigin], rows: Int, cols: Int):
     var row = block_idx.y * block_dim.y + thread_idx.y
     var col = block_idx.x * block_dim.x + thread_idx.x
 
@@ -421,11 +410,11 @@ struct Particle:
     var y: Float32
     var z: Float32
 
-fn bad_aos_access(particles: UnsafePointer[Particle], tid: Int):
+fn bad_aos_access(particles: UnsafePointer[Particle, MutAnyOrigin], tid: Int):
     var x = particles[tid].x  # Loads 12 bytes, uses 4
 
 # GOOD: SoA - coalesced, full bandwidth utilization
-fn good_soa_access(x: UnsafePointer[Float32], y: UnsafePointer[Float32], tid: Int):
+fn good_soa_access(x: UnsafePointer[Float32, MutAnyOrigin], y: UnsafePointer[Float32, MutAnyOrigin], tid: Int):
     var x_val = x[tid]  # Perfectly coalesced
 ```
 
@@ -433,14 +422,15 @@ fn good_soa_access(x: UnsafePointer[Float32], y: UnsafePointer[Float32], tid: In
 ```mojo
 # nocompile
 
-fn vectorized_kernel(input: UnsafePointer[Float32], output: UnsafePointer[Float32], size: Int):
+fn vectorized_kernel(input: UnsafePointer[Float32, MutAnyOrigin], output: UnsafePointer[Float32, MutAnyOrigin], size: Int):
     comptime VECTOR_WIDTH: Int = 4
     var tid = block_idx.x * block_dim.x + thread_idx.x
     var vec_idx = tid * VECTOR_WIDTH
 
-    if vec_idx + VECTOR_WIDTH <= size:
-        var vec = input.load[width=VECTOR_WIDTH](vec_idx)
-        output.store(vec_idx, vec * 2.0)
+    if vec_idx + UInt(VECTOR_WIDTH) > UInt(size):
+        return
+    var vec = input.load[width=VECTOR_WIDTH](vec_idx)
+    output.store(vec_idx, vec * 2.0)
 ```
 
 ---
@@ -453,27 +443,31 @@ Common kernel patterns for GPU workloads:
 ```mojo
 # nocompile
 
-fn gpu_silu_kernel(data: UnsafePointer[Float32], n: Int):
+fn gpu_silu_kernel(data: UnsafePointer[Float32, MutAnyOrigin], n: Int):
     var tid = block_idx.x * block_dim.x + thread_idx.x
-    if tid < n:
-        var x = data[tid]
-        data[tid] = x / (1.0 + exp(-x))
+    if tid >= UInt(n):
+        return
+    var x = data[tid]
+    data[tid] = x / (1.0 + exp(-x))
 ```
 
 **2D MatMul (naive):**
 ```mojo
 # nocompile
 
-fn gpu_matmul_kernel(C: UnsafePointer[Float32], A: UnsafePointer[Float32],
-                     B: UnsafePointer[Float32], M: Int, K: Int, N: Int):
+fn gpu_matmul_kernel(C: UnsafePointer[Float32, MutAnyOrigin], A: UnsafePointer[Float32, MutAnyOrigin],
+                     B: UnsafePointer[Float32, MutAnyOrigin], M: Int, K: Int, N: Int):
     var row = block_idx.y * block_dim.y + thread_idx.y
     var col = block_idx.x * block_dim.x + thread_idx.x
 
-    if row < M and col < N:
-        var sum: Float32 = 0.0
-        for k in range(K):
-            sum += A[row * K + k] * B[k * N + col]
-        C[row * N + col] = sum
+    if row >= UInt(M) or col >= UInt(N):
+        return
+    var sum: Float32 = 0.0
+    for k in range(K):
+        # Note: row/col are UInt (from block_idx/thread_idx). Use Int() cast
+        # to avoid mixed UInt/Int deprecation warnings: A[Int(row) * K + k]
+        sum += A[row * K + k] * B[k * N + col]
+    C[row * N + col] = sum
 ```
 
 **Block size guidelines:**
@@ -531,15 +525,14 @@ Using `ImmutAnyOrigin` for inputs enables compiler optimizations and catches acc
 **When:** Matrix operations, image processing, 2D convolutions
 
 ```mojo
-# nocompile
 
 from gpu import thread_idx, block_idx, block_dim
 from gpu.host import DeviceContext
 
 fn matrix_kernel(
-    C: UnsafePointer[Float32],
-    A: UnsafePointer[Float32],
-    B: UnsafePointer[Float32],
+    C: UnsafePointer[Float32, MutAnyOrigin],
+    A: UnsafePointer[Float32, MutAnyOrigin],
+    B: UnsafePointer[Float32, MutAnyOrigin],
     M: Int, N: Int, K: Int
 ):
     """2D kernel with row/column indexing."""
@@ -547,11 +540,14 @@ fn matrix_kernel(
     var row = block_idx.y * block_dim.y + thread_idx.y
     var col = block_idx.x * block_dim.x + thread_idx.x
 
-    if row < M and col < N:
-        var sum: Float32 = 0.0
-        for k in range(K):
-            sum += A[row * K + k] * B[k * N + col]
-        C[row * N + col] = sum
+    if row >= UInt(M) or col >= UInt(N):
+        return
+    var sum: Float32 = 0.0
+    for k in range(K):
+        # Note: row/col are UInt (from block_idx/thread_idx). Use Int() cast
+        # to avoid mixed UInt/Int deprecation warnings: A[Int(row) * K + k]
+        sum += A[row * K + k] * B[k * N + col]
+    C[row * N + col] = sum
 
 fn launch_2d_kernel() raises:
     """Launch kernel with 2D grid and block dimensions."""
@@ -574,11 +570,11 @@ fn launch_2d_kernel() raises:
     var grid_x = (N + BLOCK_X - 1) // BLOCK_X  # Columns
     var grid_y = (M + BLOCK_Y - 1) // BLOCK_Y  # Rows
 
-    # Launch with 2D grid and block dimensions
-    ctx.enqueue_function[matrix_kernel](
-        d_C.unsafe_ptr(),
-        d_A.unsafe_ptr(),
-        d_B.unsafe_ptr(),
+    # Launch with 2D grid and block dimensions — pass DeviceBuffer directly
+    ctx.enqueue_function_experimental[matrix_kernel](
+        d_C,
+        d_A,
+        d_B,
         M, N, K,
         grid_dim=(grid_x, grid_y),      # 2D grid
         block_dim=(BLOCK_X, BLOCK_Y)    # 2D block
@@ -610,7 +606,7 @@ fn launch_2d_kernel() raises:
 | Data reuse across threads | Use shared memory with bank conflict avoidance | [`gpu-memory-access.md`](gpu-memory-access.md) |
 | Many GPU operations | Use native DeviceContext, batch transfers | - |
 | Repeated same-size allocations | Use buffer pooling | - |
-| Memory pressure between phases | Reset GPU state between phases | - |
+| Memory pressure between phases | Deallocate buffers between phases, use buffer pooling | - |
 | Processing object fields | Convert AoS to SoA layout | - |
 
 ---
@@ -618,7 +614,7 @@ fn launch_2d_kernel() raises:
 ## Quick Reference
 
 - **Block size**: Use multiples of warp size (32 NVIDIA, 64 AMD) - typically 128, 256, or 512
-- **Bounds check**: Always verify `tid < size` before accessing memory
+- **Bounds check**: Always verify `tid >= UInt(size): return` before accessing memory (thread index is `UInt`)
 - **Coalescing**: Adjacent threads must access adjacent memory addresses
 - **Shared memory padding**: Add +1 to row size to avoid bank conflicts
 - **Device sync**: Only synchronize when CPU needs results
@@ -635,6 +631,8 @@ mojo build --target-accelerator=amd:gfx942 kernel.mojo     # AMD MI300X
 mojo build --target-accelerator=amd:gfx950 kernel.mojo     # AMD MI355X
 ```
 
+> **`_accelerator_arch()` format:** The runtime function `_accelerator_arch()` returns the **full prefixed string**, matching the `--target-accelerator` value: `"nvidia:sm_80"` (not `"sm_80"`), `"amd:gfx942"` (not `"gfx942"`), `"metal:3"` for Apple GPU, or `""` when no GPU is configured. Always compare against the prefixed form.
+
 ---
 
 ## Common Pitfalls
@@ -646,6 +644,39 @@ Calling `print()` inside a GPU kernel typically fails with: "Current compilation
 > **Note:** Some NVIDIA targets may support limited `printf`-like functionality, but it is not portable. For cross-platform GPU code, avoid `print()` in kernels.
 
 **Workaround:** Write debug values to an output buffer and inspect on the host after kernel completion. Use `_ = expr` to suppress unused variable warnings.
+
+### `is_apple_gpu()` Returns False in Host Code
+
+`sys.is_apple_gpu()` (and `is_nvidia_gpu()`, `is_amd_gpu()`) checks the **compilation target**, not the runtime device. In host-side code compiled for the CPU target, it always returns `False` — even when running on a Mac with an Apple GPU. It only returns `True` inside GPU kernel functions that are compiled for the Apple Metal target (AIR).
+
+```mojo
+from sys import is_apple_gpu
+
+# HOST CODE — always False, regardless of hardware
+fn host_function():
+    if is_apple_gpu():
+        pass  # NEVER reached — host is compiled for CPU target
+
+# GPU KERNEL — True when compiled for Metal target
+fn my_kernel(data: UnsafePointer[Float32, MutAnyOrigin]):
+    @parameter
+    if is_apple_gpu():
+        pass  # Reached when kernel is compiled for Apple GPU
+```
+
+**Alternative for host-side GPU detection:** Use `from sys import _accelerator_arch` and check if the result starts with `"metal:"`:
+
+```mojo
+# nocompile
+from sys import _accelerator_arch
+
+# Safe at module level — returns "" when no GPU target is configured
+comptime _is_metal = _accelerator_arch() in (
+    StaticString("metal:1"), StaticString("metal:2"),
+    StaticString("metal:3"), StaticString("metal:4"),
+    StaticString("metal:5"),
+)
+```
 
 ### Float Literals are Float64
 
@@ -689,7 +720,7 @@ See [`gpu-block-collectives.md`](gpu-block-collectives.md) for complete patterns
 | `kernel launch failed` | Invalid grid/block dimensions | Ensure block size ≤ 1024, grid size > 0 |
 | `uncoalesced memory access` | Non-contiguous memory access pattern | Align accesses to 128-byte boundaries |
 | `device not found` | No GPU available or driver issue | Check GPU drivers and CUDA installation |
-| `illegal memory access` | Out-of-bounds array access | Add bounds checking: `if tid < size` |
+| `illegal memory access` | Out-of-bounds array access | Add bounds checking: `if tid >= UInt(size): return` |
 | `cannot implicitly convert 'element_type'` | LayoutTensor read without rebind | Use `rebind[Scalar[dtype]](tensor[i])` — see [`gpu-layout-tensor.md`](gpu-layout-tensor.md) |
 | `does not support operation: print` | print() in GPU kernel (not supported on most targets) | Remove print, use output buffer for debug |
 | Metal GPU returns zeros/garbage | Missing `@__copy_capture` on nested functions | Add `@__copy_capture(var1, var2, ...)` to ALL functions in the kernel call chain |
@@ -770,7 +801,6 @@ Choose the right data type for your workload:
 #### Mixed-Precision Accumulation Pattern
 
 ```mojo
-# nocompile
 
 fn mixed_precision_dot[dtype: DType, N: Int](
     a: UnsafePointer[Scalar[dtype]],
@@ -798,7 +828,7 @@ fn mixed_precision_dot[dtype: DType, N: Int](
 |---------|-------------|-----------------|
 | **Constants** | `alias BLOCK = 256` | `alias` or `comptime` (both work) |
 | **GPU imports** | `from gpu.id import ...` | `from gpu import ...` |
-| **AddressSpace** | `_GPUAddressSpace` or `AddressSpace` | `AddressSpace` only |
+| **AddressSpace** | `_GPUAddressSpace` or `AddressSpace` | `AddressSpace` preferred (`_GPUAddressSpace` is a deprecated alias) |
 | **DeviceContext** | `DeviceContext()` | `DeviceContext()` |
 | **Buffer allocation** | `ctx.enqueue_create_buffer[T](size)` | Same |
 | **Shared memory** | `stack_allocation[N, T, address_space=...]` | Same |
@@ -827,7 +857,7 @@ from gpu.host import DeviceContext
 
 fn gpu_kernel():
     comptime BLOCK_SIZE = 256  # Both alias and comptime work in v26.1+
-    var tid = global_idx.x   # Pre-computed: block_idx.x * block_dim.x + thread_idx.x
+    var tid = global_idx.x   # Equivalent to: block_idx.x * block_dim.x + thread_idx.x
     # ...
 ```
 
@@ -849,8 +879,31 @@ var scan = prefix_sum[block_size=TPB](my_val)     # Inclusive prefix sum across 
 
 **Notes:**
 - Both `alias` and `comptime` work for compile-time constants in v26.1+
-- `_GPUAddressSpace` removed in v26.1+; use `AddressSpace` directly (part of prelude)
+- `_GPUAddressSpace` is a deprecated alias for `AddressSpace` in v26.1+; use `AddressSpace` directly (part of prelude)
 - Core APIs (`DeviceContext`, `barrier()`) are stable across all versions
+
+---
+
+### GPU Kernel Profiling
+
+**Essential profiling techniques:**
+
+```mojo
+# nocompile
+# Time a GPU kernel (must synchronize to get accurate timing)
+from time import perf_counter_ns
+
+var start = perf_counter_ns()
+ctx.enqueue_function[my_kernel](grid_dim, block_dim, args...)
+ctx.synchronize()  # Wait for GPU to finish
+var elapsed_us = (perf_counter_ns() - start) / 1000
+print("Kernel time:", elapsed_us, "μs")
+```
+
+**Platform-specific tools:**
+- **NVIDIA:** `nsys profile ./my_program` (Nsight Systems), `ncu ./my_program` (Nsight Compute)
+- **Apple Metal:** Xcode GPU Frame Capture, Metal System Trace in Instruments
+- **AMD:** `rocprof ./my_program`, `omniperf`
 
 ---
 

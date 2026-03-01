@@ -44,8 +44,7 @@ Optimal memory access patterns are essential for GPU performance. TMA (Tensor Me
 | API | Import Path | Notes |
 |-----|-------------|-------|
 | `thread_idx`, `block_idx` | `from gpu import thread_idx, block_idx` | Core GPU primitives |
-| `stack_allocation` | `from memory import stack_allocation` | Shared memory allocation |
-| `shared_memory` | `from gpu.memory import shared_memory` | Shared memory allocation (alternative API) |
+| `stack_allocation` | `from memory import stack_allocation` | Shared memory allocation (with `address_space=AddressSpace.SHARED`) |
 | `AddressSpace` | `from gpu.memory import AddressSpace` | Address space enum (SHARED, GENERIC, etc.) |
 | `LayoutTensor`, `Layout` | `from layout import LayoutTensor, Layout` | Type-safe tensor with compile-time layout |
 | `create_tma_descriptor` | `from gpu.host.nvidia.tma import create_tma_descriptor` | TMA descriptor creation (SM90+) |
@@ -162,7 +161,7 @@ if elect_one_sync():
 
 ```mojo
 from layout.tma_async import TMATensorTile, PipelineState
-from gpu.sync import SharedMemBarrier
+from layout.tma_async import SharedMemBarrier
 
 fn kernel_with_prefetch[num_pipeline_stages: Int](
     a_tma_op: TMATensorTile[...],
@@ -590,11 +589,13 @@ barrier()              # Ensure all threads see the data
 # nocompile
 
 # 2D TMA for matrix tiles
-var a_tma_desc = tma_create_descriptor_2d[a_type, a_tma_shape, a_swizzle](
-    a_ptr,
-    StaticTuple[Int32, 2](K, M),  # Global shape
-    StaticTuple[Int64, 1](K * size_of[a_type]()),  # Stride
-)
+from gpu.host.nvidia.tma import create_tma_descriptor
+
+var a_tma_desc = create_tma_descriptor[
+    dtype=a_type,
+    tile_shape=a_tma_shape,
+    swizzle_mode=a_swizzle,
+](a_ptr, global_shape, global_strides)
 
 # 3D TMA for batched operations
 tma_op.async_copy_3d(
@@ -689,7 +690,7 @@ from gpu import barrier
 var smem = stack_allocation[TILE_SIZE, Float32, address_space=AddressSpace.SHARED]()
 
 # Manual load with coalescing
-var tid = gpu.thread_idx()
+var tid = thread_idx.x
 smem[tid] = global_ptr[tid + block_offset]
 barrier()  # Sync before use
 ```

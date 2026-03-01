@@ -26,36 +26,38 @@ consolidates:
 
 **Category:** memory | **Impact:** CRITICAL
 
-This pattern covers `Span` for zero-copy views over contiguous memory, `UnsafeMaybeUninitialized` for deferred initialization, and proper collection destructor implementation. These are essential for building high-performance containers.
+This pattern covers `Span` for zero-copy views over contiguous memory, `UnsafeMaybeUninit` for deferred initialization, and proper collection destructor implementation. These are essential for building high-performance containers.
 
 > **Note:** For core memory safety (dangling references, origin tracking, pointer types), see [`memory-safety.md`](memory-safety.md).
 
 ---
 
-## UnsafeMaybeUninitialized Patterns
+> **Warning:** `List[T]` requires `T: Copyable`, not just `Movable`. Move-only types cannot be stored in `List`. For move-only types, use `UnsafePointer`-based storage with `UnsafeMaybeUninit` (see below).
 
-`UnsafeMaybeUninitialized` provides a memory location that may or may not be initialized, enabling deferred initialization patterns essential for implementing containers.
+## UnsafeMaybeUninit Patterns
 
-### The Lifecycle: write() -> assume_initialized() -> assume_initialized_destroy()
+`UnsafeMaybeUninit` provides a memory location that may or may not be initialized, enabling deferred initialization patterns essential for implementing containers.
+
+### The Lifecycle: init_from() -> unsafe_assume_init_ref() -> unsafe_assume_init_destroy()
 
 ```mojo
-# nocompile - UnsafeMaybeUninitialized moved in nightly v26.2+
-from memory import UnsafeMaybeUninitialized
+# nocompile
+from memory import UnsafeMaybeUninit
 
 fn lifecycle_example():
     # 1. Create uninitialized storage (no constructor called)
-    var maybe = UnsafeMaybeUninitialized[String]()
+    var maybe = UnsafeMaybeUninit[String]()
 
-    # 2. Initialize with write() - takes ownership of value
-    maybe.write(String("hello"))
+    # 2. Initialize with init_from() - takes ownership of value
+    maybe.init_from(String("hello"))
 
-    # 3. Access the initialized value with assume_initialized()
-    print(maybe.assume_initialized())  # "hello"
+    # 3. Access the initialized value with unsafe_assume_init_ref()
+    print(maybe.unsafe_assume_init_ref())  # "hello"
 
     # 4. CRITICAL: Destroy before going out of scope
-    maybe.assume_initialized_destroy()
+    maybe.unsafe_assume_init_destroy()
 
-    # Note: The destructor is a no-op - you MUST call assume_initialized_destroy()
+    # Note: The destructor is a no-op - you MUST call unsafe_assume_init_destroy()
 ```
 
 **Anti-pattern (reading before writing):**
@@ -63,10 +65,10 @@ fn lifecycle_example():
 ```mojo
 # nocompile
 fn undefined_behavior():
-    var maybe = UnsafeMaybeUninitialized[Int]()
+    var maybe = UnsafeMaybeUninit[Int]()
 
     # UNDEFINED BEHAVIOR: Reading uninitialized memory!
-    var value = maybe.assume_initialized()  # Garbage data!
+    var value = maybe.unsafe_assume_init_ref()  # Garbage data!
 ```
 
 **Anti-pattern (missing destroy):**
@@ -74,47 +76,46 @@ fn undefined_behavior():
 ```mojo
 # nocompile
 fn memory_leak():
-    var maybe = UnsafeMaybeUninitialized[String]()
-    maybe.write(String("hello"))
+    var maybe = UnsafeMaybeUninit[String]()
+    maybe.init_from(String("hello"))
 
     # MEMORY LEAK: The String's destructor is never called!
-    # UnsafeMaybeUninitialized's __del__ is a no-op by design.
+    # UnsafeMaybeUninit's __del__ is a no-op by design.
 ```
 
 **Key API methods:**
 
 | Method | Precondition | Postcondition |
 |--------|--------------|---------------|
-| `write(value^)` | self uninitialized | self initialized |
-| `assume_initialized()` | self initialized | Returns reference |
-| `assume_initialized_destroy()` | self initialized | self uninitialized |
-| `move_from(other)` | self uninitialized, other initialized | self initialized, other uninitialized |
-| `copy_from(other)` | self uninitialized, other initialized | both initialized |
+| `init_from(value^)` | self uninitialized | self initialized |
+| `unsafe_assume_init_ref()` | self initialized | Returns reference |
+| `unsafe_assume_init_destroy()` | self initialized | self uninitialized |
+| `unsafe_assume_init_take()` | self initialized | Returns owned value, self uninitialized |
 | `unsafe_ptr()` | none | Returns pointer (always safe to call) |
 
 **Container implementation pattern:**
 
 ```mojo
 # nocompile
-struct Container[T: Copyable, size: Int]:
-    var _storage: InlineArray[UnsafeMaybeUninitialized[T], size]
+struct Container[T: Copyable & Movable & ImplicitlyDestructible, size: Int]:
+    var _storage: InlineArray[UnsafeMaybeUninit[Self.T], Self.size]
     var _count: Int  # Track how many elements are initialized
 
     fn __init__(out self):
-        self._storage = InlineArray[UnsafeMaybeUninitialized[T], size](
+        self._storage = InlineArray[UnsafeMaybeUninit[Self.T], Self.size](
             uninitialized=True
         )
         self._count = 0
 
-    fn add(mut self, var value: T):
-        debug_assert(self._count < size, "Container full")
-        self._storage[self._count].write(value^)
+    fn add(mut self, var value: Self.T):
+        debug_assert(self._count < Self.size, "Container full")
+        self._storage[self._count].init_from(value^)
         self._count += 1
 
     fn __del__(deinit self):
         # CRITICAL: Only destroy initialized elements
         for i in range(self._count):
-            self._storage[i].assume_initialized_destroy()
+            self._storage[i].unsafe_assume_init_destroy()
 ```
 
 ---
@@ -246,8 +247,7 @@ Span mutability is controlled by the `mut` parameter and the origin it's created
 **Creating immutable Span from List:**
 
 ```mojo
-# nocompile
-var list = List[Int](1, 2, 3, 4, 5)
+var list: List[Int] = [1, 2, 3, 4, 5]
 
 # Immutable span - read-only access
 var immutable_span = Span(list)  # Defaults to immutable
@@ -258,11 +258,10 @@ print(immutable_span[0])  # OK: reading
 **Creating mutable Span:**
 
 ```mojo
-# nocompile
-var list = List[Int](1, 2, 3, 4, 5)
+var list: List[Int] = [1, 2, 3, 4, 5]
 
 # Mutable span - requires mutable reference to source
-var mutable_span = Span(mut list)  # Pass with 'mut' for mutable span
+var mutable_span = Span(list)  # Mutability is inferred from the reference
 mutable_span[0] = 100  # OK: mutation allowed
 mutable_span.fill(0)   # OK: bulk mutation
 ```
@@ -279,14 +278,14 @@ fn sum_values(data: Span[Int, _]) -> Int:
     return total
 
 # In-place modification - mutable span
-fn double_values(data: Span[mut=True, type=Int, origin=_]):
+fn double_values(data: Span[mut=True, Int, _]):
     for i in range(len(data)):
         data[i] *= 2
 
 # Usage
-var numbers = List[Int](1, 2, 3)
+var numbers: List[Int] = [1, 2, 3]
 var total = sum_values(Span(numbers))       # Immutable: OK
-double_values(Span(mut numbers))            # Mutable: values doubled
+double_values(Span(numbers))               # Mutable: inferred from context
 ```
 
 **Mutability rules:**
@@ -294,7 +293,7 @@ double_values(Span(mut numbers))            # Mutable: values doubled
 | Source | Span Creation | Mutability |
 |--------|---------------|------------|
 | `Span(list)` | Immutable reference | Read-only |
-| `Span(mut list)` | Mutable reference | Read-write |
+| `Span(list)` (with `mut` binding) | Mutable reference | Read-write |
 | `Span(ptr=ptr, length=n)` | From pointer | Inherits from pointer's mutability |
 
 ### Span Iteration
@@ -302,18 +301,17 @@ double_values(Span(mut numbers))            # Mutable: values doubled
 **Direct iteration with `for item in span`:**
 
 ```mojo
-# nocompile
-var list = List[Int](10, 20, 30, 40, 50)
+var list: List[Int] = [10, 20, 30, 40, 50]
 var span = Span(list)
 
-# Iterate over elements (yields references)
+# Iterate over elements (yields values directly)
 for item in span:
-    print(item[])  # Dereference to get value
+    print(item)
 
 # With mutable span for modification
-var mutable_span = Span(mut list)
-for item in mutable_span:
-    item[] *= 2  # Double each element in-place
+var mutable_span = Span(list)
+for i in range(len(mutable_span)):
+    mutable_span[i] *= 2  # Double each element in-place
 ```
 
 **Index-based iteration with `range(len(span))`:**
@@ -343,7 +341,7 @@ fn process_in_chunks[T: Copyable](data: Span[T, _], chunk_size: Int):
         var chunk = data[i:end]
         # Process chunk...
         for item in chunk:
-            print(item[])
+            print(item)
         i += chunk_size
 ```
 
@@ -354,8 +352,7 @@ Span provides bounds-checked access by default, with unsafe alternatives for per
 **Default bounds-checked access with `[]` operator:**
 
 ```mojo
-# nocompile
-var list = List[Int](1, 2, 3)
+var list: List[Int] = [1, 2, 3]
 var span = Span(list)
 
 # Safe access - bounds checked
@@ -448,12 +445,12 @@ fn first_or_default[T: Copyable](data: Span[T, _], default: T) -> T:
 **Iteration over empty spans is safe:**
 
 ```mojo
-# nocompile
-var empty_span = Span(List[Int]())
+var empty_list: List[Int] = []
+var empty_span = Span(empty_list)
 
 # These are all safe (just do nothing):
 for item in empty_span:
-    print(item[])  # Never executes
+    print(item)  # Never executes
 
 for i in range(len(empty_span)):
     print(empty_span[i])  # Never executes
@@ -466,9 +463,8 @@ empty_span.fill(42)  # No-op on empty span
 **Read-only sharing is safe:**
 
 ```mojo
-# nocompile
 # SAFE: Multiple threads reading from immutable span
-var data = List[Int](1, 2, 3, 4, 5)
+var data: List[Int] = [1, 2, 3, 4, 5]
 var span = Span(data)  # Immutable span
 
 # Thread 1: var a = span[0]  # OK
@@ -479,9 +475,8 @@ var span = Span(data)  # Immutable span
 **Partitioned mutable access is safe:**
 
 ```mojo
-# nocompile
 # SAFE: Each thread writes to non-overlapping regions
-fn parallel_process(data: Span[mut=True, type=Int, origin=_], num_threads: Int):
+fn parallel_process(data: Span[mut=True, Int, _], num_threads: Int):
     var chunk_size = len(data) // num_threads
 
     # Each thread gets exclusive subspan
@@ -527,29 +522,23 @@ struct BadList[T: Copyable]:
 
 ```mojo
 # nocompile
-from builtin.constrained import _constrained_conforms_to
-from builtin.rebind import downcast
+# NOTE: The stdlib uses internal APIs (_constrained_conforms_to, downcast) for
+# runtime trait checking in its List/InlineArray destructors. User code should
+# NOT use these internals. Instead, use compile-time trait bounds in your
+# function/struct signatures to ensure elements are destructible.
 
-struct GoodList[T: Copyable]:
+struct GoodList[T: Copyable & Destructible]:
+    """Use trait bounds to guarantee T is destructible at compile time."""
     var _data: UnsafePointer[T, MutExternalOrigin]
     var _len: Int
     var capacity: Int
 
     fn __del__(deinit self):
         """Destroy all elements in the list and free its memory."""
-        _constrained_conforms_to[
-            conforms_to(Self.T, ImplicitlyDestructible),
-            Parent=Self,
-            Element=Self.T,
-            ParentConformsTo="ImplicitlyDestructible",
-        ]()
-        comptime TDestructible = downcast[Self.T, ImplicitlyDestructible]
-
-        # Optimization: skip destruction loop for trivial types
-        @parameter
-        if not TDestructible.__del__is_trivial:
-            for i in range(self._len):  # Only destroy initialized elements
-                (self._data + i).bitcast[TDestructible]().destroy_pointee()
+        # Because T: Destructible is enforced by the trait bound,
+        # we can safely call destroy_pointee() on each element.
+        for i in range(self._len):  # Only destroy initialized elements
+            (self._data + i).destroy_pointee()
 
         self._data.free()
 ```
@@ -589,7 +578,7 @@ fn extend(mut self, var other: List[Self.T, ...]):
     var src_ptr = other.unsafe_ptr()
 
     @parameter
-    if Self.T.__move_ctor_is_trivial:
+    if Self.T.__moveinit__is_trivial:
         memcpy(dest=dest_ptr, src=src_ptr, count=other_len)
     else:
         for _ in range(other_len):
@@ -637,7 +626,7 @@ fn __del__(deinit self):
 | Scenario | Approach |
 |----------|----------|
 | Non-owning view of array | Use `Span[T, origin]` |
-| Deferred initialization | Use `UnsafeMaybeUninitialized` |
+| Deferred initialization | Use `UnsafeMaybeUninit` |
 | Collection with owned elements | Implement proper `__del__` |
 | Bulk fill/copy | Use `span.fill()` and `span.copy_from()` |
 | Thread-safe read access | Use immutable Span |
@@ -663,7 +652,8 @@ fn __del__(deinit self):
 | `double free` | Element destroyed twice | Set length to 0 after moving elements |
 | `memory leak` | Element destructor not called | Call `destroy_pointee()` before freeing |
 | `buffer overflow` | Index out of bounds | Use bounds-checked accessors or Span |
-| `uninitialized read` | Reading UnsafeMaybeUninitialized before write | Always write() before assume_initialized() |
+| `uninitialized read` | Reading UnsafeMaybeUninit before init | Always init_from() before unsafe_assume_init_ref() |
+| `Dict[key]` raises at runtime | Key not found in Dict | `Dict.__getitem__` raises on missing key. Functions using `dict[key]` need `raises`, or guard with `if key in dict:` first |
 
 ---
 
@@ -674,7 +664,7 @@ fn __del__(deinit self):
 | Feature | Status |
 |---------|--------|
 | Span API (`fill()`, `copy_from()`, slicing) | Stable both versions |
-| `UnsafeMaybeUninitialized` | Stable both versions |
+| `UnsafeMaybeUninit` | Stable both versions |
 | Collection destructor patterns | Stable both versions |
 | `__del__is_trivial` optimization | Stable both versions |
 

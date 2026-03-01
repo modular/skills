@@ -46,7 +46,7 @@ When passing a value to a function that takes ownership (`var` argument), use th
 fn process_data(var data: List[Int]):
     # Function takes ownership of data
     for item in data:
-        print(item)
+        print(item)  # List iterators yield values directly
 
 fn main():
     var my_list = List[Int]()
@@ -82,7 +82,7 @@ fn analyze(data: List[Float64]) -> Float64:
     var sum: Float64 = 0.0
     for item in data:
         sum += item
-    return sum / len(data)
+    return sum / Float64(len(data))
 
 fn main():
     var measurements = List[Float64]()
@@ -98,7 +98,18 @@ fn main():
 
 - Small types that fit in registers (Int, Float64, Bool)
 - When you need an independent copy to modify
-- Types conforming to `TrivialRegisterType` trait
+- Types conforming to `TrivialRegisterPassable` trait
+
+### Parameter Convention Quick Reference
+
+| Convention | Syntax | Ownership | Use When |
+|-----------|--------|-----------|----------|
+| Immutable borrow | `read` (default for `fn`) | Borrowed, read-only | Most parameters — safe, zero-cost |
+| Mutable borrow | `mut` | Borrowed, writable | Need to modify caller's value |
+| Ownership transfer | `owned` / `var` | Caller transfers ownership | Taking ownership of large values |
+| Explicit origin | `ref [origin]` | Borrowed with named origin | Returning references, origin tracking |
+
+> **Naming note:** `inout` is now `mut`, `owned` is now `var` (for parameter convention). Both old names still compile but produce warnings.
 
 ### Implicit Traits for Generic Type Safety
 
@@ -116,7 +127,6 @@ Modern Mojo requires explicit trait bounds for generic types. The `Implicit*` tr
 **Pattern (generic container):**
 
 ```mojo
-# nocompile
 # Generic container requires ImplicitlyDestructible
 struct Box[T: Movable & ImplicitlyDestructible](ImplicitlyDestructible):
     var value: Self.T
@@ -132,7 +142,6 @@ fn main():
 **Pattern (returning generic values):**
 
 ```mojo
-# nocompile
 # Need ImplicitlyCopyable to return Self.T by value
 struct Container[T: Movable & ImplicitlyDestructible & ImplicitlyCopyable](
     ImplicitlyDestructible
@@ -192,18 +201,25 @@ struct FileBuffer(Movable):
         if self.data:
             self.data.free()
 
-    fn __init__(out self, *, deinit take: Self):
+    fn __moveinit__(out self, deinit take: Self, /):
         # Transfer ownership - take source's resources
         self.data = take.data
         self.size = take.size
 
     # Explicitly NOT implementing Copyable means copying is disallowed
     # This is correct for unique resource ownership
+
+    # Note on lifecycle method syntax:
+    # - v26.1 (stable): `__moveinit__` and `__copyinit__` are the standard forms.
+    # - v26.2+ (nightly): The preferred form uses unified `__init__` overloads:
+    #     fn __init__(out self, *, deinit take: Self)   # replaces __moveinit__
+    #     fn __init__(out self, *, copy: Self)           # replaces __copyinit__
+    #   Both old and new forms are accepted, but nightly prefers the __init__ overloads.
 ```
 
 > **Note**: The `owned` keyword is deprecated. Use `deinit` in destructors and move constructors, and `var` for regular function parameters that take ownership.
 
-> **Critical**: When using `UnsafePointer` as a struct field, you MUST use the full type specification with named parameters: `UnsafePointer[mut=True, type=T, origin=MutAnyOrigin]`. The simpler `UnsafePointer[T]` syntax will fail with "failed to infer parameter 'mut'".
+> **Tip**: When using `UnsafePointer` as a struct field, consider using the full type specification with named parameters: `UnsafePointer[mut=True, type=T, origin=MutAnyOrigin]`. The simpler `UnsafePointer[T]` syntax may fail with "failed to infer parameter 'mut'" in some contexts, though many stdlib uses employ shorter forms successfully.
 
 ---
 
@@ -222,8 +238,21 @@ struct Point(Copyable):
     var y: Float64
 ```
 
+To copy a `Copyable` value, use the explicit `.copy()` method:
+
+```mojo
+# nocompile
+var p1 = Point(1.0, 2.0)
+var p2 = p1.copy()  # Explicit copy; implicit copy requires ImplicitlyCopyable
+```
+
+> **Note:** `var p2 = p1` (implicit copy) only works if the type also conforms
+> to `ImplicitlyCopyable`. Using `.copy()` is the safer default pattern.
+
 Mojo synthesizes implementations of the copy and move constructor that is
 correct for most cases. It is better to use this than reimplement it.
+
+> **Warning:** `List[T]` requires `T: Copyable` — move-only types (only `Movable`) cannot be stored in `List`. If you need a collection of move-only types, use `UnsafePointer`-based storage with manual lifecycle management.
 
 ### Full-Featured Generic Container
 
@@ -232,7 +261,6 @@ correct for most cases. It is better to use this than reimplement it.
 **Do:**
 
 ```mojo
-# nocompile
 struct SmartContainer[
     T: Movable & ImplicitlyDestructible & ImplicitlyCopyable & Writable
 ](ImplicitlyDestructible, Writable):
@@ -311,7 +339,7 @@ struct OwnedPointer[T: Movable]:
 |----------|----------|-------------------|
 | Pass large data to function | Use default `read` (borrowing) | None |
 | Transfer ownership permanently | Use `^` operator with `var` param | `Movable` |
-| Allow copying of custom type | Implement copy ctor if custom | `Copyable` |
+| Allow copying of custom type | Implement copy ctor if custom; use `.copy()` for explicit copies | `Copyable` |
 | Generic container with cleanup | Add `ImplicitlyDestructible` bound | `Movable & ImplicitlyDestructible` |
 | Return generic value by value | Add `ImplicitlyCopyable` bound | `+ ImplicitlyCopyable` |
 | Resource management (files, memory) | Implement `__del__` | None (manual) |
@@ -346,9 +374,9 @@ struct OwnedPointer[T: Movable]:
 | Trait | Purpose |
 |-------|---------|
 | `Movable` | Type can be moved (transfer ownership) |
-| `Copyable` | Type can be copied |
+| `Copyable` | Type can be copied via explicit `.copy()` call. Does NOT allow `var b = a` |
 | `ImplicitlyDestructible` | Destructor called automatically (needed for generic containers) |
-| `ImplicitlyCopyable` | Can be copied implicitly (needed for return by value) |
+| `ImplicitlyCopyable` | Refines `Copyable` — allows implicit `var b = a` assignment and return-by-value in generics |
 
 ---
 
@@ -398,7 +426,10 @@ fn example(var result: ParseResult) -> MyValue:
 | Context | Keyword | Purpose |
 |---------|---------|---------|
 | Function parameters taking ownership | `var value: T` | Caller transfers or copies value; callee owns it |
-| move ctor argument | `deinit take: Self` | Source is consumed and destroyed after move |
+| Move constructor (v26.1) | `fn __moveinit__(out self, deinit take: Self, /)` | Source is consumed and destroyed after move |
+| Move constructor (v26.2+ preferred) | `fn __init__(out self, *, deinit take: Self)` | Unified `__init__` overload replacing `__moveinit__` |
+| Copy constructor (v26.1) | `fn __copyinit__(out self, copy: Self, /)` | Makes a copy of the source value |
+| Copy constructor (v26.2+ preferred) | `fn __init__(out self, *, copy: Self)` | Unified `__init__` overload replacing `__copyinit__` |
 | `__del__` argument | `deinit self` | Value is destroyed when destructor returns |
 | Consuming methods | `var self` | Method consumes `self`, taking ownership |
 
@@ -425,7 +456,7 @@ struct Container[T: Movable](Movable):
         self.data = value^
 
     # only include this if custom; Mojo will synthesize a default impl.
-    fn __init__(out self, *, deinit take: Self):  # 'deinit' for move source
+    fn __moveinit__(out self, deinit take: Self, /):  # 'deinit' for move source
         self.data = take.data^
 
     fn __del__(deinit self):  # 'deinit' in destructor

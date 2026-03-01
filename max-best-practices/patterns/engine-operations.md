@@ -174,7 +174,7 @@ Mojo Kernel          @compiler.register        ops.custom()         MAX Graph
 **Stable (v26.1.0.0.0):**
 
 ```mojo
-# nocompile - v26.1.0.0.0 only (element_alignment parameter removed in v26.2+)
+# v26.1.0.0.0 only (element_alignment parameter removed in v26.2+)
 # kernels/my_custom_op.mojo
 import compiler
 from runtime.asyncrt import DeviceContextPtr
@@ -293,11 +293,13 @@ output = result[0].to(CPU()).to_numpy()  # Transfer to CPU first, then to numpy
 - `Could not find mojo kernel` → Ensure `custom_extensions` passed in Graph constructor
 - `Failed to resolve module path for MOGGKernelAPI` → Environment issue; reinstall MAX with pixi
 
-**Apple Silicon Notes:**
+**Apple Silicon (Metal GPU) Notes:**
 
-- Custom ops work on CPU using `DeviceRef.CPU()` and `CPU()` device
-- In v26.1.0.0.0+, `accelerator_count()` returns non-zero on Apple Silicon but custom GPU ops may require NVIDIA/AMD
-- For development, use CPU device: `device = CPU()` and `device_ref = DeviceRef.CPU()`
+- Custom ops work on Apple Metal GPU — `accelerator_count()` returns non-zero and `device.api` reports `metal`
+- Both `foreach`-based ops and manual `enqueue_function` GPU kernels compile and execute on Metal/AIR targets
+- Use `Accelerator()` for GPU device, same as NVIDIA/AMD — no special handling needed
+- Metal GPU detection in Mojo kernels: `comptime _is_metal = _accelerator_arch() in (StaticString("metal:1"), StaticString("metal:2"), StaticString("metal:3"), StaticString("metal:4"), StaticString("metal:5"))`
+- For LayoutTensor patterns on Metal, use `.ptr` for raw pointer access (avoids `_lambda_load` compilation issues with `InputTensor`)
 
 **Step 3 - Parameterized Kernels (v26.2+):**
 
@@ -327,7 +329,8 @@ struct AddConstant[value: Int]:  # Compile-time parameter
 **Step 3 - Parameterized Kernels (v26.1.0.0.0):**
 
 ```mojo
-# nocompile - v26.1.0.0.0 only (element_alignment parameter removed in v26.2+)
+# nocompile
+# v26.1.0.0.0 only (element_alignment parameter removed in v26.2+)
 # kernels/add_constant.mojo
 @compiler.register("add_constant")
 struct AddConstant[value: Int]:  # Compile-time parameter
@@ -349,7 +352,7 @@ struct AddConstant[value: Int]:  # Compile-time parameter
 **v26.1.0.0.0:**
 
 ```python
-# nocompile - v26.1.0.0.0 only
+# v26.1.0.0.0 only
 # Pass compile-time parameters to kernel
 result = ops.custom(
     name="add_constant",
@@ -637,7 +640,7 @@ dev = ["pytest"]
 
 **Key Integration Points:**
 
-1. **Model layers (Mojo)**: Use `@fieldwise_init` with `(Copyable, Movable)` traits for config, `UnsafePointer` for weights
+1. **Model layers (Mojo)**: Use `@fieldwise_init` with `(Copyable, Movable)` traits for config (replaces the removed `@value` decorator), `UnsafePointer` for weights
 2. **Custom kernels (Mojo)**: Use `@compiler.register` with `InputTensor`/`OutputTensor`
 3. **Graph builder (Python)**: Pass kernel directory via `custom_extensions=[Path("kernels")]`
 4. **Architecture registration (Python)**: Register with `PIPELINE_REGISTRY` for MAX Serve
@@ -706,7 +709,7 @@ ops.custom(
 )[0].tensor
 ```
 
-**TensorType:** Device parameter is optional
+**TensorType:** Device parameter is required (v26.2+)
 
 ```python
 TensorType(DType.float32, shape=[batch, seq], device=device_ref)

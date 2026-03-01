@@ -44,7 +44,7 @@ The Mojo stdlib's `ArcPointer` demonstrates the proven pattern for thread-safe r
 | Before destroy | ACQUIRE fence | See all writes from all threads |
 | Load count | MONOTONIC | Read-only observation, no synchronization |
 
-### Why RELAXED is Dangerous
+### Why Too-Weak Ordering is Dangerous
 
 **Anti-pattern (wrong memory ordering):**
 
@@ -62,14 +62,14 @@ struct BrokenRefCount[T: Movable & ImplicitlyDestructible]:
         _ = self.refcount.fetch_add[ordering=Consistency.ACQUIRE](1)
 
     fn drop_ref(mut self) -> Bool:
-        # CRITICAL BUG: RELAXED allows reordering!
+        # CRITICAL BUG: MONOTONIC is too weak for decrement!
         # Another thread may see refcount=0 before seeing our writes to payload
         # This causes use-after-free when the other thread destroys the data
-        return self.refcount.fetch_sub[ordering=Consistency.RELAXED](1) == 1
+        return self.refcount.fetch_sub[ordering=Consistency.MONOTONIC](1) == 1
         # Missing ACQUIRE fence - destruction may see stale data!
 ```
 
-**Why this fails:** Thread A writes to payload, then decrements refcount with RELAXED. Thread B sees refcount hit 0 but hasn't yet seen Thread A's writes to payload (due to reordering). Thread B destroys payload while Thread A's writes are still in flight. Result: corrupted data or use-after-free.
+**Why this fails:** Thread A writes to payload, then decrements refcount with MONOTONIC (too weak -- needs RELEASE). Thread B sees refcount hit 0 but hasn't yet seen Thread A's writes to payload (due to reordering). Thread B destroys payload while Thread A's writes are still in flight. Result: corrupted data or use-after-free.
 
 ### Correct Memory Ordering
 
@@ -120,7 +120,7 @@ struct _RefCountedInner[T: Movable & ImplicitlyDestructible]:
 
 ```mojo
 # nocompile
-@register_passable  # Or use TrivialRegisterType trait in v26.2+
+@register_passable  # Or use RegisterPassable / TrivialRegisterPassable trait
 struct RefCounted[T: Movable & ImplicitlyDestructible](ImplicitlyCopyable):
     """Thread-safe reference-counted smart pointer."""
 
@@ -132,7 +132,7 @@ struct RefCounted[T: Movable & ImplicitlyDestructible](ImplicitlyCopyable):
         self._inner = alloc[Self._inner_type](1)
         __get_address_as_uninit_lvalue(self._inner.address) = Self._inner_type(value^)
 
-    fn __init__(out self, *, copy: Self):
+    fn __copyinit__(out self, copy: Self, /):
         """Copy: increment refcount atomically."""
         copy._inner[].add_ref()  # MONOTONIC - we have a valid ref
         self._inner = copy._inner
@@ -189,6 +189,8 @@ struct Node:
     var shared_data: ArcPointer[SharedState]  # Only share leaf data
 ```
 
+> **Thread Safety:** `ArcPointer` provides safe memory management via atomic reference counting, but does **not** prevent data races on the payload. For mutable shared state, combine with a mutex or use message-passing.
+
 ### Weak Reference Implementation
 
 ```mojo
@@ -208,7 +210,7 @@ struct _WeakRefInner[T: Movable & ImplicitlyDestructible]:
     """Shared control block for weak references."""
     var strong_count: Atomic[DType.uint64]
     var weak_count: Atomic[DType.uint64]  # +1 for all strong refs
-    var payload: UnsafeMaybeUninitialized[T]
+    var payload: UnsafeMaybeUninit[T]
 
     fn try_add_ref(mut self) -> Bool:
         """Try to increment strong count. Fails if already zero."""
@@ -354,8 +356,7 @@ fn process_each[T](items: List[RefCounted[T]]):
 | `MONOTONIC` | Counters, statistics, increment/decrement | Lowest |
 | `ACQUIRE` | Loading data that another thread released | Medium |
 | `RELEASE` | Storing data for another thread to acquire | Medium |
-| `ACQ_REL` | Read-modify-write needing both | High |
-| `SEQUENTIAL` | Full sequential consistency | Highest |
+| `SEQUENTIALLY_CONSISTENT` | Full sequential consistency | Highest |
 
 ---
 
@@ -363,12 +364,11 @@ fn process_each[T](items: List[RefCounted[T]]):
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `memory leak with Arc` | Circular reference | Use weak references or restructure to avoid cycles |
-| `use after free with Arc` | Accessing after last strong ref dropped | Ensure Arc outlives all uses; check weak ref upgrade |
+| `memory leak with ArcPointer` | Circular reference | Use weak references or restructure to avoid cycles |
+| `use after free with ArcPointer` | Accessing after last strong ref dropped | Ensure ArcPointer outlives all uses; check weak ref upgrade |
 | `race condition in refcount` | Wrong memory ordering | Use `RELEASE` for fetch_sub + `ACQUIRE` fence on zero, `MONOTONIC` for fetch_add |
-| `double free` | Manual free + Arc destructor | Let Arc handle all deallocation; never call free() manually |
-| `atomic ordering too weak` | Using RELAXED/MONOTONIC everywhere | Use RELEASE on decrement, ACQUIRE fence before destroy |
-| `ArcPointer null dereference` | Dereferencing dropped Arc | Check `is_valid()` before dereferencing |
+| `double free` | Manual free + ArcPointer destructor | Let ArcPointer handle all deallocation; never call free() manually |
+| `atomic ordering too weak` | Using MONOTONIC everywhere | Use RELEASE on decrement, ACQUIRE fence before destroy |
 
 ---
 

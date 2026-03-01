@@ -6,19 +6,35 @@
 
 ## Table of Contents
 
-**36 patterns** across **11 categories**
+**36 patterns** across **13 categories**
 
+- [C Interoperability](#c-interoperability) (1 patterns)
 - [GPU Programming](#gpu-programming) (14 patterns)
 - [Memory Safety & Ownership](#memory-safety--ownership) (4 patterns)
 - [Type System](#type-system) (3 patterns)
 - [Debugging](#debugging) (1 patterns)
 - [Function Design](#function-design) (1 patterns)
+- [Language Porting Guides](#language-porting-guides) (3 patterns)
 - [Struct Design](#struct-design) (1 patterns)
+- [Testing](#testing) (1 patterns)
 - [Error Handling](#error-handling) (1 patterns)
 - [Performance Optimization](#performance-optimization) (3 patterns)
 - [Python Interoperability](#python-interoperability) (1 patterns)
-- [Other](#other) (5 patterns)
 - [Advanced Metaprogramming](#advanced-metaprogramming) (2 patterns)
+
+---
+
+## C Interoperability
+
+**Priority:** CRITICAL | **Patterns:** 1
+
+### FFI and C Interoperability
+
+**Pattern:** `ffi` | **Impact:** CRITICAL
+
+Core FFI patterns including C strings, libc functions, binary data, integer type safety, dynamic library loading, vendor library integration (BLAS, cuBLAS, MPS), Python GIL management, and GPU performance optimization
+
+See: [../patterns/ffi.md](../patterns/ffi.md)
 
 ---
 
@@ -238,6 +254,36 @@ See: [../patterns/fn-design.md](../patterns/fn-design.md)
 
 ---
 
+## Language Porting Guides
+
+**Priority:** HIGH | **Patterns:** 3
+
+### C++ to Mojo Porting Guide
+
+**Pattern:** `porting-cpp` | **Impact:** HIGH
+
+Side-by-side C++→Mojo porting guide with memory safety, template→parameter mapping, and unified CPU+GPU patterns
+
+See: [../patterns/porting-cpp.md](../patterns/porting-cpp.md)
+
+### Python to Mojo Porting Guide
+
+**Pattern:** `porting-python` | **Impact:** HIGH
+
+Side-by-side Python→Mojo porting guide with performance showcases, unique Mojo capabilities, and CI-checkable examples
+
+See: [../patterns/porting-python.md](../patterns/porting-python.md)
+
+### Rust to Mojo Porting Guide
+
+**Pattern:** `porting-rust` | **Impact:** HIGH
+
+Side-by-side Rust→Mojo porting guide comparing ownership models, trait systems, SIMD, and GPU programming
+
+See: [../patterns/porting-rust.md](../patterns/porting-rust.md)
+
+---
+
 ## Struct Design
 
 **Priority:** HIGH | **Patterns:** 1
@@ -249,6 +295,20 @@ See: [../patterns/fn-design.md](../patterns/fn-design.md)
 Comprehensive patterns for designing Mojo structs including initialization, encapsulation, composition, operators, and iterators
 
 See: [../patterns/struct-design.md](../patterns/struct-design.md)
+
+---
+
+## Testing
+
+**Priority:** HIGH | **Patterns:** 1
+
+### Mojo Testing & Benchmarking Patterns
+
+**Pattern:** `testing` | **Impact:** HIGH
+
+Unit testing, property-based testing, lifecycle counters, performance benchmarking with QuickBench, GPU test and benchmark patterns
+
+See: [../patterns/testing.md](../patterns/testing.md)
 
 ---
 
@@ -310,52 +370,6 @@ See: [../patterns/python-interop.md](../patterns/python-interop.md)
 
 ---
 
-## Other
-
-**Priority:** LOW | **Patterns:** 5
-
-### FFI and C Interoperability
-
-**Pattern:** `ffi` | **Impact:** CRITICAL
-
-Core FFI patterns including C strings, libc functions, binary data, integer type safety, dynamic library loading, vendor library integration (BLAS, cuBLAS, MPS), Python GIL management, and GPU performance optimization
-
-See: [../patterns/ffi.md](../patterns/ffi.md)
-
-### C++ to Mojo Porting Guide
-
-**Pattern:** `porting-cpp` | **Impact:** HIGH
-
-Side-by-side C++→Mojo porting guide with memory safety, template→parameter mapping, and unified CPU+GPU patterns
-
-See: [../patterns/porting-cpp.md](../patterns/porting-cpp.md)
-
-### Python to Mojo Porting Guide
-
-**Pattern:** `porting-python` | **Impact:** HIGH
-
-Side-by-side Python→Mojo porting guide with performance showcases, unique Mojo capabilities, and CI-checkable examples
-
-See: [../patterns/porting-python.md](../patterns/porting-python.md)
-
-### Rust to Mojo Porting Guide
-
-**Pattern:** `porting-rust` | **Impact:** HIGH
-
-Side-by-side Rust→Mojo porting guide comparing ownership models, trait systems, SIMD, and GPU programming
-
-See: [../patterns/porting-rust.md](../patterns/porting-rust.md)
-
-### Mojo Testing & Benchmarking Patterns
-
-**Pattern:** `testing` | **Impact:** HIGH
-
-Unit testing, property-based testing, lifecycle counters, performance benchmarking with QuickBench, GPU test and benchmark patterns
-
-See: [../patterns/testing.md](../patterns/testing.md)
-
----
-
 ## Advanced Metaprogramming
 
 **Priority:** LOW | **Patterns:** 2
@@ -372,7 +386,7 @@ See: [../patterns/meta-canary-apis.md](../patterns/meta-canary-apis.md)
 
 **Pattern:** `meta-programming` | **Impact:** MEDIUM
 
-Compile-time parameters, variadic parameters, conditional conformance, and parameter unpacking for zero-cost generics
+Compile-time parameters, variadic parameters, and conditional conformance for zero-cost generics
 
 See: [../patterns/meta-programming.md](../patterns/meta-programming.md)
 

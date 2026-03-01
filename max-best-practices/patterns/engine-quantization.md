@@ -39,6 +39,8 @@ Comprehensive guide to quantization in MAX Engine including Float8 configuration
 
 Float8 enables high-performance inference on NVIDIA Hopper GPUs (H100) with minimal accuracy loss. Proper scale granularity and scaling origin configuration is critical.
 
+> **Tip:** For step-by-step FP8 integration, use the `add-fp8-support-to-model` skill which automates weight adapter creation, config updates, and arch.py changes.
+
 **Scale Granularity Options:**
 
 | Granularity | Input | Weight | Use Case |

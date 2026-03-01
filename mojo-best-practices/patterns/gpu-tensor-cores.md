@@ -38,7 +38,8 @@ Tensor cores provide 10-100x compute throughput for matrix operations. SM90 (Hop
 |-----|-------------|-------|
 | `stack_allocation[N, T, address_space=AddressSpace.SHARED]()` | `from memory import stack_allocation` | Shared memory allocation |
 | `AddressSpace` | `from gpu.memory import AddressSpace` | Address space enum (SHARED, GENERIC, etc.) |
-| `warpgroup_reg_alloc`, `warpgroup_reg_dealloc`, `warpgroup_fence` | `from gpu.intrinsics import ...` | SM90+ warp group register management |
+| `warpgroup_reg_alloc`, `warpgroup_reg_dealloc` | `from gpu.intrinsics import ...` | SM90+ warp group register management |
+| `warpgroup_fence` | `from layout.tensor_core_async import warpgroup_fence` | SM90+ warp group fence (defined in `tensor_core_async`, not in `gpu.intrinsics`) |
 | `WGMMADescriptor` | `from gpu.compute.mma import WGMMADescriptor` | WGMMA descriptor creation |
 | `wgmma_async`, `wgmma_fence_aligned` | `from gpu.compute.mma import ...` | WGMMA async operations |
 | `wgmma_commit_group_sync`, `wgmma_wait_group_sync` | `from gpu.compute.mma import ...` | WGMMA synchronization |
@@ -92,7 +93,8 @@ Tensor cores provide 10-100x compute throughput for matrix operations. SM90 (Hop
 ```mojo
 # nocompile
 
-from gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc, warpgroup_fence
+from gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
+from layout.tensor_core_async import warpgroup_fence
 from gpu.compute.mma import (
     WGMMADescriptor, wgmma_async, wgmma_fence_aligned,
     wgmma_commit_group_sync, wgmma_wait_group_sync,

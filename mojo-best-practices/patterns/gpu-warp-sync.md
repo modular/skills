@@ -86,8 +86,9 @@ Warp shuffle operations enable direct register-to-register communication (5-10x 
 | `barrier` | `from gpu import barrier` (or `from gpu.sync import barrier`) | Block-level barrier (both paths work) |
 | `syncwarp` | `from gpu.sync import syncwarp` (or `from gpu import syncwarp`) | Warp-level synchronization |
 | `mbarrier_init`, `mbarrier_arrive`, `mbarrier_try_wait_parity_shared` | `from gpu.sync import ...` | SM90+ mbarrier primitives |
-| `SharedMemBarrier` | `from gpu.sync import SharedMemBarrier` (or `from layout.tma_async import SharedMemBarrier`) | Shared memory barrier wrapper |
-| `fence_mbarrier_init`, `cluster_sync`, `cluster_sync_relaxed` | `from gpu.sync import ...` | SM90+ cluster operations |
+| `SharedMemBarrier` | `from layout.tma_async import SharedMemBarrier` | Shared memory barrier wrapper |
+| `fence_mbarrier_init` | `from gpu.memory import fence_mbarrier_init` (or `from gpu import fence_mbarrier_init`) | SM90+ barrier fence |
+| `cluster_sync`, `cluster_sync_relaxed` | `from gpu.primitives.cluster import ...` | SM90+ cluster synchronization |
 
 ### Memory & Async APIs
 
@@ -97,7 +98,7 @@ Warp shuffle operations enable direct register-to-register communication (5-10x 
 | `AddressSpace` | `from gpu.memory import AddressSpace` | Address space enum (SHARED, GENERIC, etc.) |
 | `LayoutTensor`, `Layout` | `from layout import LayoutTensor, Layout` | Type-safe tensor with compile-time layout |
 | `async_copy`, `async_copy_commit_group`, `async_copy_wait_group` | `from gpu.memory import ...` | Async copy primitives |
-| `elect_one_sync` | `from gpu.primitives.cluster import elect_one_sync` | Cluster-level (NOT warp), SM90+ |
+| `elect_one_sync` | `from gpu.primitives.cluster import elect_one_sync` | Elects one thread within a warp (SM90+, lives in cluster module) |
 
 ---
 
@@ -256,6 +257,8 @@ var shared_int = broadcast(my_int)
 
 ```mojo
 
+from bit import log2_floor
+from gpu import WARP_SIZE
 from gpu.primitives.warp import shuffle_down
 
 fn warp_sum_fast(val: Scalar[DType.float32]) -> Scalar[DType.float32]:
@@ -264,7 +267,8 @@ fn warp_sum_fast(val: Scalar[DType.float32]) -> Scalar[DType.float32]:
 
     var result = val
     # Tree reduction using shuffle_down
-    comptime for i in reversed(range(LOG2_WARP_SIZE)):
+    @parameter
+    for i in reversed(range(LOG2_WARP_SIZE)):
         result += shuffle_down(result, UInt32(1 << i))
 
     # Result is in lane 0
@@ -290,6 +294,8 @@ var min_val = warp_min(val)    # Warp-wide minimum
 
 ```mojo
 
+from bit import log2_floor
+from gpu import WARP_SIZE
 from gpu.primitives.warp import shuffle_xor
 
 fn butterfly_sum(val: Scalar[DType.float32]) -> Scalar[DType.float32]:
@@ -297,8 +303,9 @@ fn butterfly_sum(val: Scalar[DType.float32]) -> Scalar[DType.float32]:
     comptime LOG2_WARP_SIZE = log2_floor(WARP_SIZE)
 
     var result = val
-    comptime for i in range(LOG2_WARP_SIZE):
-        result += shuffle_xor(result, UInt32(1 << LOG2_WARP_SIZE))
+    @parameter
+    for i in range(LOG2_WARP_SIZE):
+        result += shuffle_xor(result, UInt32(1 << i))
 
     # All lanes now have the total sum
     return result
@@ -336,8 +343,9 @@ var partner_val = shuffle_xor(my_val, UInt32(1))
 # nocompile
 # All lanes end up with the global max (no shared memory needed)
 var val = my_value
-for offset in List(1, 2, 4, 8, 16):
-    val = max(val, shuffle_xor(val, offset))
+var offsets: List[UInt32] = [1, 2, 4, 8, 16]
+for offset in offsets:
+    val = max(val, shuffle_xor(val, offset[]))
 # val is now the max across all 32 lanes — in EVERY lane
 ```
 
@@ -397,7 +405,7 @@ from gpu.primitives.warp import reduce, shuffle_down, lane_group_reduce
 @parameter
 fn _reduce_add[dtype: DType, width: Int](
     x: SIMD[dtype, width], y: SIMD[dtype, width]
-) -> SIMD[dtype, width]:
+) capturing -> SIMD[dtype, width]:
     return x + y
 
 # Full warp reduction
@@ -515,7 +523,7 @@ fn deadlock_kernel(data: UnsafePointer[Float32], size: Int):
 > ```mojo
 >
 > from gpu.primitives.block import sum, max, min, broadcast, prefix_sum
-> alias TPB = 256  # Must match your kernel's block_dim
+> comptime TPB = 256  # Must match your kernel's block_dim
 > var block_total = sum[block_size=TPB](val)           # Block-wide sum
 > var block_max = max[block_size=TPB](val)             # Block-wide maximum
 > var shared_val = broadcast[block_size=TPB](val, 0)   # Broadcast from thread 0
@@ -528,7 +536,8 @@ fn deadlock_kernel(data: UnsafePointer[Float32], size: Int):
 # nocompile
 
 from gpu import barrier, WARP_SIZE, lane_id, warp_id, thread_idx, block_dim
-from gpu.memory import AddressSpace, stack_allocation
+from gpu.memory import AddressSpace
+from memory import stack_allocation
 from gpu.primitives.warp import reduce, shuffle_down
 
 fn block_reduce[
@@ -783,7 +792,6 @@ For multi-tile loads, sum all tile byte counts: `total = cta_group * (a_bytes + 
 
 ```mojo
 # nocompile
-
 from gpu.memory import async_copy, async_copy_commit_group, async_copy_wait_group
 
 # NOTE: On Apple Silicon, async_copy may execute as synchronous copy internally.
@@ -802,7 +810,7 @@ fn pipelined_kernel():
         async_copy_commit_group()
 
         # Wait for current tile (group 0) to complete
-        async_copy_wait_group[1]()  # Wait until 1 group remaining
+        async_copy_wait_group(1)  # Wait until 1 group remaining
         barrier()
 
         # Compute on current tile while next loads
@@ -812,7 +820,7 @@ fn pipelined_kernel():
         swap(shared_buf_0, shared_buf_1)
 
     # Process final tile
-    async_copy_wait_group[0]()
+    async_copy_wait_group(0)
     barrier()
     compute(shared_buf_0)
 ```
@@ -830,12 +838,12 @@ fn pipelined_kernel():
 **When:** Multi-block clusters need coordination
 
 ```mojo
-from gpu.sync import fence_mbarrier_init, cluster_sync, cluster_sync_relaxed
+from gpu.memory import fence_mbarrier_init
+from gpu.primitives.cluster import cluster_sync, cluster_sync_relaxed
 
 fn clustered_kernel():
     # Initialize barriers across cluster (once at start)
-    @parameter
-    if CLUSTER_SIZE > 1:
+    comptime if CLUSTER_SIZE > 1:
         fence_mbarrier_init()
         cluster_sync_relaxed()  # Ensure all blocks see init
 
@@ -1020,7 +1028,6 @@ Common causes:
 
 ```mojo
 # nocompile
-
 # Thread/block IDs and constants (re-exported at gpu level)
 from gpu import lane_id, warp_id, thread_idx, block_idx, block_dim, WARP_SIZE
 
@@ -1051,8 +1058,9 @@ from gpu.sync import syncwarp  # Also available as: from gpu import syncwarp
 
 # SM90+ mbarrier
 from gpu.sync import mbarrier_init, mbarrier_arrive, mbarrier_try_wait_parity_shared
-from gpu.sync import SharedMemBarrier  # or: from layout.tma_async import SharedMemBarrier
-from gpu.sync import fence_mbarrier_init, cluster_sync, cluster_sync_relaxed
+from layout.tma_async import SharedMemBarrier
+from gpu.memory import fence_mbarrier_init  # Also available: from gpu import fence_mbarrier_init
+from gpu.primitives.cluster import cluster_sync, cluster_sync_relaxed
 
 # Async copy
 from gpu.memory import async_copy, async_copy_commit_group, async_copy_wait_group
@@ -1064,9 +1072,31 @@ from memory import stack_allocation
 
 ---
 
-## Version Notes
+## Version-Specific Features
 
-All APIs in this document are stable in **v26.1+**. Both `alias` and `comptime` work for compile-time constants. Mbarrier, cluster sync, and async copy APIs are available in nightly (v26.2+).
+### Nightly (v26.2+)
+
+All APIs in this pattern are available in the Mojo nightly toolchain (v26.2+). SM90+ features that are nightly-only include:
+
+- `mbarrier_init`, `mbarrier_arrive`, `mbarrier_try_wait_parity_shared` from `gpu.sync`
+- `SharedMemBarrier` from `layout.tma_async`
+- `fence_mbarrier_init` from `gpu.memory`
+- `cluster_sync`, `cluster_sync_relaxed` from `gpu.primitives.cluster`
+- `elect_one_sync` from `gpu.primitives.cluster`
+- `async_copy`, `async_copy_commit_group`, `async_copy_wait_group` from `gpu.memory`
+
+### Stable (v26.1)
+
+Core warp and block synchronization primitives are stable in v26.1:
+
+- Warp shuffles: `shuffle_idx`, `shuffle_down`, `shuffle_up`, `shuffle_xor`
+- Warp reductions: `sum`, `max`, `min`, `prefix_sum`, `broadcast`
+- Lane group operations: `lane_group_sum`, `lane_group_max`, `lane_group_min`
+- Vote (ballot): `vote[DType.uint32](predicate)`
+- Block barrier: `barrier()` and `syncwarp()`
+- Block collectives: `sum`, `max`, `min`, `broadcast`, `prefix_sum` from `gpu.primitives.block`
+
+Mbarrier, cluster sync, and async copy APIs require nightly (v26.2+). Both `alias` and `comptime` work for compile-time constants in v26.1+.
 
 ---
 

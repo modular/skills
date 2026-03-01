@@ -23,6 +23,8 @@ scenarios:
 
 Block-level collectives (`gpu.primitives.block`) replace 15+ lines of manual shared memory allocation, barrier synchronization, and tree reduction with single function calls. They handle cross-warp coordination internally, eliminating an entire class of synchronization bugs.
 
+> **GPU-kernel-only:** All `gpu.primitives.block.*` functions must be called from within a GPU kernel function (passed to `enqueue_function`). They cannot be called from host code -- doing so will cause compilation or runtime errors.
+
 ## API Availability
 
 | API | Import Path | Availability | Notes |
@@ -77,8 +79,8 @@ comptime TPB = 256
 
 # One line replaces 15+ lines of manual tree reduction
 var total = block_sum[block_size=TPB](my_val)
-# By default, the result may only be valid in thread 0.
-# Use block.broadcast to share with all threads if needed.
+# By default (broadcast=True), the result is broadcast to ALL threads.
+# No separate block.broadcast call is needed for sum/max/min.
 ```
 
 **Don't (manual equivalent it replaces):**
@@ -97,7 +99,7 @@ fn manual_block_sum(val: Scalar[DType.float32]) -> Scalar[DType.float32]:
     @parameter
     fn _add[dtype: DType, width: Int](
         x: SIMD[dtype, width], y: SIMD[dtype, width]
-    ) -> SIMD[dtype, width]:
+    ) capturing -> SIMD[dtype, width]:
         return x + y
 
     var warp_result = reduce[shuffle_down, _add](val)
@@ -190,19 +192,16 @@ var shared_val = shared[0]
 
 ```mojo
 # nocompile
-from gpu.primitives.block import sum as block_sum, broadcast as block_broadcast
+from gpu.primitives.block import sum as block_sum
 from gpu import thread_idx
 
 comptime TPB = 256
 
-# Step 1: Block-wide sum
+# Step 1: Block-wide sum (broadcast=True by default, ALL threads get result)
 var total = block_sum[block_size=TPB](val)
 
-# Step 2: Compute mean on thread 0, broadcast to all
-var mean = Scalar[dtype](0)
-if thread_idx.x == 0:
-    mean = total / Scalar[dtype](size)
-mean = block_broadcast[block_size=TPB](mean, 0)
+# Step 2: Compute mean (total is already available in all threads)
+var mean = total / Scalar[dtype](size)
 
 # Step 3: All threads normalize their value
 output[i] = val / mean
@@ -265,7 +264,7 @@ if thread_idx.x == 0:
 
 ```mojo
 # nocompile
-from gpu.primitives.block import max as block_max, broadcast as block_broadcast
+from gpu.primitives.block import max as block_max
 from gpu import thread_idx
 
 comptime TPB = 256
@@ -273,17 +272,11 @@ comptime TPB = 256
 # Each thread has a local value
 var local_max = my_val
 
-# Block-wide max (result in thread 0)
+# Block-wide max (broadcast=True by default, ALL threads get the result)
 var global_max = block_max[block_size=TPB](local_max)
 
-# Broadcast max to all threads
-var max_for_all = Scalar[dtype](0)
-if thread_idx.x == 0:
-    max_for_all = global_max
-max_for_all = block_broadcast[block_size=TPB](max_for_all, 0)
-
-# All threads can now use the block-wide max
-output[i] = exp(my_val - max_for_all)
+# All threads can now use the block-wide max directly
+output[i] = exp(my_val - global_max)
 ```
 
 ---
@@ -369,7 +362,7 @@ var shared   = block_broadcast[block_size=TPB](val, 0)  # Broadcast from thread 
 | Wrong results on Apple Silicon but correct on NVIDIA | Missing `block_size` parameter | Add `[block_size=TPB]` to all block collective calls |
 | Compile error about `block_size` | Omitted required compile-time parameter | Specify `[block_size=N]` where N matches your kernel's threads per block |
 | `prefix_sum` output off by one | Confusing inclusive vs exclusive scan | `block.prefix_sum` is inclusive (first match = 1); subtract 1 for 0-based index |
-| Only thread 0 has correct reduction result | `block.sum`/`max`/`min` may return result to thread 0 only (depends on API version) | Use `block.broadcast` to share the result to all threads, or check if a `broadcast` parameter is available |
+| Only thread 0 has correct reduction result | Using `broadcast=False` explicitly or using warp-level ops (which return to lane 0 only) | Block `sum`/`max`/`min` default to `broadcast=True` (all threads get result). Warp-level `warp.sum`/`warp.max`/`warp.min` return result to lane 0 only -- use `warp.broadcast()` or `shuffle_xor` butterfly for all-lane results |
 | Name collision between warp and block ops | Importing both `warp.sum` and `block.sum` | Use aliases: `from gpu.primitives.block import sum as block_sum` |
 | Deadlock or hang | Conditional block collective (not all threads participate) | All threads in block must call block collectives; use predication for values, not control flow |
 | Performance regression vs warp-only reduction | Using block collectives when data fits in one warp | Use `warp.sum` etc. for 32-thread reductions; block collectives add cross-warp overhead |

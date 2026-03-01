@@ -112,33 +112,27 @@ comptime IntSet = Set[Int]
 
 > **Note**: Both `alias` and `comptime` work for compile-time constants and type aliases. As of v26.1, the compiler warns on `alias` usage and suggests `comptime` instead. New code should prefer `comptime`; `alias` remains valid.
 
-### Writable vs Stringable Traits
+### Writable Trait
 
-Understand the distinction between `Writable` and `Stringable` for correct output handling.
+Use the `Writable` trait for output handling.
 
 | Trait | Method | Use Case |
 |-------|--------|----------|
 | `Writable` | `write_to(writer)` | Efficient streaming output (preferred) |
-| `Stringable` | `__str__() -> String` | When you need the string value |
 
 **Pattern:**
 
 ```mojo
-# nocompile
 from format import Writable, Writer
 
 @fieldwise_init
-struct Point(Writable, Stringable):
+struct Point(Writable):
     var x: Int
     var y: Int
 
     # Writable: Efficient for print() and streaming
     fn write_to[W: Writer](self, mut writer: W):
         writer.write("Point(", self.x, ", ", self.y, ")")
-
-    # Stringable: When you need the actual String value
-    fn __str__(self) -> String:
-        return String("Point(") + str(self.x) + ", " + str(self.y) + ")"
 ```
 
 **When to use each:**
@@ -150,12 +144,12 @@ var p = Point(10, 20)
 # Writable: Used by print() - no intermediate String allocation
 print(p)  # Calls write_to() internally
 
-# Stringable: When you need the String itself
-var s: String = str(p)  # Calls __str__()
-var log_msg = "Created: " + str(p)
+# When you need the String itself
+var s: String = String(p)
+var log_msg = "Created: " + String(p)
 ```
 
-> **Best Practice**: Implement `Writable` for types you'll print frequently. `print()` uses `Writable`, not `Stringable`, so implementing `__str__` alone won't make your type printable.
+> **Best Practice**: Implement `Writable` for types you'll print frequently. `print()` uses `Writable`, so implementing `write_to` makes your type printable.
 
 ---
 
@@ -287,7 +281,7 @@ for value in optional:
 
 ```mojo
 # More efficient for small, trivial types
-struct OptionalReg[T: __TypeOfAllTypes](TrivialRegisterType, Boolable, Defaultable):
+struct OptionalReg[T: __TypeOfAllTypes](TrivialRegisterPassable, Boolable, Defaultable):
     # Use for pointers, integers, etc.
     pass
 
@@ -335,17 +329,19 @@ fn calculate_color(r: Float64, g: Float64, b: Float64) -> Float64:
     return (r + g + b) / 3.0
 ```
 
-### KeyElement for Dictionary Keys
+### Dictionary Key Requirements
 
-Implement `Copyable & Hashable & Equatable` (KeyElement) for custom dictionary keys.
+Implement `ImplicitlyCopyable & Hashable & Equatable` for custom dictionary keys. Dict requires `ImplicitlyCopyable` (not just `Copyable`) because key lookups and insertions perform implicit copies internally.
 
 **When:** Creating types to use as Dict keys
 
 **Do:**
 ```mojo
 # nocompile
+from hashlib import Hasher  # Required for __hash__ signatures
+
 @fieldwise_init
-struct PersonId(Copyable, Hashable, Equatable):
+struct PersonId(ImplicitlyCopyable, Hashable, Equatable):
     var id: Int
     var department: String
 
@@ -379,7 +375,7 @@ struct PersonId:
         self.id = id
         self.department = department
 
-# Error: PersonId doesn't conform to KeyElement
+# Error: PersonId doesn't conform to ImplicitlyCopyable & Hashable & Equatable
 var employees = Dict[PersonId, String]()  # Compile error!
 ```
 
@@ -387,6 +383,8 @@ var employees = Dict[PersonId, String]()  # Compile error!
 
 ```mojo
 # nocompile
+from hashlib import Hasher  # Required import for Hasher type
+
 # Good: Uses all fields, good distribution
 fn __hash__[H: Hasher](self, mut hasher: H):
     hasher.update(self.field1)
@@ -399,7 +397,7 @@ fn __hash__[H: Hasher](self, mut hasher: H):
 
 # Simplest: Let reflection handle it (all fields must be Hashable)
 @fieldwise_init
-struct MyKey(Hashable, Equatable, Copyable):
+struct MyKey(Hashable, Equatable, ImplicitlyCopyable):
     var field1: Int
     var field2: String
     # Default __hash__ uses all fields automatically
@@ -420,7 +418,7 @@ struct MyKey(Hashable, Equatable, Copyable):
 | Complex generic types | Define `comptime` type aliases | [`meta-programming.md`](meta-programming.md) |
 | Safe nullable values | Use `Optional[T]` | [`error-handling.md`](error-handling.md) |
 | Small trivial optionals | Use `OptionalReg[T]` | [`type-simd.md`](type-simd.md) |
-| Custom Dict keys | Implement KeyElement traits | [`type-traits.md`](type-traits.md) |
+| Custom Dict keys | Implement ImplicitlyCopyable & Hashable & Equatable traits | [`type-traits.md`](type-traits.md) |
 | Lossless conversions | Use `@implicit` decorator | [`fn-design.md`](fn-design.md) |
 | Graphics/ML workloads | Use Float32/BFloat16 | [`type-simd.md`](type-simd.md) |
 | Scientific computing | Use Float64 | [`perf-optimization.md`](perf-optimization.md) |
@@ -434,7 +432,7 @@ struct MyKey(Hashable, Equatable, Copyable):
 - **@implicit**: Only for safe, lossless conversions (Int -> Float64, StringLiteral -> String)
 - **Optional**: Use `.value()` for safe access, `.or_else(default)` for defaults
 - **Numeric precision**: Float32 for graphics, Float64 for science, BFloat16 for ML
-- **KeyElement**: Copyable & Hashable & Equatable - all three required for Dict keys
+- **Dict keys**: Types must conform to ImplicitlyCopyable & Hashable & Equatable - all three required
 - **Hash contract**: Equal objects must have equal hashes
 
 ---
@@ -455,8 +453,8 @@ comptime MAX_BUFFER_SIZE: Int = 1024 * 1024
 comptime Vec4f = SIMD[DType.float32, 4]
 comptime Predicate = fn(Int) -> Bool
 
-# alias still works but produces compiler warnings
-comptime LEGACY_CONSTANT = 42  # Works but compiler warns
+# comptime: preferred keyword (v26.1+) — no warnings
+comptime LEGACY_CONSTANT = 42
 ```
 
 **Note:** Both keywords are valid. `comptime` is preferred going forward; `alias` remains functional but triggers compiler warnings.
@@ -469,11 +467,11 @@ Mojo supports forced compile-time evaluation with `comptime(expr)` syntax:
 # nocompile
 # Force compile-time evaluation of expressions (v26.1+)
 fn aligned_size[T: AnyType]() -> Int:
-    return comptime((sizeof[T]() + 63) & ~63)
+    return comptime((size_of[T]() + 63) & ~63)
 
 # Compile-time assertions (v26.1+)
 fn require_power_of_two[N: Int]():
-    comptime_assert(comptime((N & (N - 1)) == 0), "N must be power of 2")
+    comptime assert (N & (N - 1)) == 0, "N must be power of 2"
 ```
 
 ### v26.1+: Linear Types with ImplicitlyDestructible
@@ -481,7 +479,6 @@ fn require_power_of_two[N: Int]():
 Types no longer need to implement `__del__()` by default. Use `ImplicitlyDestructible` for automatic cleanup.
 
 ```mojo
-# nocompile
 # Simple value types - no __del__ needed
 struct Point(ImplicitlyDestructible):
     var x: Float64
@@ -491,7 +488,7 @@ struct Point(ImplicitlyDestructible):
 fn process[T: AnyType](value: T):
     pass  # T doesn't need __del__()
 
-fn take_ownership[T: Destructible](var value: T):
+fn take_ownership[T: ImplicitlyDestructible](var value: T):
     pass  # T will be properly destroyed
 ```
 
@@ -524,19 +521,18 @@ Mojo v26.1 provides safe constructors for creating Strings from byte data with e
 ### UTF-8 Constructors
 
 ```mojo
-# nocompile
-from collections import List
+from memory import Span
 
 # Option 1: Raising constructor - validates UTF-8, raises on invalid
-fn parse_utf8_strict(data: List[UInt8]) raises -> String:
+fn parse_utf8_strict(data: Span[Byte]) raises -> String:
     return String(from_utf8=data)  # Raises if invalid UTF-8
 
 # Option 2: Lossy constructor - replaces invalid bytes with U+FFFD
-fn parse_utf8_lossy(data: List[UInt8]) -> String:
+fn parse_utf8_lossy(data: Span[Byte]) -> String:
     return String(from_utf8_lossy=data)  # Never fails
 
 # Option 3: Unsafe constructor - for pre-validated/trusted input
-fn parse_utf8_trusted(data: List[UInt8]) -> String:
+fn parse_utf8_trusted(data: Span[Byte]) -> String:
     return String(unsafe_from_utf8=data)  # No validation, fastest
 ```
 
@@ -559,12 +555,12 @@ for cp in s.codepoints():
     print(cp)
 
 # Reverse iteration (replaces deprecated __reversed__)
-for cp in s.codepoints_reversed():
+for cp in s.codepoint_slices_reversed():
     print(cp)
 
 # ASCII padding (renamed from ljust/rjust)
-var padded = s.ascii_ljust(20, ord(" "))
-var right_padded = s.ascii_rjust(20, ord("0"))
+var padded = s.ascii_ljust(20, " ")
+var right_padded = s.ascii_rjust(20, "0")
 ```
 
 ---

@@ -426,7 +426,7 @@ Two budgets control batch composition:
 **Long-context configuration:**
 ```bash
 max serve --model meta-llama/Llama-3.1-8B-Instruct \
-  --max-length 65536 \
+  --max-sequence-length 65536 \
   --max-batch-input-tokens 16384 \
   --max-batch-total-tokens 65536 \
   --enable-chunked-prefill
@@ -435,6 +435,18 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 **Configuration constraints:**
 - `max_batch_total_tokens` must be >= `max_seq_len`
 - `max_batch_size` must be <= `target_tokens_per_batch_ce`
+
+### Multi-Model Serving
+
+MAX Serve runs one model per process instance. To serve multiple models:
+
+```bash
+# Run separate instances on different ports
+max serve --model-path model-a --port 8000 &
+max serve --model-path model-b --port 8001 &
+```
+
+Use a reverse proxy (nginx, envoy) to route requests to the correct instance based on the model name in the request.
 
 ---
 
@@ -469,7 +481,7 @@ max serve --model meta-llama/Llama-3.1-8B-Instruct \
 |-------|-------|-----|
 | `batch size exceeds` | Request exceeds max-batch-size | Increase `--max-batch-size` or reduce request |
 | `out of memory` | Total tokens exceed capacity | Reduce `--max-batch-total-tokens` or add GPUs |
-| `sequence length exceeds` | Input too long | Increase `--max-length` or truncate input |
+| `sequence length exceeds` | Input too long | Increase `--max-sequence-length` or truncate input |
 | `model not found` | Invalid model path | Check path format, use HF format or local path |
 | `slow startup` | Cold compilation | Graph caching is automatic; subsequent runs use warm cache |
 | `request timeout` | Request processing too slow | Enable chunked prefill, check batch settings |

@@ -92,7 +92,7 @@ fn first(ref items: List[Int]) -> ref [items] Int:
 | Feature | `fn` | `def` |
 |---------|------|-------|
 | Error handling | Non-raising by default | Raising by default |
-| Arguments | Immutable by default | Mutable by default |
+| Arguments | Immutable by default | Mutable local copy by default |
 | Optimization | Maximum | Limited |
 | Use case | Performance-critical | Scripting, prototyping |
 
@@ -102,10 +102,10 @@ fn first(ref items: List[Int]) -> ref [items] Int:
 # Use def for Python-like flexibility
 def parse_config(path: String) -> Dict[String, String]:
     # Can raise without explicit declaration
-    # Arguments are mutable by default
+    # Arguments get a mutable local copy by default
     var result = Dict[String, String]()
     # ... parsing logic ...
-    return result
+    return result^
 
 def quick_script():
     # Rapid development, less ceremony
@@ -133,7 +133,7 @@ fn dot_product(a: List[Float64], b: List[Float64]) -> Float64:
 fn read_file(path: String) raises -> String:
     # Clearly communicates that this can fail
     # Caller must handle or propagate
-    pass
+    raise "not implemented"
 ```
 
 **Guidelines:**
@@ -241,9 +241,8 @@ connect("localhost", 8080, timeout=60.0, ssl=False)
 
 **Do:**
 ```mojo
-# nocompile
 # Generic fallback using traits
-fn stringify[T: Stringable](value: T) -> String:
+fn stringify[T: Writable](value: T) -> String:
     return String(value)
 
 # Optimized overload for Int (common case)
@@ -333,13 +332,13 @@ fn sum_of_powers(data: List[Float64]) -> Float64:
 
 | Variant | Debug Info | Use Case |
 |---------|------------|----------|
-| `@always_inline` | Stripped | Hot path functions |
+| `@always_inline` | Preserved | Hot path functions (debuggable) |
 | `@always_inline("builtin")` | Stripped | Core operators, maximum perf |
-| `@always_inline("nodebug")` | Preserved | Inlined but debuggable |
+| `@always_inline("nodebug")` | Stripped | Inlined, debug info removed |
 
 ```mojo
 # nocompile
-# Standard: inline and strip debug info
+# Standard: inline and preserve debug info
 @always_inline
 fn fast_add(a: Int, b: Int) -> Int:
     return a + b
@@ -351,7 +350,7 @@ fn __add__(self, rhs: Int) -> Int:
         self._mlir_value, rhs._mlir_value
     ))
 
-# Nodebug: inline but preserve debug info for stack traces
+# Nodebug: inline and strip debug info (no stack traces from this function)
 @always_inline("nodebug")
 fn __init__[T: Intable](out self, value: T):
     self = value.__int__()
@@ -360,7 +359,6 @@ fn __init__[T: Intable](out self, value: T):
 **@no_inline for cold paths:**
 
 ```mojo
-# nocompile
 # Error handling - preserve stack traces
 @no_inline
 fn handle_error(message: String) raises:
@@ -429,9 +427,7 @@ elif is_amd_gpu():
     return "llvm.amdgcn.s.barrier"
 else:
     # GOOD: Clear error for unsupported platforms
-    return CompilationTarget.unsupported_target_error[
-        "barrier intrinsic not supported on this target"
-    ]()
+    constrained[False, "barrier intrinsic not supported on this target"]()
 ```
 
 **Don't:** Use fallthrough else assuming "not NVIDIA means AMD"
@@ -451,7 +447,7 @@ else:
 
 ```mojo
 # nocompile
-# OK: Generic fallback that works everywhere
+# Generic fallback that works everywhere
 @always_inline("nodebug")
 fn prefetch[...](ptr: UnsafePointer):
     @parameter
@@ -480,14 +476,9 @@ fn get_warp_size() -> Int:
         return 0
 
 fn shuffle_down[T: DType](val: Scalar[T], offset: Int) -> Scalar[T]:
-    @parameter
-    if is_nvidia_gpu():
-        return __nvidia_shfl_down_sync(0xFFFFFFFF, val, offset)
-    elif is_amd_gpu():
-        return __amd_ds_swizzle(val, offset)
-    else:
-        # CPU fallback: no shuffle, return same value
-        return val
+    # Use the public API from gpu.primitives.warp
+    from gpu.primitives.warp import shuffle_down as warp_shuffle_down
+    return warp_shuffle_down(val, offset)
 ```
 
 **Checking for specific architectures:**
@@ -521,9 +512,9 @@ elif is_amd_gpu():
 else:
     constrained[False, "This kernel requires GPU"]()
 
-# Option 2: Unsupported target error (from stdlib)
+# Option 2: Compile-time constraint with custom message
 else:
-    return CompilationTarget.unsupported_target_error[MyFunction]()
+    constrained[False, "Unsupported target for MyFunction"]()
 
 # Option 3: Runtime error (last resort)
 else:
@@ -620,7 +611,6 @@ fn _connect_impl(url: String, config: TlsConfig) raises -> Connection:
 
 **Example (v26.1+):**
 ```mojo
-# nocompile
 # Ownership transfer (var keyword, v26.1+)
 fn consume(var data: List[Int]) -> Int:
     return data[0]

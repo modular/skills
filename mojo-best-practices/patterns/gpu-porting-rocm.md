@@ -53,7 +53,7 @@ Complete guide for porting ROCm/HIP kernels to Mojo, covering the HIP basics, AM
 | HIP | Mojo | Notes |
 |-----|------|-------|
 | `__syncthreads()` | `barrier()` | Maps to `s_barrier` on AMD |
-| `__threadfence()` | `gpu.sync.fence()` | Memory fence |
+| `__threadfence()` | `threadfence()` | `from gpu.intrinsics import threadfence` |
 
 ### Kernel Launch
 
@@ -90,7 +90,7 @@ fn warp_reduce_sum(var val: Float32) -> Float32:
     # Automatically handles warp size 32 or 64
     var offset = WARP_SIZE // 2
     while offset > 0:
-        val += shfl_down[DType.float32, 1](val, offset)
+        val += shuffle_down(val, offset)
         offset >>= 1
     return val
 ```
@@ -109,14 +109,13 @@ float warp_reduce(float val) {
 ### Mojo: Same Code Works
 
 ```mojo
-# nocompile
 from gpu import WARP_SIZE, lane_id
-from gpu.warp import shfl_down
+from gpu.primitives.warp import shuffle_down
 
 fn warp_reduce(var val: Float32) -> Float32:
     var offset = WARP_SIZE // 2
     while offset > 0:
-        val += shfl_down[DType.float32, 1](val, offset)
+        val += shuffle_down(val, offset)
         offset >>= 1
     return val
 ```
@@ -149,23 +148,17 @@ from layout.tensor_core import TensorCore, TiledTensorCore, num_matrix_reg
 
 # Configure MFMA operation
 comptime mma = TensorCore[
-    DType.float32,     # Accumulator type
-    DType.float16,     # A input type
-    DType.float16,     # B input type
-    mma_m=32,          # M dimension
-    mma_n=32,          # N dimension
-    mma_k=8,           # K dimension
+    DType.float32,     # Accumulator type (out_type)
+    DType.float16,     # Input type (in_type — single type for both A and B)
+    IndexList[3](32, 32, 8),  # shape: (M, N, K)
 ]
 
 # Or use TiledTensorCore for multi-tile MMA
 comptime tiled_mma = TiledTensorCore[
-    DType.float32,     # Accumulator type
-    DType.bfloat16,    # Input type
-    mma_m=32,          # Base MMA M
-    mma_n=32,          # Base MMA N
-    mma_k=16,          # Base MMA K (double-rate for bf16)
-    tile_m=128,        # Tile M (4x base)
-    tile_n=128,        # Tile N (4x base)
+    DType.float32,     # Accumulator type (out_type)
+    DType.bfloat16,    # Input type (in_type — single type for both A and B)
+    IndexList[3](32, 32, 16),  # shape: (M, N, K) — K=16 for double-rate bf16
+    group_size=4,      # Number of MMA tiles in each group
 ]
 
 # Execute MMA
@@ -181,11 +174,11 @@ fn compute_tile(
 
 | Shape | Types | Regs/Thread | Best For | Mojo MMA Parameters |
 |-------|-------|-------------|----------|---------------------|
-| 32x32x8 | f16→f32 | 16 | General GEMM | `mma_m=32, mma_n=32, mma_k=8` |
-| 16x16x16 | f16→f32 | 4 | Batched small | `mma_m=16, mma_n=16, mma_k=16` |
-| 32x32x16 | bf16→f32 | 16 | Double-rate | `mma_m=32, mma_n=32, mma_k=16` |
-| 16x16x32 | bf16→f32 | 4 | Double-rate small | `mma_m=16, mma_n=16, mma_k=32` |
-| 32x32x64 | fp8→f32 | 16 | FP8 (MI300+) | `mma_m=32, mma_n=32, mma_k=64` |
+| 32x32x8 | f16→f32 | 16 | General GEMM | `IndexList[3](32, 32, 8)` |
+| 16x16x16 | f16→f32 | 4 | Batched small | `IndexList[3](16, 16, 16)` |
+| 32x32x16 | bf16→f32 | 16 | Double-rate | `IndexList[3](32, 32, 16)` |
+| 16x16x32 | bf16→f32 | 4 | Double-rate small | `IndexList[3](16, 16, 32)` |
+| 32x32x64 | fp8→f32 | 16 | FP8 (MI300+) | `IndexList[3](32, 32, 64)` |
 
 > **Decision guide:** Use 32x32 shapes for maximum throughput. Use 16x16 shapes when register pressure is high or for small matrix dimensions.
 
@@ -227,7 +220,7 @@ schedule_group_barrier(AMDScheduleBarrierMask.DS_READ, 4, Int32(group))  # Wait 
 schedule_group_barrier(AMDScheduleBarrierMask.TRANS, 1, Int32(group))  # Wait for 1 trans
 
 # s_waitcnt — low-level wait counter
-s_waitcnt(vmcnt=0, lgkmcnt=0)  # Wait for all VM and LDS/GDS ops
+s_waitcnt[vmcnt=0, lgkmcnt=0]()  # Wait for all VM and LDS/GDS ops
 ```
 
 ### AMDScheduleBarrierMask Values
@@ -373,8 +366,8 @@ struct AMDGemmKernel[
     mma_m: Int, mma_n: Int, mma_k: Int, # MFMA shape
 ]:
     comptime mma = TensorCore[
-        DType.float32, DType.bfloat16, DType.bfloat16,
-        mma_m=mma_m, mma_n=mma_n, mma_k=mma_k,
+        DType.float32, DType.bfloat16,
+        IndexList[3](mma_m, mma_n, mma_k),
     ]
 
     @staticmethod
@@ -477,7 +470,7 @@ var warp_count = block_dim.x // WARP_SIZE  # Works on both NVIDIA and AMD
 # nocompile
 # HIP: __shfl_down(val, offset) — no mask needed (full wave)
 # Mojo: same — no mask parameter
-var result = shfl_down[DType.float32, 1](val, offset)
+var result = shuffle_down(val, offset)
 ```
 
 ### 3. AMD Scheduling is Performance-Critical
@@ -542,6 +535,25 @@ from layout import Layout, LayoutTensor
 from linalg.structuring import SMemTile, RegTile, SharedMemoryManager
 from memory import stack_allocation
 ```
+
+---
+
+## Version-Specific Features
+
+### Nightly (v26.2+)
+
+All APIs in this pattern require the Mojo nightly toolchain (v26.2+). This includes:
+
+- Core GPU primitives: `thread_idx`, `block_idx`, `global_idx`, `WARP_SIZE`, `lane_id`
+- AMD scheduling: `schedule_barrier`, `schedule_group_barrier`, `AMDScheduleBarrierMask`, `s_waitcnt`
+- AMD tensor cores: `TensorCore`, `TiledTensorCore` from `layout.tensor_core`
+- AMD memory: `ScatterGatherAmd`, `IteratorScatterGatherAmd` from `linalg.structuring`
+- AMD buffer resources: `AMDBufferResource` from `gpu.intrinsics`
+- Cross-platform abstractions: `LayoutTensor`, `SMemTile`, `RegTile`, `SharedMemoryManager`
+
+### Stable (v26.1)
+
+Core GPU primitives (`thread_idx`, `block_idx`, `barrier`, `WARP_SIZE`, shuffle operations) are available in v26.1 stable. Basic HIP-to-Mojo porting patterns (thread hierarchy, shared memory, synchronization, kernel launch) work in stable. AMD-specific scheduling APIs (`schedule_barrier`, `schedule_group_barrier`, `AMDScheduleBarrierMask`) and `TensorCore`/`TiledTensorCore` for MFMA are available in v26.1. `ScatterGatherAmd` for direct DRAM-to-register data movement is also available in stable. Import paths are the same between v26.1 and v26.2+.
 
 ---
 

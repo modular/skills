@@ -263,6 +263,8 @@ fn main() raises:
 
 ## Lifecycle Counter Testing
 
+> **Note:** `MoveCounter`, `CopyCounter`, `DelCounter`, and `AbortOnCopy` are test-internal utilities found in `stdlib/test/test_utils/types.mojo`. They are not part of the public standard library API. You can copy these patterns into your own test utilities.
+
 ### MoveCounter - Track Move Operations
 
 Use `MoveCounter` to verify that your code performs the expected number of moves.
@@ -279,13 +281,13 @@ struct MoveCounter[T: Copyable & ImplicitlyDestructible](Copyable):
         self.value = value^
         self.move_count = 0
 
-    fn __moveinit__(out self, deinit existing: Self):
-        self.value = existing.value^
-        self.move_count = existing.move_count + 1
+    fn __moveinit__(out self, deinit take: Self):
+        self.value = take.value^
+        self.move_count = take.move_count + 1
 
-    fn __copyinit__(out self, existing: Self):
-        self.value = existing.value
-        self.move_count = existing.move_count
+    fn __copyinit__(out self, copy: Self):
+        self.value = copy.value
+        self.move_count = copy.move_count
 ```
 
 **Usage — verify List doesn't copy unnecessarily:**
@@ -323,9 +325,9 @@ struct CopyCounter[T: ImplicitlyCopyable & Writable & Defaultable = NoneType](
         self.value = value
         self.copy_count = 0
 
-    fn __copyinit__(out self, existing: Self):
-        self.value = existing.value
-        self.copy_count = existing.copy_count + 1
+    fn __copyinit__(out self, copy: Self):
+        self.value = copy.value
+        self.copy_count = copy.copy_count + 1
 ```
 
 **Usage — verify function doesn't copy when borrowing:**
@@ -391,7 +393,7 @@ struct AbortOnCopy(ImplicitlyCopyable):
     """Type that aborts if copied - for testing move-only code paths."""
     var value: Int
 
-    fn __copyinit__(out self, other: Self):
+    fn __copyinit__(out self, copy: Self):
         abort("Unexpected copy of AbortOnCopy!")
 ```
 
@@ -504,9 +506,10 @@ def test_deterministic_with_seed():
 var config = PropTestConfig(
     runs=100,        # Number of test iterations (default 100)
     seed=None,       # Random seed for reproducibility (None = random)
-    max_size=100,    # Maximum size for generated collections
 )
 ```
+
+> **Note:** `PropTestConfig` only accepts `runs` and `seed` parameters. Collection size limits are controlled by the strategy, not the config.
 
 ### Common Property Patterns
 
@@ -555,7 +558,7 @@ fn test_gpu_kernel_correctness() raises:
     var d_input = ctx.enqueue_create_buffer[DType.float32](SIZE)
     var d_output = ctx.enqueue_create_buffer[DType.float32](SIZE)
 
-    ctx.enqueue_copy(d_input, h_input.unsafe_ptr(), SIZE)
+    ctx.enqueue_copy(d_input, h_input.unsafe_ptr())
     ctx.enqueue_function[my_gpu_kernel](
         d_input.unsafe_ptr(),
         d_output.unsafe_ptr(),
@@ -566,7 +569,7 @@ fn test_gpu_kernel_correctness() raises:
 
     var h_output = List[Float32](capacity=SIZE)
     h_output.resize(SIZE)
-    ctx.enqueue_copy(h_output.unsafe_ptr(), d_output, SIZE)
+    ctx.enqueue_copy(h_output.unsafe_ptr(), d_output)
     ctx.synchronize()
 
     for i in range(SIZE):
@@ -615,6 +618,7 @@ Use proper methodology with warmup iterations, multiple samples, and appropriate
 
 ```mojo
 from time import perf_counter_ns
+from benchmark import keep
 
 fn operation_to_benchmark() -> Int:
     var sum = 0
@@ -629,12 +633,13 @@ fn benchmark_operation() -> Float64:
 
     # Warmup - don't measure these
     for _ in range(WARMUP_ITERS):
-        _ = operation_to_benchmark()
+        keep(operation_to_benchmark())
 
     var total_ns: UInt = 0
     for _ in range(BENCH_ITERS):
         var start = perf_counter_ns()
-        _ = operation_to_benchmark()
+        var result = operation_to_benchmark()
+        keep(result)  # CRITICAL: prevent dead code elimination
         var end = perf_counter_ns()
         total_ns += end - start
 
@@ -644,6 +649,8 @@ fn main():
     var avg_ms = benchmark_operation()
     print("Average time:", avg_ms, "ms")
 ```
+
+> **Warning:** `_ = fn()` is NOT sufficient to prevent dead code elimination (DCE). The compiler may still optimize away the function call. Always use `keep(result)` from `benchmark` to ensure the computation actually executes.
 
 ### Best-of-N Pattern
 
@@ -725,12 +732,12 @@ fn benchmark_simd_vs_scalar():
         var ptr = data.unsafe_ptr()
         var sum = SIMD[DType.float32, 8](0.0)
         for i in range(0, SIZE, 8):
-            sum += ptr.offset(i).load[width=8]()
+            sum += (ptr + i).load[width=8]()
         keep(sum.reduce_add())
     var simd_ns = perf_counter_ns() - simd_start
 
-    print("Scalar:", scalar_ns / ITERS, "ns")
-    print("SIMD:", simd_ns / ITERS, "ns")
+    print("Scalar:", scalar_ns / UInt(ITERS), "ns")
+    print("SIMD:", simd_ns / UInt(ITERS), "ns")
     print("Speedup:", Float64(scalar_ns) / Float64(simd_ns), "x")
 ```
 
@@ -747,12 +754,12 @@ The `QuickBench` API provides structured benchmarking with throughput metrics an
 ```mojo
 # nocompile
 # BAD: Susceptible to optimizer, no warmup, single sample
-from time import now
+from time import perf_counter_ns
 
 def bad_benchmark():
-    var start = now()
+    var start = perf_counter_ns()
     var result = my_function()  # Might be optimized away!
-    var elapsed = now() - start
+    var elapsed = perf_counter_ns() - start
     print("Time:", elapsed)
 ```
 

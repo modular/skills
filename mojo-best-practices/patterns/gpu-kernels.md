@@ -47,10 +47,10 @@ Optimize GPU kernels by fusing operations, implementing producer-consumer pipeli
 | `stack_allocation` | `from memory import stack_allocation` | Shared memory allocation |
 | `AddressSpace` | `from gpu.memory import AddressSpace` | Address space enum (SHARED, GENERIC, etc.) |
 | `LayoutTensor`, `Layout` | `from layout import LayoutTensor, Layout` | Type-safe tensor with compile-time layout |
-| `SharedMemBarrier`, `MbarPtr` | `from gpu.sync import SharedMemBarrier, MbarPtr` | Pipeline barriers |
+| `SharedMemBarrier` | `from layout.tma_async import SharedMemBarrier` | Pipeline barrier wrapper |
 | `elect_one_sync`, `block_rank_in_cluster` | `from gpu.primitives.cluster import ...` | Cluster primitives (SM90+) |
 | `cluster_sync`, `cluster_arrive`, `cluster_wait` | `from gpu.primitives.cluster import ...` | Cluster synchronization (SM90+) |
-| `fence_mbarrier_init` | `from gpu.memory import fence_mbarrier_init` | Cluster barrier fence |
+| `fence_mbarrier_init` | `from gpu.memory import fence_mbarrier_init` (or `from gpu import fence_mbarrier_init`) | Cluster barrier fence |
 
 ---
 
@@ -123,12 +123,12 @@ GPU kernels achieve maximum throughput by overlapping memory loads with compute.
 ```mojo
 # nocompile
 
-from gpu.sync import SharedMemBarrier, MbarPtr
+from layout.tma_async import SharedMemBarrier
 
 struct ProducerConsumerPipeline[num_stages: Int]:
     """Multi-stage pipeline with full/empty barriers."""
-    var full: MbarPtr      # Producer signals, consumer waits
-    var empty: MbarPtr     # Consumer signals, producer waits
+    var full: UnsafePointer[SharedMemBarrier, address_space=AddressSpace.SHARED]
+    var empty: UnsafePointer[SharedMemBarrier, address_space=AddressSpace.SHARED]
     var stage: Int
     var phase: Int
 
@@ -225,7 +225,7 @@ fn double_buffered_matmul(...):
         compute_tile(A_compute, B_compute, acc)
 
         if next_k < num_k_iters:
-            async_copy_wait_group[0]()
+            async_copy_wait_group(0)
             barrier()
 ```
 
@@ -252,7 +252,7 @@ fn multi_stage_pipeline[NUM_STAGES: Int](...):
     # Main loop: drain and refill
     for k_iter in range(num_k_iters):
         var stage = k_iter % NUM_STAGES
-        async_copy_wait_group[NUM_STAGES - 1]()
+        async_copy_wait_group(NUM_STAGES - 1)
         barrier()
         compute_tile(A_stages[stage], B_stages[stage], acc)
 
@@ -360,7 +360,7 @@ fn multicast_load_pattern():
 # nocompile
 
 from gpu.primitives.cluster import cluster_sync, cluster_sync_relaxed, cluster_arrive, cluster_wait
-from gpu.memory import fence_mbarrier_init
+from gpu.memory import fence_mbarrier_init  # Also available: from gpu import fence_mbarrier_init
 
 # Full cluster barrier
 cluster_sync()
@@ -537,8 +537,8 @@ Register custom Mojo GPU operations for use in MAX graphs via `@compiler.registe
 
 ```mojo
 # nocompile
-from compiler import register
-from max.tensor import InputTensor, OutputTensor
+# InputTensor, OutputTensor, and DeviceContextPtr are provided by the MOGG
+# custom op system — they appear as parameters in @compiler.register methods.
 from runtime.asyncrt import DeviceContextPtr
 
 @compiler.register("my_custom_op")
@@ -689,7 +689,7 @@ fn launch_silu[dtype: DType](
         var result = x / (1.0 + exp(-x))
         output.store(i, result.cast[dtype]())
 
-    elementwise[silu_op, target="gpu"](size, ctx)
+    elementwise[silu_op, 1, target="gpu"](size, ctx)
 ```
 
 **When to use:** Activation functions, element-wise math, type casting, clipping. Any operation where each output element depends on exactly one input element.

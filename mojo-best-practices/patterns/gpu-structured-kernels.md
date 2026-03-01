@@ -366,7 +366,7 @@ with MmaWarpContext(tmem, output_pipeline, dealloc_barrier) as ctx:
 
 **When:** Accessing shared memory (SMEM/LDS) with correct compiler instruction generation.
 
-**Critical Pattern:** Use `ref [AddressSpace.SHARED]self` to ensure compiler generates optimal load/store instructions.
+**Critical Pattern:** Use `ref[AddressSpace.SHARED] self` to ensure compiler generates optimal load/store instructions.
 
 ```mojo
 # nocompile
@@ -376,12 +376,12 @@ struct B200MatmulSmem[...]:
     var b_tiles_storage: Self.BTileArray.StorageType
 
     @always_inline
-    fn a_tiles(ref [AddressSpace.SHARED]self) -> Self.ATileArray:
+    fn a_tiles(ref[AddressSpace.SHARED] self) -> Self.ATileArray:
         """Access A tiles with SMEM-qualified pointer."""
         return Self.ATileArray(self.a_tiles_storage)
 
     @always_inline
-    fn b_tiles(ref [AddressSpace.SHARED]self) -> Self.BTileArray:
+    fn b_tiles(ref[AddressSpace.SHARED] self) -> Self.BTileArray:
         """Access B tiles with SMEM-qualified pointer."""
         return Self.BTileArray(self.b_tiles_storage)
 
@@ -403,7 +403,7 @@ var tiles = smem.a_tiles()  # ld.shared instruction (~30 cycles)
 | Performance | Optimal | 16x slower |
 
 **Guidelines:**
-- Always use `ref [AddressSpace.SHARED]self` for SMEM access methods
+- Always use `ref[AddressSpace.SHARED] self` for SMEM access methods
 - Use `ref [AddressSpace.GLOBAL]self` for global memory access
 - Address space mismatches caught at compile time
 - Store pointers with proper address space: `UnsafePointer[T, AddressSpace.SHARED]`
@@ -444,7 +444,7 @@ fn process[comptime num_stages: Int](self):
 
 ```bash
 # Compile with PTX output to verify zero overhead
-mojo build --emit-asm=ptx kernel.mojo
+mojo build --emit asm kernel.mojo
 
 # Inspect PTX - abstractions should not appear in assembly
 # - No function calls for @always_inline functions
@@ -870,7 +870,7 @@ max/kernels/src/linalg/matmul/gpu/apple_structured/
 - [ ] Handles boundary masking automatically
 - [ ] Applies swizzle for bank conflict avoidance
 - [ ] Signals barrier with expected bytes
-- [ ] Methods use correct address space qualifiers (`ref [AddressSpace.SHARED]self`)
+- [ ] Methods use correct address space qualifiers (`ref[AddressSpace.SHARED] self`)
 
 **RingBuffer:**
 - [ ] Producer signals AFTER loading
@@ -908,8 +908,8 @@ max/kernels/src/linalg/matmul/gpu/apple_structured/
 | Layout heap allocation on GPU | Using `Layout(idx)` dynamically | Use `RuntimeLayout[layout]()(idx)` |
 | Non-uniform pointer error | VGPR pointer where SGPR expected | Use `readfirstlane()` for uniform pointers |
 | Barrier deadlock | Wrong barrier type on AMD | Use `s_barrier()` for control-flow, `barrier()` for memory fence |
-| Slow SMEM access (16x) | Missing address space qualification | Use `ref [AddressSpace.SHARED]self` for SMEM methods |
-| Env var not working | Using `env_get_bool` for runtime flag | Runtime env vars don't work; use `mojo -D FLAG=value` |
+| Slow SMEM access (16x) | Missing address space qualification | Use `ref[AddressSpace.SHARED] self` for SMEM methods |
+| Env var not working | Using `env_get_bool` for runtime flag | `env_get_bool` reads values at compile time and bakes them into the binary; cached `.mojopkg` files serve stale values. Use `getenv()` for runtime flags or `mojo -D FLAG=value` for compile-time defines |
 | Type mismatch in generic | Compiler can't prove type equality | Use `rebind[TargetType]()` for same-layout types |
 | Pointer element type error | Need to reinterpret pointer type | Use `bitcast` for pointer element conversion |
 | TMEM not deallocated | Missing dealloc barrier wait | Ensure MMA warp waits on dealloc barrier in __exit__ |

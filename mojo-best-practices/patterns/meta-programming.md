@@ -1,6 +1,6 @@
 ---
 title: Mojo Metaprogramming Patterns
-description: Compile-time parameters, variadic parameters, conditional conformance, and parameter unpacking for zero-cost generics
+description: Compile-time parameters, variadic parameters, and conditional conformance for zero-cost generics
 impact: MEDIUM
 category: meta
 tags: [metaprogramming, parameters, generics, variadic, traits, compile-time]
@@ -31,7 +31,7 @@ consolidates:
 
 **Category:** meta | **Impact:** MEDIUM
 
-Metaprogramming in Mojo enables zero-cost generics through compile-time parameters. Parameters (in square brackets) are resolved at compile time, eliminating runtime overhead while providing type-safe, reusable code. This pattern covers compile-time parameters, variadic parameters, conditional conformance, and modern unpacking syntax.
+Metaprogramming in Mojo enables zero-cost generics through compile-time parameters. Parameters (in square brackets) are resolved at compile time, eliminating runtime overhead while providing type-safe, reusable code. This pattern covers compile-time parameters, variadic parameters, and conditional conformance.
 
 ---
 
@@ -89,7 +89,7 @@ The compiler can infer parameters from arguments.
 ```mojo
 # nocompile
 # Compiler infers parameters from arguments
-fn print_type[T: Stringable](value: T):
+fn print_type[T: Writable](value: T):
     print(value)
 
 print_type(42)      # T inferred as Int
@@ -105,19 +105,19 @@ print_type("hello") # T inferred as String
 from utils import StaticTuple
 
 # Combining type and value parameters
-struct FixedArray[T: Copyable, Size: Int]:
-    var data: StaticTuple[T, Size]
+struct FixedArray[T: TrivialRegisterPassable, Size: Int]:
+    var data: StaticTuple[Self.T, Self.Size]
 
-    fn __init__(out self, default: T):
-        self.data = StaticTuple[T, Size]()
+    fn __init__(out self, default: Self.T):
+        self.data = StaticTuple[Self.T, Self.Size]()
         @parameter
-        for i in range(Size):
+        for i in range(Self.Size):
             self.data[i] = default
 
-    fn __getitem__(self, index: Int) -> T:
+    fn __getitem__(self, index: Int) -> ref [self] Self.T:
         return self.data[index]
 
-    fn __setitem__(mut self, index: Int, value: T):
+    fn __setitem__(mut self, index: Int, value: Self.T):
         self.data[index] = value
 
 var arr = FixedArray[Int, 10](0)
@@ -135,7 +135,6 @@ Add methods to generic types only when type parameters satisfy certain traits. U
 **Pattern:**
 
 ```mojo
-# nocompile
 # Modern Mojo requires Self.T syntax and explicit traits
 struct Container[T: Movable & ImplicitlyDestructible & ImplicitlyCopyable](
     ImplicitlyDestructible
@@ -160,7 +159,6 @@ Use `&` to combine trait requirements.
 **Pattern:**
 
 ```mojo
-# nocompile
 # Use & to combine trait requirements
 struct Pair[T: Movable & ImplicitlyDestructible & Equatable](
     ImplicitlyDestructible
@@ -181,7 +179,6 @@ struct Pair[T: Movable & ImplicitlyDestructible & Equatable](
 **Pattern:**
 
 ```mojo
-# nocompile
 # Wrapper that forwards trait requirements
 struct Wrapper[T: Movable & ImplicitlyDestructible & Writable](
     ImplicitlyDestructible, Writable
@@ -252,7 +249,7 @@ For a fixed number of different types, use explicit parameters for clearer error
 ```mojo
 # nocompile
 # For a fixed number of different types, use explicit parameters
-fn process_two[T1: Stringable, T2: Stringable](a: T1, b: T2):
+fn process_two[T1: Writable, T2: Writable](a: T1, b: T2):
     print(a)
     print(b)
 
@@ -270,78 +267,17 @@ var result = process_three(1, "test", 3.14)
 **Pattern:**
 
 ```mojo
-# nocompile
 # Processing variadic type arguments
-# Note: Accessing elements for printing may require additional trait bounds
-fn count_args[*Ts: Movable](*args: *Ts) -> Int:
-    return len(VariadicList(Ts))
-
-var n = count_args(1, "hello", 3.14, True)  # n = 4
+# Note: Variadic packs use *Ts syntax. There is no runtime way to count
+# variadic type arguments generically -- use overloads or compile-time
+# parameter introspection instead.
+fn process_variadic[*Ts: Movable](*args: *Ts):
+    # Iterate over variadic args with for-each syntax
+    @parameter
+    for i in range(len(VariadicList(Ts))):
+        # Process each argument at compile time
+        pass
 ```
-
----
-
-## Parameter Unpacking Syntax (v0.26.1+)
-
-### Modern Unpacking with `...`
-
-Mojo v0.26.1+ uses `...` syntax for parameter unpacking, replacing the older `*_` and `**_` syntax.
-
-**Deprecated syntax:**
-
-```mojo
-# nocompile
-# OLD - deprecated in v0.26.1
-fn process[T: AnyType, *_Ts: AnyType, **_Kwargs: AnyType](...):
-    pass
-
-# OLD - explicitly unpacked parameters
-comptime MyType = SomeGeneric[Int, String, *_, **_]
-```
-
-**New syntax:**
-
-```mojo
-# NEW - use ... for unpacking
-fn process[T: AnyType, ...Ts: AnyType](...):
-    pass
-
-# NEW - explicitly unpacked parameters
-comptime MyType = SomeGeneric[Int, String, ...]
-```
-
-### Usage Patterns
-
-**Pattern:**
-
-```mojo
-# Variadic type parameters
-struct Tuple[...Ts: AnyType]:
-    # Ts is a variadic pack of types
-    pass
-
-# Using ... to forward all remaining parameters
-fn wrapper[T: AnyType, ...Args](*args: *Args) -> T:
-    return inner_fn[T, ...Args](*args)
-
-# Partial type application with ...
-comptime PartialDict = Dict[String, ...]  # Remaining params unbound
-```
-
-### Migration Guide
-
-| Old Syntax | New Syntax | Meaning |
-|------------|------------|---------|
-| `*_` | `...` | Unpack remaining positional type params |
-| `**_` | `...` | Unpack remaining keyword type params |
-| `*_Name` | `...Name` | Named variadic pack |
-
-**Migration steps:**
-
-1. Replace `*_` with `...`
-2. Replace `**_` with `...`
-3. Replace `*_Name` with `...Name`
-4. The compiler will warn on deprecated syntax
 
 ---
 
@@ -375,6 +311,10 @@ fn create_identity_matrix[N: Int]() -> StaticTuple[StaticTuple[Float64, N], N]:
     return result
 
 comptime Identity4x4 = create_identity_matrix[4]()
+
+# To USE a comptime value at runtime when its type is NOT ImplicitlyCopyable
+# (e.g., InlineArray, StaticTuple), use materialize[]:
+var matrix = materialize[Identity4x4]()
 ```
 
 **Don't:**
@@ -399,7 +339,7 @@ fn find_max_bad[T](items: List[T]) -> T:
 | Fixed-size array at compile time | Use value parameter | `struct FixedArray[T, Size: Int]` |
 | Known small number of types | Use explicit parameters | `fn process[T1, T2](a: T1, b: T2)` |
 | Unknown number of same-type args | Use variadic value params | `fn sum[*values: Int]()` |
-| Forward all parameters | Use `...` syntax | `fn wrapper[...Args](*args: *Args)` |
+| Forward all parameters | Use variadic parameters | `fn wrapper[*Ts: Movable](*args: *Ts)` |
 | Methods only for certain types | Conditional conformance with trait bounds | `struct Pair[T: Equatable]` |
 
 ---
@@ -410,7 +350,6 @@ fn find_max_bad[T](items: List[T]) -> T:
 - **`&` operator**: Combine multiple trait requirements
 - **`@parameter` loops**: Unroll loops at compile time for variadic iteration
 - **`comptime`**: Declare compile-time computed constants
-- **`...` unpacking**: Modern syntax for variadic parameters (v0.26.1+)
 - **Monomorphization**: Each unique parameter combination generates specialized code
 
 ---
@@ -421,10 +360,9 @@ fn find_max_bad[T](items: List[T]) -> T:
 |-------|-------|-----|
 | `comptime expression not constant` | Runtime value in comptime context | Ensure all inputs are compile-time known |
 | `@parameter loop not unrolling` | Non-constant bounds | Use `comptime` value for loop bounds |
-| `variadic unpacking failed` | Using old `*_` syntax | Use `...` for unpacking in v0.26.1+ |
 | `monomorphization explosion` | Too many parameter combinations | Reduce parameter space; use runtime dispatch for some cases |
 | `compile-time recursion limit` | Deep recursive templates | Increase limit or restructure to iteration |
-| `alias deprecated warning` | Using `alias` for constants | Both `alias` and `comptime` work in v26.1+ |
+| `cannot materialize comptime value ... not ImplicitlyCopyable` | Using comptime value of non-`ImplicitlyCopyable` type (e.g., `InlineArray`) at runtime | Use `var x = materialize[COMPTIME_VAL]()` to bridge comptime → runtime |
 
 ---
 
@@ -435,25 +373,25 @@ fn find_max_bad[T](items: List[T]) -> T:
 | Feature | Status | Notes |
 |---------|--------|-------|
 | **Compile-time constants** | `alias` or `comptime` | Both work in v26.1+ |
-| **Parameter unpacking** | `...` syntax | `*_` is deprecated |
+| **Variadic parameters** | `*Ts` syntax | Stable |
 | **Compile-time loops** | `@parameter for` | Stable |
 | **Trait bounds** | `T: Movable & Copyable` | Stable |
 | **Self.T syntax** | Required in structs | Stable |
 
 **Example (v26.1+):**
 ```mojo
-# nocompile
 # Compile-time constant (both alias and comptime work)
 comptime BUFFER_SIZE = 1024
 
-# Parameter unpacking (new syntax)
-fn forward[*Ts: AnyType](*args: *Ts):
-    other_fn[...Ts](*args)  # Use ... for unpacking
+# Variadic type parameters
+fn forward[*Ts: Movable](*args: *Ts):
+    # Process variadic arguments
+    pass
 ```
 
 **Notes:**
 - Both `alias` and `comptime` work for compile-time constants in v26.1+
-- Parameter unpacking uses `...` instead of deprecated `*_`
+- Variadic parameters use `*Ts` syntax
 - `@parameter for` loops work the same across versions
 - Trait bounds and Self.T syntax unchanged
 

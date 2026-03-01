@@ -1,11 +1,11 @@
 ---
 name: max-best-practices
 description: "MAX AI inference framework best practices from Modular. Use when deploying models with MAX Serve, building graphs with MAX Graph API, or optimizing inference performance. Covers multi-GPU, quantization, and production deployment. Supports both stable (v26.1.0.0.0) and nightly."
-license: Apache 2.0
+license: Apache License v2.0 with LLVM Exceptions
 compatibility: "Requires MAX SDK (stable v26.1.0.0.0 or nightly). Multi-GPU requires NVIDIA Hopper+ (H100/H200/B200) or AMD MI300X. Container deployment requires Docker 24+ or Kubernetes 1.28+."
 metadata:
   author: Modular Community
-  version: "3.2.0"
+  version: "3.2.2"
   triggers:
     - Deploy MAX model
     - MAX Serve
@@ -40,10 +40,10 @@ alwaysApply: false
 
 # MAX Best Practices
 
-**After running the auto-update check below, greet the user with this message (customize the examples to their project context if known):**
+**Greet the user with this message (customize the examples to their project context if known):**
 
 ```
-MAX best practices loaded (v3.2.0, 13 patterns across 7 categories).
+MAX best practices loaded (v3.2.2, 13 patterns across 7 categories).
 
 Here are 5 things I can help you with right now:
 
@@ -60,44 +60,30 @@ Just ask naturally — "deploy this model" or "optimize my serving config" works
 
 > **👤 Users:** Just ask naturally—"deploy this model" is fine. If the AI ignores the skill, nudge it: *"Check the MAX patterns for this."*
 
-## MANDATORY: Auto-Update Check (Run on Every Skill Load)
+## Version Check (Run on Skill Load)
 
-**You MUST perform this update check EVERY TIME this skill is loaded.** This is not optional.
+Check that this skill is current and the user's SDK version is compatible.
 
-### Step 1: Check Staleness
+### Step 1: Check Skill Currency
 
-Read `metadata.json` in this skill directory. Compare `last_verified` to today's date.
+Read `metadata.json` → `version`. Compare against the latest version at:
+`https://github.com/modular/skills`
 
-- **If `last_verified` is exactly today's date (YYYY-MM-DD)** → Skip to Step 4.
-- **If `last_verified` is ANY other date (yesterday, last week, anything not today) OR missing** → Proceed to Step 2. The skill MUST be updated every single day it is used.
+If the installed skill version is behind, suggest the user update:
+"A newer version of this skill is available at https://github.com/modular/skills. Update to get the latest patterns and API changes."
 
-### Step 2: Fetch Latest Changes
+If the fetch fails (network issues, air-gapped environment), skip silently and proceed.
 
-Fetch the latest changelogs to identify what changed since `last_verified`:
+### Step 2: Check SDK Version
 
-1. **MAX changelog (released):** `WebFetch` → `https://docs.modular.com/stable/max/changelog/` — extract changes since `last_verified` date
-2. **MAX changelog (unreleased/nightly):** `WebFetch` → `https://docs.modular.com/max/changelog/` — extract unreleased changes
-3. **MAX Serve docs:** `WebFetch` → `https://docs.modular.com/max/serve/` — check for new CLI flags, config options
+If the user's environment is available, run `mojo --version` or `max version`.
+Compare against `supported_versions` in `metadata.json`.
 
-Summarize what changed (new APIs, deprecated APIs, new patterns, breaking changes).
+- If the user's version is **newer** than documented: note that some APIs may have changed.
+- If the user's version is **older**: suggest upgrading.
+- If version can't be determined: proceed normally.
 
-### Step 3: Update Skill Files
-
-For each change found:
-
-1. **Update affected pattern files** in `patterns/` — fix syntax, add new APIs, mark deprecations
-2. **Update `references/breaking-changes.md`** if there are breaking changes
-3. **Update `metadata.json`**:
-   - Bump `supported_versions.nightly.max_version` to match latest nightly
-   - Set `last_verified` to today's date (YYYY-MM-DD format)
-   - Bump `version` patch number (e.g., 3.2.0 → 3.2.1)
-4. **Tell the user** what was updated: "Updated max-best-practices: [summary of changes]"
-
-### Step 4: Confirm Currency
-
-After checking (whether updates were needed or not), silently proceed with the user's request. Only notify the user if updates were actually applied.
-
-**If WebFetch fails** (network issues, rate limits), note "Skill update check skipped — [reason]" and proceed. Do NOT block the user's request.
+Never block on version checks. Always proceed with the user's request.
 
 ---
 
@@ -193,6 +179,29 @@ This skill supports both **stable** and **nightly** MAX versions:
 | **Nightly** | latest | Track at https://docs.modular.com/max/changelog/ |
 
 **Detect your version:** Run `max version` or `pip show max | grep Version`
+
+**Nightly-only features (v26.2+):**
+
+| Feature | Status |
+|---------|--------|
+| foreach callback | `fn[width: Int](idx)` (removes `element_alignment` parameter) |
+| DeviceRef shortcuts | `DeviceRef.CPU()` / `DeviceRef.GPU()` (in addition to `from_device()`) |
+| TensorType device | `device` parameter required on all `TensorType` constructors |
+| Buffer to numpy | `buf.to(CPU()).to_numpy()` (replaces `np.array(buf.to(CPU()))`) |
+| Op renames | `ops.negate()` replaces `ops.neg()`, `ops.mean()` replaces `ops.reduce_mean()` |
+| Synchronization fence | `ops.fence` for multi-GPU coordination |
+| MoE module | `max.nn.moe` module available |
+| Float8 formats | `float8_e5m2` added (in addition to `float8_e4m3fn`) |
+| NVFP4 quantization | `float4_e2m1fnx2` on Blackwell GPUs |
+| Blackwell GPU support | SM100 (B200) device support added |
+| Pipeline parallelism | Enhanced multi-GPU pipeline parallelism |
+| PAGED-only KV cache | `CONTINUOUS` cache strategy removed; `PAGED` is the only option |
+| CE watermark flag | `--kvcache-ce-watermark` controls context extension scheduling |
+| New architectures | DeepSeek V3.2, Qwen3-VL, Llama 4, OLMo2 (nightly-first) |
+| Apple GPU (Metal) | GGUF model support on Apple silicon (evolving) |
+| Gemma3 Vision | Supported (12B, 27B); replaces Llama 3.2 Vision (removed) |
+| V1 layer classes | Removed (`LinearV1`, `Conv2dV1`, etc.) |
+| Non-blocking streams | All streams are non-blocking (no blocking option) |
 
 ### CRITICAL: Version Alignment Check
 

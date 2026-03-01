@@ -40,7 +40,6 @@ SIMD types process multiple values in a single instruction, utilizing hardware v
 
 ```mojo
 from memory import UnsafePointer
-from memory import UnsafePointer
 from builtin.type_aliases import MutAnyOrigin
 
 # Type alias for cleaner code
@@ -79,7 +78,7 @@ fn dot_product_4(a: SIMD[DType.float32, 4], b: SIMD[DType.float32, 4]) -> Float3
 
 ### Register-Passable Types
 
-Types that fit in CPU registers should conform to the `TrivialRegisterType` trait to avoid pointer indirection, achieving 2-5x faster operations.
+Types that fit in CPU registers should conform to the `TrivialRegisterPassable` trait to avoid pointer indirection, achieving 2-5x faster operations.
 
 **Pattern:**
 
@@ -94,7 +93,7 @@ struct Point:
         self.x = x
         self.y = y
 
-# Without TrivialRegisterType, Point is passed by pointer
+# Without TrivialRegisterPassable, Point is passed by pointer
 # Every access requires a memory load
 fn distance(a: Point, b: Point) -> Float64:
     var dx = a.x - b.x  # Load from memory
@@ -104,9 +103,9 @@ fn distance(a: Point, b: Point) -> Float64:
 
 ```mojo
 # nocompile
-# Correct: Use TrivialRegisterType trait for register-passable types
+# Correct: Use TrivialRegisterPassable trait for register-passable types
 @fieldwise_init
-struct Point(TrivialRegisterType, Copyable):
+struct Point(TrivialRegisterPassable, Copyable):
     var x: Float64
     var y: Float64
 
@@ -118,8 +117,8 @@ fn distance(a: Point, b: Point) -> Float64:
     return sqrt(dx*dx + dy*dy)
 ```
 
-**TrivialRegisterType trait:**
-- Use `TrivialRegisterType` trait for types with no lifecycle requirements
+**TrivialRegisterPassable trait:**
+- Use `TrivialRegisterPassable` trait for types with no lifecycle requirements
 - Combine with `@fieldwise_init` and `Copyable` trait
 - These can be copied with memcpy
 - **Note:** `@register_passable("trivial")` is deprecated in v26.2; use the trait instead
@@ -129,7 +128,7 @@ fn distance(a: Point, b: Point) -> Float64:
 ```mojo
 # nocompile
 struct Int(
-    TrivialRegisterType,  # v26.2+: Use trait instead of decorator
+    TrivialRegisterPassable,  # v26.2+: Use trait instead of decorator
     Absable, Boolable, Comparable, Hashable,
     ImplicitlyCopyable, Intable, ...
 ):
@@ -352,7 +351,6 @@ fn mandelbrot_f32(output: UnsafePointer[Int32], width: Int, height: Int):
 
 **Mixed precision (compute low, accumulate high):**
 ```mojo
-# nocompile
 fn dot_product_mixed(a: UnsafePointer[Float32], b: UnsafePointer[Float32], size: Int) -> Float64:
     """Compute in Float32, accumulate in Float64 to avoid precision loss."""
     comptime WIDTH: Int = 8
@@ -365,8 +363,8 @@ fn dot_product_mixed(a: UnsafePointer[Float32], b: UnsafePointer[Float32], size:
         var product = a_vec * b_vec
 
         # Widen to Float64 for accumulation
-        var lo = product.slice[4](0).cast[DType.float64]()
-        var hi = product.slice[4](4).cast[DType.float64]()
+        var lo = product.slice[4, offset=0]().cast[DType.float64]()
+        var hi = product.slice[4, offset=4]().cast[DType.float64]()
         acc += lo + hi
         i += WIDTH
 
@@ -397,6 +395,8 @@ fn dot_product_mixed(a: UnsafePointer[Float32], b: UnsafePointer[Float32], size:
 ## SIMD Comparison Methods
 
 SIMD comparison operators (`>`, `<`, etc.) only work for `Scalar` types, not SIMD vectors. For SIMD vectors, use the comparison methods.
+
+> **Warning:** The dunder methods (`__gt__`, `__lt__`, etc.) route to scalar operators and fail for SIMD width > 1. Always use the named methods (`.gt()`, `.lt()`, etc.) for element-wise SIMD comparison.
 
 ### Comparison Methods (Required for SIMD Vectors)
 
@@ -455,7 +455,7 @@ fn count_greater(a: SIMD[DType.float32, 8], threshold: Float32) -> Int:
 
 ## SIMD Type Conversion Methods
 
-SIMD types provide two conversion methods with distinct semantics: `.cast[]` for value conversion and `.bitcast[]` for bit reinterpretation.
+SIMD types provide `.cast[]` for value conversion. For bit reinterpretation, use the free function `bitcast` from the `memory` module (SIMD has no `.bitcast[]` method).
 
 ### `.cast[TargetDType]()` - Value Conversion
 
@@ -503,66 +503,71 @@ fn special_float_handling():
     var as_int = special.cast[DType.int32]()  # Results vary by platform
 
     # Safe pattern: Check for special values first
-    var is_finite = special.is_finite()
-    var safe_vals = is_finite.select(special, SIMD[DType.float32, 4](0))
+    from utils.numerics import isfinite
+    var is_finite_mask = isfinite(special)
+    var safe_vals = is_finite_mask.select(special, SIMD[DType.float32, 4](0))
     var safe_ints = safe_vals.cast[DType.int32]()
 ```
 
-### `.bitcast[TargetDType]()` - Bit Reinterpretation
+### `bitcast[TargetDType](value)` - Bit Reinterpretation
 
-Reinterprets the raw bits without conversion. **Requires same bit-width.**
+Reinterprets the raw bits without conversion using the free function `from memory import bitcast`. **Requires same total bit-width.**
+
+> **Note:** `bitcast` is a free function, not a method on SIMD. Import it with `from memory import bitcast`. `UnsafePointer.bitcast` IS a real method -- only SIMD bitcasting uses the free function.
 
 ```mojo
-# nocompile
+from memory import bitcast
+
 fn bitcast_examples():
     # View float bits as int (IEEE 754 inspection)
     var f = SIMD[DType.float32, 4](1.0, -1.0, 0.0, 2.0)
-    var bits = f.bitcast[DType.uint32]()
+    var bits = bitcast[DType.uint32](f)
     # 1.0f = 0x3F800000, -1.0f = 0xBF800000, 0.0f = 0x00000000, 2.0f = 0x40000000
 
     # Construct float from bits (useful for special constants)
     var inf_bits = SIMD[DType.uint32, 4](0x7F800000)  # IEEE 754 +Inf
-    var inf_float = inf_bits.bitcast[DType.float32]()  # [inf, inf, inf, inf]
+    var inf_float = bitcast[DType.float32](inf_bits)  # [inf, inf, inf, inf]
 
     # Extract sign, exponent, mantissa
     var val = SIMD[DType.float32, 1](3.14159)
-    var raw = val.bitcast[DType.uint32]()
+    var raw = bitcast[DType.uint32](val)
     var sign = (raw >> 31) & 1           # Sign bit
     var exponent = (raw >> 23) & 0xFF    # Biased exponent
     var mantissa = raw & 0x7FFFFF        # Mantissa (fractional part)
 
     # Signed/unsigned reinterpretation (same bits, different interpretation)
     var signed_val = SIMD[DType.int32, 2](-1, -2147483648)
-    var as_unsigned = signed_val.bitcast[DType.uint32]()  # [4294967295, 2147483648]
+    var as_unsigned = bitcast[DType.uint32](signed_val)  # [4294967295, 2147483648]
 ```
 
 **Bit-width Requirement:**
 
 ```mojo
-# nocompile
+from memory import bitcast
+
 fn bitcast_width_rules():
     var float32_vec = SIMD[DType.float32, 4](1.0, 2.0, 3.0, 4.0)
 
     # VALID: Same bit-width per element
-    var as_int32 = float32_vec.bitcast[DType.int32]()    # 32-bit -> 32-bit
-    var as_uint32 = float32_vec.bitcast[DType.uint32]()  # 32-bit -> 32-bit
+    var as_int32 = bitcast[DType.int32](float32_vec)    # 32-bit -> 32-bit
+    var as_uint32 = bitcast[DType.uint32](float32_vec)  # 32-bit -> 32-bit
 
-    # INVALID: Different bit-width (compile error)
-    # var as_int64 = float32_vec.bitcast[DType.int64]()  # ERROR: 32-bit != 64-bit
-    # var as_int16 = float32_vec.bitcast[DType.int16]()  # ERROR: 32-bit != 16-bit
+    # INVALID: Different total bit-width (compile error)
+    # var as_int64 = bitcast[DType.int64](float32_vec)  # ERROR unless width adjusted
 ```
 
 ### Width Preservation
 
-Both methods preserve SIMD width - only element type changes.
+`.cast[]` preserves SIMD width. `bitcast` preserves total bit-width (element count may change if target dtype has different size).
 
 ```mojo
-# nocompile
+from memory import bitcast
+
 fn width_preservation():
     var vec8 = SIMD[DType.float32, 8](1.0)
 
-    var cast_result = vec8.cast[DType.int32]()      # SIMD[DType.int32, 8]
-    var bitcast_result = vec8.bitcast[DType.uint32]()  # SIMD[DType.uint32, 8]
+    var cast_result = vec8.cast[DType.int32]()            # SIMD[DType.int32, 8]
+    var bitcast_result = bitcast[DType.uint32](vec8)      # SIMD[DType.uint32, 8]
 
     # Width is preserved regardless of target type
     var vec4 = SIMD[DType.float64, 4](1.0)
@@ -572,13 +577,14 @@ fn width_preservation():
 ### Performance Characteristics
 
 ```mojo
-# nocompile
-# .bitcast[] - Zero cost (no instructions generated)
+from memory import bitcast
+
+# bitcast[] - Zero cost (no instructions generated)
 # Just tells compiler to interpret bits differently
 fn fast_sign_flip(x: SIMD[DType.float32, 8]) -> SIMD[DType.float32, 8]:
-    var bits = x.bitcast[DType.uint32]()
+    var bits = bitcast[DType.uint32](x)
     var flipped = bits ^ 0x80000000  # XOR sign bit
-    return flipped.bitcast[DType.float32]()  # Often faster than -x
+    return bitcast[DType.float32](flipped)  # Often faster than -x
 
 # .cast[] - May have CPU cost depending on types
 # Float <-> Int: Requires conversion instruction (cvt*)
@@ -592,18 +598,19 @@ fn conversion_costs():
     var to_double = floats.cast[DType.float64]() # vcvtps2pd on x86
 
     # These are typically free (just register reinterpretation)
-    var to_uint = floats.bitcast[DType.uint32]()  # No instruction
+    var to_uint = bitcast[DType.uint32](floats)  # No instruction
 ```
 
 ### Common Use Cases
 
 ```mojo
-# nocompile
+from memory import bitcast
+
 # Fast absolute value via bitcast
 fn fast_abs(x: SIMD[DType.float32, 8]) -> SIMD[DType.float32, 8]:
-    var bits = x.bitcast[DType.uint32]()
+    var bits = bitcast[DType.uint32](x)
     var cleared = bits & 0x7FFFFFFF  # Clear sign bit
-    return cleared.bitcast[DType.float32]()
+    return bitcast[DType.float32](cleared)
 
 # Quantization (float to int8 for ML inference)
 fn quantize(x: SIMD[DType.float32, 8], scale: Float32) -> SIMD[DType.int8, 8]:
@@ -622,6 +629,20 @@ fn accumulate_f16_to_f32(
         acc += f16_vec.cast[DType.float32]()  # Widen for precision
         i += 8
     return acc.reduce_add()
+```
+
+### Type Reinterpretation Methods
+
+| Method | Purpose | Changes Bits? |
+|--------|---------|---------------|
+| `.cast[target]()` | Value conversion (e.g., float→int) | Yes |
+| `bitcast[target](val)` | Bit reinterpretation (same bits, different type) | No |
+| `rebind[target](val)` | Parametric type rebinding (same representation) | No |
+
+```mojo
+var f = SIMD[DType.float32, 4](1.5)
+var i = f.cast[DType.int32]()        # Value conversion: [1, 1, 1, 1]
+var b = bitcast[DType.int32](f)      # Bit reinterpretation: [0x3FC00000, ...]
 ```
 
 ---
@@ -664,7 +685,7 @@ fn compute_distances(x: SIMD[DType.float32, 8], y: SIMD[DType.float32, 8]) -> SI
 
 | Scenario | Approach | See Also |
 |----------|----------|----------|
-| Small fixed-size types (2-4 words) | Use `TrivialRegisterType` trait | [`struct-design.md`](struct-design.md) |
+| Small fixed-size types (2-4 words) | Use `TrivialRegisterPassable` trait | [`struct-design.md`](struct-design.md) |
 | Types with heap allocations | Do NOT use `@register_passable` | [`memory-ownership.md`](memory-ownership.md) |
 | Array processing | Use SIMD with WIDTH=8 default | [`perf-parallelization.md`](perf-parallelization.md) |
 | Unknown memory alignment | Use `alignment=1` in load/store | [`memory-safety.md`](memory-safety.md) |
@@ -676,8 +697,8 @@ fn compute_distances(x: SIMD[DType.float32, 8], y: SIMD[DType.float32, 8]) -> SI
 ## Quick Reference
 
 - **SIMD default width**: Use 8 as portable default for Float32/Float64
-- **TrivialRegisterType trait**: Use for small types (2-4 machine words) with no heap (replaces deprecated `@register_passable("trivial")`)
-- **@register_passable**: Deprecated in v26.2; use `TrivialRegisterType` trait instead
+- **TrivialRegisterPassable trait**: Use for small types (2-4 machine words) with no heap (replaces deprecated `@register_passable("trivial")`)
+- **@register_passable**: Deprecated in v26.2; use `TrivialRegisterPassable` trait instead
 - **Alignment**: Use `alignment=1` when alignment not guaranteed
 - **Cache line**: 64 bytes - align for AVX-512 and cache efficiency
 - **Transcendentals**: Always benchmark exp/sin/cos/log - scalar may be faster
@@ -694,7 +715,7 @@ fn compute_distances(x: SIMD[DType.float32, 8], y: SIMD[DType.float32, 8]) -> SI
 | `DType not supported for SIMD` | Using invalid dtype | Check supported types: float16/32/64, int8/16/32/64, bool |
 | `unaligned SIMD load` | Pointer not aligned for width | Use `ptr.load[width, alignment=1]()` for unaligned access |
 | `reduce_* returns wrong type` | Horizontal ops change type | `reduce_add()` returns scalar; use appropriate type handling |
-| `SIMD broadcast failed` | Wrong scalar conversion | Use explicit splat: `SIMD[DType.float32, 4](scalar_value)` |
+| `SIMD broadcast failed` | Wrong scalar conversion | `SIMD[DType.float32, N](val)` only splats when `val` is a `Scalar`. Use `SIMD[DType.float32, N](Scalar[DType.float32](val))` for explicit splatting |
 
 ---
 
@@ -705,7 +726,7 @@ fn compute_distances(x: SIMD[DType.float32, 8], y: SIMD[DType.float32, 8]) -> SI
 | Feature | Status | Notes |
 |---------|--------|-------|
 | **Constants** | `alias` or `comptime` | Both work; compiler warns on `alias` in v26.1+ |
-| **Register-passable** | `@register_passable("trivial")` deprecated in v26.2 | Use `TrivialRegisterType` trait instead |
+| **Register-passable** | `@register_passable("trivial")` deprecated in v26.2 | Use `TrivialRegisterPassable` trait instead |
 | **Type aliases** | `comptime Float32Ptr = ...` | Both `alias` and `comptime` work |
 | **Heap allocation** | `from memory import alloc; alloc[T](n)` | v26.1+ |
 
@@ -718,7 +739,7 @@ comptime Float32Ptr = UnsafePointer[Float32]
 
 # Register-passable types (trait-based, preferred approach)
 @fieldwise_init
-struct Point(TrivialRegisterType, Copyable):
+struct Point(TrivialRegisterPassable, Copyable):
     var x: Float64
     var y: Float64
 
@@ -729,7 +750,6 @@ var buffer = alloc[Float32](1024)
 
 **Legacy (still works in v26.1):**
 ```mojo
-# nocompile
 # @register_passable("trivial") is deprecated as of v26.2
 # Will be removed in a future release
 @register_passable("trivial")
@@ -740,7 +760,7 @@ struct LegacyPoint:
 
 **Notes:**
 - Both `alias` and `comptime` work for compile-time constants; `comptime` is preferred going forward
-- `@register_passable("trivial")` is deprecated in v26.2; use `TrivialRegisterType` trait instead
+- `@register_passable("trivial")` is deprecated in v26.2; use `TrivialRegisterPassable` trait instead
 - `alloc()` is available in v26.1+ (not nightly-only)
 
 ---

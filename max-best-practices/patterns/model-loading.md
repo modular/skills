@@ -123,7 +123,7 @@ docker run --gpus=1 \
     -e HF_TOKEN=$HF_TOKEN \
     -v ~/.cache/huggingface:/root/.cache/huggingface \
     modular/max-nvidia-full:latest \
-    --model-path meta-llama/Llama-3.1-8B-Instruct
+    --model meta-llama/Llama-3.1-8B-Instruct
 ```
 
 **Don't:**

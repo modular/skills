@@ -409,7 +409,7 @@ readinessProbe:
   periodSeconds: 10
 ```
 
-**Note:** `/health` endpoint added in v25.5 for lm-eval and similar tools.
+**Note:** `/health` endpoint added in v25.5. Standard endpoint for Kubernetes readiness/liveness probes, load balancer health checks, and monitoring tools.
 
 ---
 

@@ -303,7 +303,6 @@ from max.nn import Module, Linear, Sequential
 
 class MLP(Module):
     def __init__(self, hidden_dim: int, output_dim: int):
-        super().__init__()
         self.fc1 = Linear(hidden_dim)
         self.fc2 = Linear(output_dim)
 
@@ -482,6 +481,121 @@ response = pipeline.generate(
 
 ---
 
+### Causal Mask Construction
+
+**When:** Building decoder-only transformers (GPT-2, Llama, etc.) that need causal attention masks. MAX does not provide `F.tril` or `F.triu`.
+
+**Pattern (Eager API — using F.band_part):**
+
+```python
+from max import functional as F
+from max.tensor import Tensor
+from max.graph import Dim, DimLike
+from max.dtype import DType
+
+@F.functional
+def causal_mask(seq_len: DimLike, *, dtype: DType | None = None, device=None) -> Tensor:
+    """Causal mask: 0 for attend, -inf for mask (upper triangle)."""
+    n = Dim(seq_len)
+    mask = Tensor.constant(float("-inf"), dtype=dtype, device=device)
+    mask = F.broadcast_to(mask, shape=(n, n))
+    return F.band_part(mask, num_lower=None, num_upper=0, exclude=True)
+```
+
+**Pattern (Graph API — using range comparison):**
+
+```python
+from max import functional as F
+from max.dtype import DType
+
+def causal_mask(seq_len, dtype=DType.float32, device=None):
+    """Causal mask using range comparison (works with symbolic dims)."""
+    rows = F.arange(0, seq_len, step=1, out_dim=seq_len, dtype=DType.int64, device=device)
+    cols = F.arange(0, seq_len, step=1, out_dim=seq_len, dtype=DType.int64, device=device)
+    # Compare: mask is True where cols > rows (upper triangle)
+    is_masked = F.greater(cols.unsqueeze(0), rows.unsqueeze(1))
+    # Use F.select to avoid NaN from 0 * -inf:
+    # where masked -> -inf, where not masked -> 0.0
+    zero = Tensor.constant(0.0, dtype=dtype, device=device)
+    neg_inf = Tensor.constant(float("-inf"), dtype=dtype, device=device)
+    return F.select(is_masked, neg_inf, zero)
+```
+
+**Note:** `F.broadcast_to` does NOT support dynamic/symbolic dimensions, so the mask cannot be explicitly broadcast to `[n_heads, seq, seq]`. Instead, rely on implicit broadcasting when adding the mask to attention weights.
+
+---
+
+### Manual Graph Construction with realization_context
+
+**When:** `model.compile()` fails (e.g., GPU context issues on Apple Silicon) or you need fine-grained control over graph construction with Module tracing.
+
+**Pattern:**
+
+```python
+from max.graph import Graph, TensorType
+from max.nn._realization_context import (
+    GraphRealizationContext,
+    realization_context,
+    as_weight,  # Converts Tensor parameters to graph Weights
+)
+from max.tensor import Tensor
+from max.driver import CPU, Buffer
+from max.engine import InferenceSession
+from max.dtype import DType
+
+# 1. Create graph with explicit input types
+graph = Graph("my_model", input_types=[
+    TensorType(DType.int64, ("batch", "seq_len"), device=CPU())
+])
+
+# 2. Set up realization context for Module tracing
+with realization_context(GraphRealizationContext(graph)) as ctx, ctx:
+    sym_input = Tensor.from_graph_value(graph.inputs[0])
+    # _mapped_parameters converts eager Tensor weights to graph Weight nodes
+    with model._mapped_parameters(as_weight):
+        outputs = model(sym_input)
+    graph.output(outputs)
+
+# 3. Build weights registry from model parameters
+cpu_weights = {name: param for name, param in model.parameters}
+
+# 4. Compile and execute
+session = InferenceSession(devices=[CPU()])
+compiled = session.load(graph, weights_registry=cpu_weights)
+result = compiled.execute(Buffer.from_numpy(input_np))
+```
+
+**Key differences from `with Graph(...) as graph:`:**
+
+| Pattern | Module Tracing | ContextVar Setup | Use Case |
+|---------|---------------|-----------------|----------|
+| `with Graph(...) as graph:` | Not supported | Not set up | Simple op-level graph construction |
+| `realization_context(GraphRealizationContext(graph))` | Supported | Sets `_CONTEXT` ContextVar | Module-based model tracing |
+
+**Common error:** Using `with Graph(...) as graph:` with `Tensor.from_graph_value()` raises `LookupError: ContextVar '_CONTEXT'`. Use `realization_context` instead.
+
+> **[Temporary]** This pattern uses internal APIs (`_realization_context`, `_mapped_parameters`, `as_weight`) and may change between versions. Prefer `model.compile()` when possible.
+
+---
+
+### F.arange with Symbolic Dimensions
+
+`F.arange` requires an explicit `out_dim` parameter when used with symbolic dimensions (unlike PyTorch's `torch.arange` which infers output size):
+
+```python
+# With symbolic seq_len, out_dim is required
+positions = F.arange(
+    0, seq_len, step=1,
+    out_dim=seq_len,     # Must match symbolic dimension
+    dtype=DType.int64,
+    device=device
+)
+```
+
+Without `out_dim`, the graph compiler cannot infer the output shape and compilation fails.
+
+---
+
 ## Decision Guide
 
 | Scenario | Approach | See Also |
@@ -529,6 +643,9 @@ response = pipeline.generate(
 | `circular dependency in graph` | Op depends on its own output | Check graph topology; use separate ops for feedback |
 | `graph.input is not callable` | Using `graph.input(type)` (wrong API) | Use `graph.inputs` property: `x = graph.inputs[0]` |
 | `Graph() missing name` | Passing TensorType as first arg | Use `Graph("name", input_types=[...])` |
+| `LookupError: '_CONTEXT'` | Using `Graph()` context with `Tensor.from_graph_value()` | Use `realization_context(GraphRealizationContext(graph))` |
+| `F.arange` shape inference fails | Missing `out_dim` with symbolic dims | Add `out_dim=symbolic_dim` parameter |
+| No `F.tril` / `F.triu` | MAX doesn't provide triangular ops | Use `F.band_part` or range comparison pattern |
 
 ---
 

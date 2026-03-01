@@ -46,8 +46,8 @@ Complete guide for porting CUDA kernels to Mojo with side-by-side examples, from
 
 | CUDA | Mojo | Import |
 |------|------|--------|
-| `__shared__ float smem[N]` | `stack_allocation[N, DType.float32, address_space=AddressSpace.SHARED]()` | `from memory import stack_allocation` |
-| `extern __shared__ float smem[]` | `external_memory[Float32, address_space=AddressSpace.SHARED]()` | `from gpu.memory import external_memory` |
+| `__shared__ float smem[N]` | `stack_allocation[N, DType.float32, address_space=AddressSpace.SHARED]()` | `from memory import stack_allocation` (preferred -- works on all GPUs) |
+| `extern __shared__ float smem[]` | `external_memory[Float32, address_space=AddressSpace.SHARED]()` | `from gpu.memory import external_memory` (**NVIDIA only** -- not supported on Apple GPU/Metal) |
 | `cudaMalloc(&ptr, size)` | `ctx.enqueue_create_buffer[dtype](count)` | `from gpu.host import DeviceContext` |
 | `cudaMemcpy(dst, src, size, ...)` | `ctx.enqueue_copy(dst, src)` | `from gpu.host import DeviceContext` |
 | `cudaFree(ptr)` | Automatic (RAII) or `buffer.free()` | — |
@@ -64,8 +64,8 @@ Complete guide for porting CUDA kernels to Mojo with side-by-side examples, from
 
 | CUDA | Mojo |
 |------|------|
-| `kernel<<<grid, block>>>(args)` | `ctx.enqueue_function[kernel](args, grid_dim=grid, block_dim=block)` |
-| `kernel<<<grid, block, smem>>>(args)` | `ctx.enqueue_function[kernel](args, grid_dim=grid, block_dim=block, shared_mem_bytes=smem)` |
+| `kernel<<<grid, block>>>(args)` | `ctx.enqueue_function[kernel, kernel](args, grid_dim=grid, block_dim=block)` |
+| `kernel<<<grid, block, smem>>>(args)` | `ctx.enqueue_function[kernel, kernel](args, grid_dim=grid, block_dim=block, shared_mem_bytes=smem)` |
 
 ### Data Types
 
@@ -116,13 +116,13 @@ int main() {
 # nocompile
 from gpu import global_idx
 from gpu.host import DeviceContext
-from memory import UnsafePointer
+from memory import UnsafePointer, MutAnyOrigin, alloc
 
 # GPU kernel — equivalent to __global__ void vector_add(...)
 fn vector_add(
-    a: UnsafePointer[Float32],
-    b: UnsafePointer[Float32],
-    c: UnsafePointer[Float32],
+    a: UnsafePointer[Float32, MutAnyOrigin],
+    b: UnsafePointer[Float32, MutAnyOrigin],
+    c: UnsafePointer[Float32, MutAnyOrigin],
     n: Int,
 ):
     var i = global_idx.x
@@ -141,9 +141,10 @@ def main():
         var d_c = ctx.enqueue_create_buffer[DType.float32](n)
 
         # Initialize host data and copy to device
-        var h_a = UnsafePointer[Float32].alloc(n)
-        var h_b = UnsafePointer[Float32].alloc(n)
-        var h_c = UnsafePointer[Float32].alloc(n)
+        from memory import alloc
+        var h_a = alloc[Float32](n)
+        var h_b = alloc[Float32](n)
+        var h_c = alloc[Float32](n)
         for i in range(n):
             h_a[i] = Float32(i)
             h_b[i] = Float32(2.0)
@@ -152,7 +153,7 @@ def main():
         ctx.enqueue_copy(d_b, h_b)
 
         # Launch kernel: <<<grid_dim, block_dim>>>
-        ctx.enqueue_function[vector_add](
+        ctx.enqueue_function[vector_add, vector_add](
             d_a, d_b, d_c, n,
             grid_dim=(n // block_dim,),
             block_dim=(block_dim,),
@@ -220,7 +221,7 @@ from gpu.memory import external_memory
 from gpu.sync import barrier
 from memory import UnsafePointer
 
-fn neighbor_sum(input: UnsafePointer[Float32], output: UnsafePointer[Float32], n: Int):
+fn neighbor_sum(input: UnsafePointer[Float32, MutAnyOrigin], output: UnsafePointer[Float32, MutAnyOrigin], n: Int):
     # Dynamic shared memory (equivalent to extern __shared__)
     var smem = external_memory[
         Float32, address_space=AddressSpace.SHARED, alignment=4
@@ -258,7 +259,7 @@ def main():
 
         # ... initialize and copy data ...
 
-        ctx.enqueue_function[neighbor_sum](
+        ctx.enqueue_function[neighbor_sum, neighbor_sum](
             d_in, d_out, n,
             grid_dim=(n // block_size,),
             block_dim=(block_size,),
@@ -269,15 +270,17 @@ def main():
         ctx.synchronize()
 ```
 
-### Static Shared Memory Alternative
+> **Apple GPU (Metal) note:** `external_memory` is NOT supported on Apple GPU. Use `stack_allocation` (below) as the primary shared memory pattern -- it works on all GPU backends (NVIDIA, AMD, Apple). Only use `external_memory` when you specifically need NVIDIA dynamic shared memory.
 
-For compile-time known sizes, use `stack_allocation` instead of `external_memory`:
+### Preferred: Static Shared Memory (All GPUs)
+
+Use `stack_allocation` for shared memory -- it works on all GPU backends including Apple Metal:
 
 ```mojo
 # nocompile
 from memory import stack_allocation
 
-fn kernel_with_static_smem(data: UnsafePointer[Float32]):
+fn kernel_with_static_smem(data: UnsafePointer[Float32, MutAnyOrigin]):
     # Equivalent to: __shared__ float smem[256];
     var smem = stack_allocation[
         256,
@@ -330,7 +333,6 @@ __global__ void block_reduce(float* input, float* output, int n) {
 ### Mojo
 
 ```mojo
-# nocompile
 from gpu import thread_idx, block_idx, block_dim, global_idx, lane_id, WARP_SIZE
 from gpu.sync import barrier, syncwarp
 from gpu.primitives.warp import shuffle_down
@@ -339,10 +341,10 @@ from memory import stack_allocation, UnsafePointer
 fn warp_reduce_sum(var val: Float32) -> Float32:
     @parameter
     for i in range(5):  # log2(32) = 5
-        val += shuffle_down(val, 1 << (4 - i))
+        val += shuffle_down(val, UInt32(1 << (4 - i)))
     return val
 
-fn block_reduce(input: UnsafePointer[Float32], output: UnsafePointer[Float32], n: Int):
+fn block_reduce(input: UnsafePointer[Float32, MutAnyOrigin], output: UnsafePointer[Float32, MutAnyOrigin], n: Int):
     var warp_sums = stack_allocation[
         32, DType.float32, address_space=AddressSpace.SHARED
     ]()
@@ -525,14 +527,12 @@ comptime b_smem_layout = tile_layout_k_major[
 
 # Create the WGMMA operation
 comptime WgmmaOp = TensorCoreAsync[
-    DType.float32,         # Accumulator type
-    DType.float16,         # A matrix type
-    DType.float16,         # B matrix type
-    a_smem_layout,         # A shared memory layout
-    b_smem_layout,         # B shared memory layout
-    wgmma_shape[0],        # M
-    wgmma_shape[1],        # N
-    wgmma_shape[2],        # K
+    DType.float32,         # Accumulator type (c_type)
+    DType.float16,         # A matrix type (a_type)
+    DType.float16,         # B matrix type (b_type)
+    mma_shape=Index(64, 128, 16),  # MMA instruction shape (M, N, K)
+    a_swizzle=TensorMapSwizzle.SWIZZLE_128B,
+    b_swizzle=TensorMapSwizzle.SWIZZLE_128B,
     transpose_b=True,
 ]
 
@@ -732,7 +732,7 @@ struct HopperGEMM[
     fn kernel(
         tma_a: TMATensorTile[...],
         tma_b: TMATensorTile[...],
-        c_ptr: UnsafePointer[Scalar[c_type]],
+        c_ptr: UnsafePointer[Scalar[c_type], MutAnyOrigin],
         M: Int, N: Int, K: Int,
     ):
         # 1. Allocate shared memory
@@ -797,7 +797,8 @@ if global_idx.x < UInt(n):  # Cast n to UInt for comparison
 # nocompile
 # CUDA: __shfl_down_sync(0xFFFFFFFF, val, offset)
 # Mojo: No mask parameter — full warp is always used
-var result = shuffle_down(val, offset)
+# NOTE: offset must be UInt32 — use explicit cast
+var result = shuffle_down(val, UInt32(offset))
 ```
 
 ### 3. Compile-Time vs Runtime Parameters
@@ -812,7 +813,7 @@ comptime SMEM_SIZE = BLOCK_SIZE * 4  # Computed at compile time
 # Use @parameter for compile-time unrolling
 @parameter
 for i in range(5):  # Fully unrolled at compile time
-    val += shuffle_down(val, 1 << (4 - i))
+    val += shuffle_down(val, UInt32(1 << (4 - i)))
 ```
 
 ### 4. Address Space Annotations
@@ -832,8 +833,8 @@ var smem_ptr = stack_allocation[
 # CUDA: __global__ void kernel(float* data, int n)
 # Mojo: regular fn, but parameters must be device-passable types
 fn kernel(
-    data: UnsafePointer[Float32],  # Pointers are device-passable
-    n: Int,                         # Scalars are device-passable
+    data: UnsafePointer[Float32, MutAnyOrigin],  # Pointers need MutAnyOrigin for DevicePassable
+    n: Int,                                       # Scalars are device-passable
     # LayoutTensor is NOT directly passable — pass pointer + construct inside kernel
 ):
     ...
@@ -853,7 +854,7 @@ from gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
 from gpu.sync import barrier, syncwarp
 
 # === Memory ===
-from memory import UnsafePointer, stack_allocation, AddressSpace
+from memory import UnsafePointer, MutAnyOrigin, alloc, stack_allocation, AddressSpace
 from gpu.memory import external_memory, async_copy  # AddressSpace also available from gpu.memory
 
 # === Warp Operations ===

@@ -8,6 +8,8 @@ This index maps common error messages to relevant patterns.
 |--------------|---------|----------|
 | `API error` | [serve-api](../patterns/serve-api.md) | serve |
 | `Cannot compile module with uninitialized parameters` | [model-implementation](../patterns/model-implementation.md) | model |
+| `Unimplemented at device_context.mojo:1950` | [model-implementation](../patterns/model-implementation.md) | model |
+| `LookupError: '_CONTEXT'` | [model-implementation](../patterns/model-implementation.md) | model |
 | `Could not find mojo kernel` | [engine-operations](../patterns/engine-operations.md) | engine |
 | `DLPack` | [engine-weights](../patterns/engine-weights.md) | engine |
 | `DeviceRef has no attribute 'from_device'` | [engine-operations](../patterns/engine-operations.md) | engine |
@@ -15,6 +17,7 @@ This index maps common error messages to relevant patterns.
 | `Failed to resolve module path for MOGGKernelAPI` | [engine-operations](../patterns/engine-operations.md) | engine |
 | `GGUF` | [model-loading](../patterns/model-loading.md) | model |
 | `GPTQ` | [engine-quantization](../patterns/engine-quantization.md) | engine |
+| `garbage output no error` | [model-implementation](../patterns/model-implementation.md) | model |
 | `GPU OOM` | [multigpu-scaling](../patterns/multigpu-scaling.md) | multigpu |
 | `Graph` | [graph-construction](../patterns/graph-construction.md) | graph |
 | `HuggingFace` | [model-loading](../patterns/model-loading.md) | model |
@@ -44,8 +47,10 @@ This index maps common error messages to relevant patterns.
 | `communication` | [multigpu-scaling](../patterns/multigpu-scaling.md) | multigpu |
 | `compilation` | [graph-construction](../patterns/graph-construction.md) | graph |
 | `connection closed` | [serve-api](../patterns/serve-api.md) | serve |
+| `causal mask` | [model-implementation](../patterns/model-implementation.md) | model |
 | `container` | [deploy-production](../patterns/deploy-production.md) | deploy |
 | `context length exceeded` | [serve-configuration](../patterns/serve-configuration.md) | serve |
+| `Conv1D weight transposition` | [model-implementation](../patterns/model-implementation.md) | model |
 | `custom() missing required argument 'device'` | [engine-operations](../patterns/engine-operations.md) | engine |
 | `deployment failed` | [deploy-production](../patterns/deploy-production.md) | deploy |
 | `device` | [multigpu-scaling](../patterns/multigpu-scaling.md) | multigpu |
@@ -53,6 +58,8 @@ This index maps common error messages to relevant patterns.
 | `disconnect` | [serve-api](../patterns/serve-api.md) | serve |
 | `docker` | [deploy-production](../patterns/deploy-production.md) | deploy |
 | `error propagation` | [serve-api](../patterns/serve-api.md) | serve |
+| `F.arange out_dim` | [model-implementation](../patterns/model-implementation.md) | model |
+| `F.tril not found` | [model-implementation](../patterns/model-implementation.md) | model |
 | `float8` | [engine-quantization](../patterns/engine-quantization.md) | engine |
 | `fp8` | [engine-quantization](../patterns/engine-quantization.md) | engine |
 | `function calling` | [serve-api](../patterns/serve-api.md) | serve |
@@ -61,12 +68,15 @@ This index maps common error messages to relevant patterns.
 | `kernel compilation failed` | [engine-operations](../patterns/engine-operations.md) | engine |
 | `kubernetes` | [deploy-production](../patterns/deploy-production.md) | deploy |
 | `kv-cache` | [serve-kv-cache](../patterns/serve-kv-cache.md) | serve |
+| `layer_norm Apple Metal` | [model-implementation](../patterns/model-implementation.md) | model |
 | `latency` | [perf-inference](../patterns/perf-inference.md) | perf |
 | `latency` | [deploy-production](../patterns/deploy-production.md) | serve |
 | `load_state_dict` | [model-implementation](../patterns/model-implementation.md) | model |
 | `loading failed` | [model-loading](../patterns/model-loading.md) | model |
 | `memory exhausted` | [serve-kv-cache](../patterns/serve-kv-cache.md) | serve |
+| `ManualLayerNorm` | [model-implementation](../patterns/model-implementation.md) | model |
 | `metrics` | [deploy-production](../patterns/deploy-production.md) | serve |
+| `ModuleList not available` | [model-implementation](../patterns/model-implementation.md) | model |
 | `missing keys in state_dict` | [model-implementation](../patterns/model-implementation.md) | model |
 | `model not found` | [model-loading](../patterns/model-loading.md) | model |
 | `model too large` | [multigpu-scaling](../patterns/multigpu-scaling.md) | multigpu |
@@ -115,7 +125,7 @@ This index maps common error messages to relevant patterns.
 
 | Pattern | Category | Error Patterns Covered |
 |---------|----------|----------------------|
-| [model-implementation](../patterns/model-implementation.md) | model | 10 |
+| [model-implementation](../patterns/model-implementation.md) | model | 20 |
 | [deploy-production](../patterns/deploy-production.md) | deploy, serve | 15 |
 | [serve-api](../patterns/serve-api.md) | serve | 14 |
 | [serve-kv-cache](../patterns/serve-kv-cache.md) | serve | 8 |

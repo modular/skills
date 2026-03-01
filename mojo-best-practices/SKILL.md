@@ -1,11 +1,11 @@
 ---
 name: mojo-best-practices
 description: "Mojo programming best practices from the official modular/modular repository. Use when writing, reviewing, or optimizing Mojo code. Covers memory safety, ownership patterns, GPU kernels (SM90/SM100 tensor cores), BLAS integration, testing patterns, and performance optimization. Supports both stable (v26.1.0.0.0) and nightly."
-license: Apache 2.0
+license: Apache License v2.0 with LLVM Exceptions
 compatibility: "Requires Mojo SDK (stable v26.1.0.0.0 or nightly). GPU patterns require NVIDIA CUDA 12+ or AMD ROCm 6+. Apple Metal patterns require macOS 14+ with Apple Silicon."
 metadata:
   author: Modular Community
-  version: "5.3.0"
+  version: "5.3.1"
   triggers:
     - Write Mojo code
     - Convert Python to Mojo
@@ -45,10 +45,10 @@ alwaysApply: false
 
 # Mojo Best Practices
 
-**After running the auto-update check below, greet the user with this message (customize the examples to their project context if known):**
+**Greet the user with this message (customize the examples to their project context if known):**
 
 ```
-Mojo best practices loaded (v5.3.0, 36 patterns across 14 categories).
+Mojo best practices loaded (v5.3.1, 36 patterns across 13 categories).
 
 Here are 5 things I can help you with right now:
 
@@ -65,44 +65,30 @@ Just ask naturally — "help me write a GPU kernel" or "port this Python to Mojo
 
 > **👤 Users:** Just ask naturally—"help me with memory management" is fine. If the AI ignores the skill, nudge it: *"Check the mojo patterns for this."*
 
-## MANDATORY: Auto-Update Check (Run on Every Skill Load)
+## Version Check (Run on Skill Load)
 
-**You MUST perform this update check EVERY TIME this skill is loaded.** This is not optional.
+Check that this skill is current and the user's SDK version is compatible.
 
-### Step 1: Check Staleness
+### Step 1: Check Skill Currency
 
-Read `metadata.json` in this skill directory. Compare `last_verified` to today's date.
+Read `metadata.json` → `version`. Compare against the latest version at:
+`https://github.com/modular/skills`
 
-- **If `last_verified` is exactly today's date (YYYY-MM-DD)** → Skip to Step 4.
-- **If `last_verified` is ANY other date (yesterday, last week, anything not today) OR missing** → Proceed to Step 2. The skill MUST be updated every single day it is used.
+If the installed skill version is behind, suggest the user update:
+"A newer version of this skill is available at https://github.com/modular/skills. Update to get the latest patterns and API changes."
 
-### Step 2: Fetch Latest Changes
+If the fetch fails (network issues, air-gapped environment), skip silently and proceed.
 
-Fetch the latest changelogs to identify what changed since `last_verified`:
+### Step 2: Check SDK Version
 
-1. **Mojo changelog (released):** `WebFetch` → `https://docs.modular.com/stable/mojo/changelog` — extract changes since `last_verified` date
-2. **Mojo changelog (unreleased/nightly):** `WebFetch` → `https://raw.githubusercontent.com/modular/modular/main/mojo/docs/changelog.md` — extract unreleased changes
-3. **Source examples:** `WebFetch` → `https://github.com/modular/modular/tree/main/max/kernels` — check for new kernel patterns
+If the user's environment is available, run `mojo --version` or `max version`.
+Compare against `supported_versions` in `metadata.json`.
 
-Summarize what changed (new APIs, deprecated APIs, new patterns, breaking changes).
+- If the user's version is **newer** than documented: note that some APIs may have changed.
+- If the user's version is **older**: suggest upgrading.
+- If version can't be determined: proceed normally.
 
-### Step 3: Update Skill Files
-
-For each change found:
-
-1. **Update affected pattern files** in `patterns/` — fix syntax, add new APIs, mark deprecations
-2. **Update `references/breaking-changes.md`** if there are breaking changes
-3. **Update `metadata.json`**:
-   - Bump `supported_versions.nightly.mojo_version` to match latest nightly
-   - Set `last_verified` to today's date (YYYY-MM-DD format)
-   - Bump `version` patch number (e.g., 5.3.0 → 5.3.1)
-4. **Tell the user** what was updated: "Updated mojo-best-practices: [summary of changes]"
-
-### Step 4: Confirm Currency
-
-After checking (whether updates were needed or not), silently proceed with the user's request. Only notify the user if updates were actually applied.
-
-**If WebFetch fails** (network issues, rate limits), note "Skill update check skipped — [reason]" and proceed. Do NOT block the user's request.
+Never block on version checks. Always proceed with the user's request.
 
 ---
 

@@ -113,7 +113,6 @@ Modern CPUs fetch memory in 64-byte cache lines. Proper alignment ensures:
 - Optimal prefetcher behavior
 
 ```mojo
-# nocompile
 @align(64)  # Align to cache line (64 bytes)
 struct AlignedBuffer:
     var data: SIMD[DType.float32, 16]
@@ -347,7 +346,7 @@ fn slow_sum() -> Float64:
     var total: Float64 = 0.0
     for i in range(5):
         # Python call each iteration - extremely slow
-        total += arr[i].to_float64()
+        total += Float64(arr[i])
     return total
 ```
 
@@ -360,7 +359,7 @@ fn process_numpy_data(py_array: PythonObject) -> Float64:
     var data = List[Float64](capacity=size)
 
     for i in range(size):
-        data.append(py_array[i].to_float64())
+        data.append(Float64(py_array[i]))
 
     # Now use native Mojo operations
     return compute_statistics(data)
@@ -642,7 +641,6 @@ fn copy_array[T: Copyable](
 
 ```mojo
 from memory import UnsafePointer
-from memory import UnsafePointer
 from builtin.type_aliases import MutAnyOrigin
 
 comptime Int64Ptr = UnsafePointer[mut=True, type=Int64, origin=MutAnyOrigin]
@@ -785,31 +783,29 @@ qkv = mps.gpu_fused_qkv(input, qkv_weight)
 
 **Impact:** CRITICAL — Prevents 4+ second warmup overhead when GPU caches are invalidated
 
-**Don't (clears cache between phases):**
+**Don't (deallocate shared buffers between phases):**
 ```mojo
 # nocompile
 fn run_pipeline(mut ctx: Context):
     result1 = compute_phase1_gpu(ctx)
 
-    # BAD: This clears ALL GPU caches including weights needed for phase 2!
-    ctx.mps.reset()
+    # BAD: Deallocating all GPU buffers invalidates cached weight conversions!
+    deallocate_gpu_buffers(ctx)
 
     # Phase 2: Must re-convert weights (4+ seconds!)
     for step in range(num_steps):
         compute_step_gpu(ctx, step)  # First step is 5x slower
 ```
 
-**Do (preserve cache when weights are shared):**
+**Do (preserve buffers when weights are shared across phases):**
 ```mojo
 # nocompile
 fn run_pipeline(mut ctx: Context):
     result1 = compute_phase1_gpu(ctx)
 
-    # GOOD: Only reset if subsequent phases don't need the cached weights
-    if not ctx.weights_preloaded:
-        ctx.mps.reset()  # Safe to reset - weights not cached yet
-    else:
-        print("[GPU] Keeping weight cache for next phase")
+    # GOOD: Only deallocate transient buffers, keep weight caches alive
+    deallocate_transient_buffers(ctx)
+    # Weight buffers remain valid for phase 2
 
     # Phase 2: Uses cached weights (fast!)
     for step in range(num_steps):
@@ -940,7 +936,6 @@ This section covers memory-level optimizations: alignment, data layout, prefetch
 
 **Do:**
 ```mojo
-# nocompile
 @align(32)
 struct GoodBuffer:
     var data: SIMD[DType.float32, 8]  # 32 bytes, properly aligned
@@ -964,7 +959,6 @@ fn process(b: BadBuffer):
 
 **Prevent false sharing in parallel code:**
 ```mojo
-# nocompile
 @align(64)  # Cache line alignment
 struct CacheAlignedCounter:
     var count: Int
@@ -1036,6 +1030,28 @@ fn sum_x_soa(particles: ParticlesSoA) -> Float64:
 | AoS | Single particle operations, infrequent access | All fields of one item cached together |
 | SoA | Batch operations on single fields | Sequential access, perfect prefetching |
 | Hybrid | Mixed access patterns | Balance between both |
+
+### Struct of Arrays vs Array of Structs
+
+For SIMD-friendly memory layout, prefer Struct of Arrays (SoA):
+
+```mojo
+# ❌ Suboptimal: Array of Structs (AoS) — poor SIMD utilization
+# nocompile
+struct Particle:
+    var x: Float32
+    var y: Float32
+    var z: Float32
+var particles = List[Particle]()  # x,y,z,x,y,z,... interleaved
+
+# ✅ Better: Struct of Arrays (SoA) — SIMD-friendly contiguous access
+struct Particles:
+    var x: List[Float32]  # All x values contiguous
+    var y: List[Float32]  # All y values contiguous
+    var z: List[Float32]  # All z values contiguous
+```
+
+SoA enables loading N consecutive x-values into a SIMD register in one operation, while AoS requires gather operations (3-5x slower).
 
 ---
 
@@ -1334,7 +1350,7 @@ fn main():
 **When copying is appropriate:**
 - Small types that fit in registers (Int, Float64, Bool)
 - When you need an independent copy to modify
-- Types conforming to `TrivialRegisterType` trait
+- Types conforming to `TrivialRegisterPassable` trait
 
 ---
 

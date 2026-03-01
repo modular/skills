@@ -97,7 +97,7 @@ var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED](
 | `List[T]` elements | Elements must implement `Copyable` trait to be stored |
 
 
-## vnightly Changes (v26.2.0.dev2026022605+)
+## vnightly Changes (v26.2.0.dev2026022717+)
 
 ### Deprecations (NOW ACTIVE in Nightly)
 

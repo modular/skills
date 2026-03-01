@@ -64,7 +64,7 @@ Complete guide for porting Rust code to Mojo with side-by-side examples. Both la
 | `fn foo(x: &String)` | `fn foo(x: String)` | Immutable borrow (default) |
 | `fn foo(x: &mut String)` | `fn foo(mut x: String)` | Mutable borrow |
 | `let y = x;` (move) | `var y = x^` | Explicit transfer with `^` |
-| `x.clone()` | Copy (if `Copyable`) | Traits control copying |
+| `x.clone()` | `x.copy()` (if `Copyable`), or `var y = x` (if `ImplicitlyCopyable`) | `.copy()` is explicit clone; implicit copy needs `ImplicitlyCopyable` trait |
 | `drop(x)` | `_ = x^` or scope end | Deterministic (consume the value with `_ = x^`) |
 | `'a` (lifetime) | Origins (inferred) | Often no annotation needed |
 | `&'a str` | `StringSlice[origin]` | Origin-tracked reference |
@@ -80,7 +80,7 @@ Complete guide for porting Rust code to Mojo with side-by-side examples. Both la
 | `char` | Not yet | UTF-32 character |
 | `String` | `String` | Heap UTF-8 |
 | `&str` | `StringSlice` or `StringLiteral` | Non-owning view |
-| `Vec<T>` | `List[T]` | Dynamic array |
+| `Vec<T>` | `List[T]` | Dynamic array. `T` must be `Copyable` (not just `Movable`); move-only types cannot go in `List` |
 | `[T; N]` | `InlineArray[T, N]` | Stack array |
 | `Box<T>` | `UnsafePointer[T]` or stack alloc | Heap or stack |
 | `Rc<T>` / `Arc<T>` | Manual ref counting | No built-in RC yet |
@@ -91,11 +91,13 @@ Complete guide for porting Rust code to Mojo with side-by-side examples. Both la
 | `(A, B, C)` | `Tuple[A, B, C]` | Tuple |
 | `&[T]` | `Span[T]` | Slice view |
 
+> **Warning: List and InlineArray construction syntax.** `List[Int](1, 2, 3)` and `InlineArray[Int, 3](1, 2, 3)` do NOT compile. Use list literal syntax with a type annotation: `var v: List[Int] = [1, 2, 3]` or `var a: InlineArray[Int, 3] = [1, 2, 3]`. For empty lists use `List[Int]()`. For pre-sized lists use `List[Int](length=N, fill=0)`.
+
 ### Structs and Traits
 
 | Rust 1.93 | Mojo | Notes |
 |-----------|------|-------|
-| `struct Foo { x: i32 }` | `struct Foo: var x: Int` | Fields declared with `var` |
+| `struct Foo { x: i32 }` | `struct Foo: var x: Int` | Fields declared with `var`; no struct literal syntax (`Foo { x: 1 }` does not exist — use `__init__`) |
 | `#[derive(Debug, Clone)]` | `@fieldwise_init` | Different derive model |
 | `impl Foo { }` | Methods inside `struct Foo:` | No separate impl blocks |
 | `impl Trait for Foo { }` | `struct Foo(Trait):` | Parenthetical conformance |
@@ -124,8 +126,8 @@ Complete guide for porting Rust code to Mojo with side-by-side examples. Both la
 |-----------|------|-------|
 | `\|x\| x * 2` | `fn(x: Int) -> Int: return x * 2` | Typed closures |
 | `\|x: i32\| -> i32 { x * 2 }` | `fn(x: Int) -> Int: return x * 2` | Same |
-| `iter.map(\|x\| x*2)` | `for x in iter: result.append(x[]*2)` | Manual iteration |
-| `iter.filter(\|x\| x > 0)` | `for x in iter: if x[] > 0: ...` | Manual filtering |
+| `iter.map(\|x\| x*2)` | `for x in iter: result.append(x*2)` | Manual iteration |
+| `iter.filter(\|x\| x > 0)` | `for x in iter: if x > 0: ...` | Manual filtering |
 | `iter.collect::<Vec<_>>()` | Build List manually | No collect |
 | `for x in &vec { }` | `for x in vec:` | Iteration (x is reference) |
 
@@ -155,14 +157,13 @@ fn main() {
 
 **Mojo:**
 ```mojo
-# nocompile
 fn process(var data: List[Int]):
     # data is owned, destroyed at end of scope
     for x in data:
-        print(x[])
+        print(x)
 
 fn main():
-    var data = List[Int](1, 2, 3)
+    var data: List[Int] = [1, 2, 3]
     process(data^)          # Explicit move with ^
     # print(data[0])        # ERROR: value used after move
 ```
@@ -194,12 +195,11 @@ fn main() {
 
 **Mojo:**
 ```mojo
-# nocompile
 fn analyze(data: List[Float64]) -> Float64:
     # Immutable borrow — default (no sigil needed!)
     var total: Float64 = 0.0
     for x in data:
-        total += x[]
+        total += x
     return total
 
 fn modify(mut data: List[Float64]):
@@ -207,7 +207,7 @@ fn modify(mut data: List[Float64]):
     data.append(42.0)
 
 fn main():
-    var data = List[Float64](1.0, 2.0, 3.0)
+    var data: List[Float64] = [1.0, 2.0, 3.0]
     var sum = analyze(data)     # Borrow immutably (no & needed)
     modify(data)                # Borrow mutably (no &mut needed)
 ```
@@ -320,13 +320,12 @@ unsafe fn add_avx(a: *const f32, b: *const f32, c: *mut f32) {
 
 **Mojo (stable — first-class SIMD):**
 ```mojo
-# nocompile
 # SIMD is a built-in type in stable Mojo — always available
 var a = SIMD[DType.float32, 8](1.0)
 var b = SIMD[DType.float32, 8](2.0)
 var c = a + b                     # 8 additions in one instruction
 var sum = c.reduce_add()          # Built-in reduction
-var mask = a > 1.5
+var mask = a.gt(SIMD[DType.float32, 8](1.5))
 var selected = mask.select(a, b)  # Branchless select
 # Works on x86 (AVX), ARM (NEON), and GPU — same code
 ```
@@ -506,7 +505,6 @@ impl std::fmt::Display for Circle {
 
 **Mojo:**
 ```mojo
-# nocompile
 from math import pi
 
 struct Circle(Writable):
@@ -535,18 +533,17 @@ let evens: Vec<&i32> = numbers.iter().filter(|x| *x % 2 == 0).collect();
 
 **Mojo:**
 ```mojo
-# nocompile
 fn main():
-    var numbers = List[Int](3, 1, 4, 1, 5, 9)
+    var numbers: List[Int] = [3, 1, 4, 1, 5, 9]
     sort(numbers)
     # dedup manually
     var sum = 0
     for x in numbers:
-        sum += x[]
+        sum += x
     var evens = List[Int]()
     for x in numbers:
-        if x[] % 2 == 0:
-            evens.append(x[])
+        if x % 2 == 0:
+            evens.append(x)
 ```
 
 ### Pattern 4: Generic Functions
@@ -619,6 +616,76 @@ struct Article(Summary):
     fn summarize(self) -> String:
         return self.title + ": " + self.content
 ```
+
+---
+
+## Rust → Mojo Gotchas
+
+### Generic Parameters: `Self.T` Inside Struct Bodies
+
+In Rust, generic parameters are accessed directly (`T`). In Mojo, inside struct methods and body, generic parameters must be accessed via `Self.T`:
+
+```mojo
+# nocompile
+struct Container[T: Copyable & Movable]:
+    var data: List[Self.T]  # Must use Self.T, not just T
+
+    fn add(mut self, value: Self.T):
+        self.data.append(value)
+
+    fn get(self, index: Int) -> Self.T:
+        return self.data[index]
+```
+
+### Returning Non-Copyable Types: `return result^`
+
+Rust moves return values implicitly. In Mojo, returning a non-copyable local variable requires the transfer operator `^`:
+
+```mojo
+struct UniqueResource:
+    var handle: Int
+    fn __init__(out self, handle: Int): self.handle = handle
+    fn __moveinit__(out self, deinit take: Self, /): self.handle = take.handle
+
+fn create_resource() -> UniqueResource:
+    var result = UniqueResource(42)
+    return result^  # ^ required — UniqueResource is not Copyable
+```
+
+Without `^`, the compiler will error because it tries to copy `result` (which is non-copyable). This is different from Rust where all returns are implicit moves.
+
+### No Struct Literal Syntax
+
+Rust allows struct literals (`Foo { field: value }`). Mojo does not — all struct construction goes through `__init__`:
+
+```mojo
+# nocompile
+# Rust: let p = Point { x: 10, y: 20 };
+# Mojo: Must use __init__ (directly or via @fieldwise_init)
+var p = Point(10, 20)
+```
+
+Use `@fieldwise_init` to auto-generate a constructor that accepts all fields in order.
+
+> **Warning:** `@fieldwise_init` generates `__init__` only. If any field is `Copyable`-only (not `ImplicitlyCopyable`), the generated constructor requires the caller to pass values via `^` (transfer) or `.copy()`. There is no implicit copy in the generated init for `Copyable`-only fields.
+
+### Copyable vs ImplicitlyCopyable
+
+Rust's `Clone` maps to Mojo's `Copyable` (explicit `.copy()`), and Rust's implicit `Copy` maps to `ImplicitlyCopyable`. This is a common source of confusion:
+
+```mojo
+# nocompile
+# Copyable only → must use .copy()
+var a = MyStruct(42)
+var b = a.copy()       # OK: explicit copy
+# var b = a            # ERROR: requires ImplicitlyCopyable
+
+# ImplicitlyCopyable → var b = a works
+var x: Int = 42
+var y = x              # OK: Int is ImplicitlyCopyable
+```
+
+> **Note:** When returning a `Copyable`-only type from a generic function, use `.copy()` or `^` (transfer). Implicit return-by-copy requires `ImplicitlyCopyable`.
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "name": "max-best-practices",
-  "version": "3.2.0",
-  "license": "Apache 2.0",
+  "version": "3.2.2",
+  "license": "Apache-2.0 WITH LLVM-exception",
   "organization": "Modular Community",
   "author": "Modular Community",
   "published": "January 2026",
@@ -11,13 +11,11 @@
       "note": "v26.1 aligned with Mojo 26.1 - comptime keyword preferred"
     },
     "nightly": {
-      "max_version": "26.2.0.dev2026022605",
+      "max_version": "26.2.0.dev2026022717",
       "note": "Track latest at https://docs.modular.com/max/changelog/"
     }
   },
-  "last_verified": "2026-02-27",
-  "changelog_reference": "https://docs.modular.com/stable/max/changelog/",
-  "unreleased_changelog": "https://docs.modular.com/max/changelog/",
+  "last_verified": "2026-02-28",
   "source_reference": "https://github.com/modular/modular",
   "abstract": "MAX AI inference framework best practices from Modular. Supports both stable (v26.1) and nightly. Covers MAX Serve deployment, MAX Graph API, multi-GPU inference, and performance optimization. 13 patterns across 7 categories.",
   "patterns": {
@@ -143,7 +141,11 @@
       "url": "https://docs.modular.com/max/"
     },
     {
-      "title": "MAX Changelog",
+      "title": "MAX Changelog (Stable)",
+      "url": "https://docs.modular.com/stable/max/changelog/"
+    },
+    {
+      "title": "MAX Changelog (Nightly)",
       "url": "https://docs.modular.com/max/changelog/"
     },
     {
