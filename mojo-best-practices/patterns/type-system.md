@@ -110,7 +110,7 @@ comptime StringList = List[String]
 comptime IntSet = Set[Int]
 ```
 
-> **Note**: Both `alias` and `comptime` work for compile-time constants and type aliases. As of v26.1, the compiler warns on `alias` usage and suggests `comptime` instead. New code should prefer `comptime`; `alias` remains valid.
+> **Note**: `alias` is deprecated in nightly; use `comptime` for compile-time constants and type aliases.
 
 ### Writable Trait
 
@@ -428,7 +428,7 @@ struct MyKey(Hashable, Equatable, ImplicitlyCopyable):
 ## Quick Reference
 
 - **Type annotations**: Always use `fn` with explicit types for 10-100x performance
-- **Type aliases**: Use `comptime TypeName = ...` (preferred) or `alias TypeName = ...` (both valid)
+- **Type aliases**: Use `comptime` (`alias` is deprecated)
 - **@implicit**: Only for safe, lossless conversions (Int -> Float64, StringLiteral -> String)
 - **Optional**: Use `.value()` for safe access, `.or_else(default)` for defaults
 - **Numeric precision**: Float32 for graphics, Float64 for science, BFloat16 for ML
@@ -441,7 +441,7 @@ struct MyKey(Hashable, Equatable, ImplicitlyCopyable):
 
 ### Constants: alias and comptime (v26.1+)
 
-Both `alias` and `comptime` work for compile-time constants. As of v26.1, the compiler warns on `alias` usage and suggests `comptime` instead. New code should prefer `comptime`:
+Use `comptime` for compile-time constants (`alias` is deprecated in nightly):
 
 ```mojo
 # Preferred: comptime (v26.1+)
@@ -457,7 +457,7 @@ comptime Predicate = fn(Int) -> Bool
 comptime LEGACY_CONSTANT = 42
 ```
 
-**Note:** Both keywords are valid. `comptime` is preferred going forward; `alias` remains functional but triggers compiler warnings.
+**Note:** `alias` is deprecated in nightly. Use `comptime` for all compile-time constants.
 
 ### v26.1+: comptime(expr)
 

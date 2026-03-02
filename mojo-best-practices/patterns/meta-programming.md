@@ -380,7 +380,7 @@ fn find_max_bad[T](items: List[T]) -> T:
 
 **Example (v26.1+):**
 ```mojo
-# Compile-time constant (both alias and comptime work)
+# Compile-time constant (alias is deprecated; use comptime)
 comptime BUFFER_SIZE = 1024
 
 # Variadic type parameters
@@ -390,7 +390,7 @@ fn forward[*Ts: Movable](*args: *Ts):
 ```
 
 **Notes:**
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - Variadic parameters use `*Ts` syntax
 - `@parameter for` loops work the same across versions
 - Trait bounds and Self.T syntax unchanged

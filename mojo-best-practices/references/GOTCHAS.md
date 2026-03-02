@@ -110,7 +110,7 @@ fn process[T: DType](data: UnsafePointer[Scalar[T]]):
 **✅ CORRECT:** Use `simd_width_of` for portable code
 ```mojo
 fn process[T: DType](data: UnsafePointer[Scalar[T]]):
-    alias width = simd_width_of[T]()
+    comptime width = simd_width_of[T]()
     var vec = data.load[width=width]()
 ```
 
@@ -680,7 +680,7 @@ Both `comptime` and `alias` work for compile-time constants. `comptime` is the p
 ```mojo
 # Both are valid:
 comptime SIZE = 64   # Preferred
-alias SIZE2 = 128    # Also works
+comptime SIZE2 = 128    # Also works
 ```
 
 **Why both?** `comptime` and `alias` are interchangeable for simple constant declarations. `comptime` is the modern preferred form.

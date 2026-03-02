@@ -394,7 +394,7 @@ fn main() raises:
     var c = ctx.enqueue_create_buffer[DType.float32](n)
 
     # Launch kernel
-    ctx.enqueue_function[vector_add_kernel](
+    ctx.enqueue_function[vector_add_kernel, vector_add_kernel](
         a.unsafe_ptr(), b.unsafe_ptr(), c.unsafe_ptr(), n,
         grid_dim=(n // 256 + 1,), block_dim=(256,),
     )

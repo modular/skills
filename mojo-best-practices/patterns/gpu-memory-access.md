@@ -640,7 +640,7 @@ Different GPU architectures have different shared memory capacities and configur
 # nocompile
 
 # Request extra shared memory beyond the kernel's static allocation
-ctx.enqueue_function[my_kernel](
+ctx.enqueue_function[my_kernel, my_kernel](
     args...,
     grid_dim=grid, block_dim=block,
     shared_mem_bytes=49152,  # 48 KB of dynamic shared memory

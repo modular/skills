@@ -601,7 +601,7 @@ from python import Python, PythonObject
 fn process_data() raises:
     var np = Python.import_module("numpy")
 
-    # Compile-time constant (both alias and comptime work)
+    # Compile-time constant (alias is deprecated; use comptime)
     comptime BATCH_SIZE = 1000
 
     var arr = np.zeros(BATCH_SIZE)
@@ -609,7 +609,7 @@ fn process_data() raises:
 ```
 
 **Notes:**
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - Python interop APIs are stable across versions
 - PythonObject handling and type conversions unchanged
 - GIL management patterns remain the same

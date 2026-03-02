@@ -559,7 +559,7 @@ fn test_gpu_kernel_correctness() raises:
     var d_output = ctx.enqueue_create_buffer[DType.float32](SIZE)
 
     ctx.enqueue_copy(d_input, h_input.unsafe_ptr())
-    ctx.enqueue_function[my_gpu_kernel](
+    ctx.enqueue_function[my_gpu_kernel, my_gpu_kernel](
         d_input.unsafe_ptr(),
         d_output.unsafe_ptr(),
         SIZE,

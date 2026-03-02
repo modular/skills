@@ -139,7 +139,6 @@ fn process_array(mut data: UnsafePointer[Float32], n: Int):
 ```mojo
 from sys import simd_width_of
 from memory import UnsafePointer
-from builtin.type_aliases import MutAnyOrigin
 
 comptime Float32Ptr = UnsafePointer[mut=True, type=Float32, origin=MutAnyOrigin]
 
@@ -778,7 +777,6 @@ vectorize[simd_width](size, body)
 **Example (v26.1+):**
 ```mojo
 from memory import UnsafePointer
-from builtin.type_aliases import MutAnyOrigin
 
 comptime WIDTH = 8  # AVX width for Float32; for portable code use simd_width_of[DType.float32]()
 comptime Float32Ptr = UnsafePointer[mut=True, type=Float32, origin=MutAnyOrigin]

@@ -943,7 +943,7 @@ fn kernel[dtype: DType]():
 ```
 
 **Notes:**
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - `@parameter` for compile-time branching is stable
 - Pipeline context managers work identically across versions
 

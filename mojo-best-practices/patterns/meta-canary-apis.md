@@ -136,12 +136,12 @@ fn main():
 
 ## Compile-Time Constants
 
-### alias and comptime (both v26.1+)
+### comptime constants (v26.1+, alias deprecated)
 
 ```mojo
 from memory import alloc
 
-# Both alias and comptime work in v26.1+
+# alias is deprecated; use comptime
 comptime BUFFER_SIZE = 1024
 
 fn test_comptime():

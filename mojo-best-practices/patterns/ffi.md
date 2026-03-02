@@ -83,7 +83,6 @@ Define standard type aliases for consistent FFI code.
 # nocompile
 from ffi import external_call, OwnedDLHandle, RTLD
 from memory import UnsafePointer, memcpy
-from builtin.type_aliases import MutAnyOrigin
 
 # Standard pointer types
 comptime UInt8Ptr = UnsafePointer[mut=True, type=UInt8, origin=MutAnyOrigin]
@@ -251,7 +250,6 @@ fn bad_assumption(ptr: UnsafePointer[UInt8], len: Int):
 # nocompile
 from ffi import external_call
 from memory import UnsafePointer
-from builtin.type_aliases import MutAnyOrigin
 
 # Define opaque pointer type for FILE*
 comptime FILE = UnsafePointer[mut=True, type=UInt8, origin=MutAnyOrigin]
@@ -746,7 +744,6 @@ fn rotary_position_embedding(...):
 # nocompile
 from ffi import external_call
 from memory import UnsafePointer
-from builtin.type_aliases import MutAnyOrigin
 
 comptime Float64Ptr = UnsafePointer[mut=True, type=Float64, origin=MutAnyOrigin]
 comptime Float32Ptr = UnsafePointer[mut=True, type=Float32, origin=MutAnyOrigin]
@@ -1418,7 +1415,7 @@ fn example():
 
 **Notes:**
 
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - FFI core APIs (`external_call`, `OwnedDLHandle`) are stable across versions
 - `memcpy` named parameters recommended in v26.1+
 - CString safety patterns and Python GIL management unchanged between versions

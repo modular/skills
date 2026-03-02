@@ -641,7 +641,6 @@ fn copy_array[T: Copyable](
 
 ```mojo
 from memory import UnsafePointer
-from builtin.type_aliases import MutAnyOrigin
 
 comptime Int64Ptr = UnsafePointer[mut=True, type=Int64, origin=MutAnyOrigin]
 
@@ -1443,7 +1442,7 @@ fn allocate_buffer(size: Int) -> UnsafePointer[Float32]:
 ```
 
 **Notes:**
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - `alloc()` is available in v26.1+ (not nightly-only)
 - `@align(N)` decorator is v26.2+ nightly
 - Prefetching APIs (`prefetch`, `PrefetchOptions`) are stable

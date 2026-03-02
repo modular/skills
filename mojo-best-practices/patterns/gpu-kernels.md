@@ -320,7 +320,7 @@ fn cluster_kernel():
 
 # Launch with cluster dimensions
 fn launch_clustered_kernel(ctx: DeviceContext) raises:
-    ctx.enqueue_function_experimental[cluster_kernel](
+    ctx.enqueue_function[cluster_kernel, cluster_kernel](
         grid_dim=(8, 8),
         block_dim=(256),
         cluster_dim=Dim((2, 2, 1)),  # 2x2 cluster = 4 blocks
@@ -837,7 +837,7 @@ fn kernel():
 ```
 
 **Notes:**
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - Kernel fusion patterns are stable across versions
 - Double-buffering and multi-stage pipeline patterns are stable
 - Cluster programming (SM90+) uses `@__llvm_metadata` which is stable

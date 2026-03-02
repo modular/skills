@@ -1,43 +1,7 @@
 ---
 name: mojo-best-practices
-description: "Mojo programming best practices from the official modular/modular repository. Use when writing, reviewing, or optimizing Mojo code. Covers memory safety, ownership patterns, GPU kernels (SM90/SM100 tensor cores), BLAS integration, testing patterns, and performance optimization. Supports both stable (v26.1.0.0.0) and nightly."
-license: Apache License v2.0 with LLVM Exceptions
-compatibility: "Requires Mojo SDK (stable v26.1.0.0.0 or nightly). GPU patterns require NVIDIA CUDA 12+ or AMD ROCm 6+. Apple Metal patterns require macOS 14+ with Apple Silicon."
-metadata:
-  author: Modular Community
-  version: "5.3.1"
-  triggers:
-    - Write Mojo code
-    - Convert Python to Mojo
-    - Port C++ to Mojo
-    - Port Rust to Mojo
-    - Optimize Mojo function
-    - Review Mojo code
-    - Write GPU kernel in Mojo
-    - Use BLAS in Mojo
-    - Mojo memory safety
-    - Mojo ownership
-    - Create new Mojo project
-    - Start a Mojo project
-    - Initialize Mojo project
-    - Install Mojo
-  supported_versions:
-    stable: "26.1.0"
-    nightly: "nightly"
-  categories:
-    - memory-safety
-    - type-system
-    - gpu-programming
-    - c-interoperability
-    - struct-design
-    - function-design
-    - testing
-    - debugging
-    - error-handling
-    - performance
-    - python-interop
-    - metaprogramming
-    - porting
+description: "Mojo programming best practices. Use when writing, reviewing, debugging, or optimizing Mojo code. Covers creating new Mojo projects, installing Mojo, memory safety and ownership errors (use of moved value), GPU kernels (NVIDIA SM90/SM100 tensor cores, Apple Metal, AMD), LayoutTensor, SIMD vectorization, parallelization, BLAS/FFI, struct design, testing, benchmarking, and porting from Python, C++, Rust, or CUDA to Mojo."
+argument-hint: "[topic or question]"
 globs: ["**/*.mojo", "**/*.🔥"]
 alwaysApply: false
 ---
@@ -209,7 +173,7 @@ This skill supports both **stable** and **nightly** Mojo versions:
 | Top-level ffi | `from ffi import ...` (moved from `sys.ffi`) |
 
 **Shared syntax (v26.1.0.0.0+):**
-- `alias` and `comptime` both work for constants
+- Use `comptime` for constants (`alias` is deprecated in nightly)
 - `@fieldwise_init` (not `@value`)
 - `var`/`deinit` (not `owned` -- `owned` is REMOVED in nightly)
 - `Writable` trait (not `Stringable` -- `Stringable` DEPRECATED in nightly)
@@ -221,7 +185,7 @@ This skill supports both **stable** and **nightly** Mojo versions:
 ### Complementary Skills
 
 **max-best-practices** – is a complementary skill for deploying models with MAX Serve and MAX Engine.
-Available at: https://github.com/modular/modular/skills/max-best-practices
+Available at: https://github.com/modular/skills/tree/main/max-best-practices
 
 ### Cross-Skill: Building Custom Models
 
@@ -385,6 +349,8 @@ mojo-best-practices/
     ├── FULL_REFERENCE.md  # Complete pattern index (auto-generated)
     ├── ERROR_INDEX.md     # Error message → pattern lookup
     ├── SCENARIOS.md       # Task → pattern mapping
+    ├── ERROR_DISAMBIGUATION.md  # Similar error disambiguation
+    ├── GOTCHAS.md               # Common mistakes ❌→✅
     ├── breaking-changes.md
     ├── installation.md
 ```
@@ -418,6 +384,7 @@ your-project/
 - **Common mistakes?** See [references/GOTCHAS.md](references/GOTCHAS.md) - ❌ wrong → ✅ correct examples
 - **Need a specific pattern?** Check `patterns/` directory
 - **Got an error?** See [references/ERROR_INDEX.md](references/ERROR_INDEX.md)
+- **Similar errors?** See [references/ERROR_DISAMBIGUATION.md](references/ERROR_DISAMBIGUATION.md)
 - **Task-based lookup?** See [references/SCENARIOS.md](references/SCENARIOS.md)
 - **Installation?** See [references/installation.md](references/installation.md)
 - **Breaking changes?** See [references/breaking-changes.md](references/breaking-changes.md)

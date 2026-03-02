@@ -11,11 +11,11 @@
       "note": "v26.1 introduces comptime keyword (preferred over alias), deprecated GPU import paths"
     },
     "nightly": {
-      "mojo_version": "26.2.0.dev2026030105",
+      "mojo_version": "26.2.0.dev2026030205",
       "note": "comptime if/for, lifecycle renames, owned removal, ffi top-level, UnsafeUnion, Dict Swiss Table. Track latest at https://docs.modular.com/mojo/changelog/"
     }
   },
-  "last_verified": "2026-03-01",
+  "last_verified": "2026-03-02",
   "source_reference": "https://github.com/modular/modular",
   "abstract": "Mojo programming best practices from the official modular/modular repository. Supports both stable (v26.1) and nightly. 36 patterns across 13 categories covering memory safety, GPU kernels (SM90/SM100), language porting, testing, and performance.",
   "patterns": {
@@ -96,11 +96,39 @@
   },
   "triggers": [
     "Write Mojo code",
+    "Create Mojo project",
+    "New Mojo project",
+    "Set up Mojo project",
+    "Initialize Mojo project",
+    "Install Mojo",
     "Convert Python to Mojo",
+    "Port Python to Mojo",
+    "Port C++ to Mojo",
+    "Port Rust to Mojo",
+    "Port CUDA to Mojo",
+    "Port CUDA kernel to Mojo",
     "Optimize Mojo function",
+    "Optimize Mojo performance",
+    "Vectorize Mojo code",
+    "Parallelize Mojo code",
     "Review Mojo code",
     "Write GPU kernel in Mojo",
-    "Use BLAS in Mojo"
+    "Write Metal kernel in Mojo",
+    "Write a Mojo GPU kernel",
+    "Mojo tensor cores",
+    "Custom MAX op in Mojo",
+    "Use BLAS in Mojo",
+    "Call Python from Mojo",
+    "Mojo memory error",
+    "Fix Mojo error",
+    "Debug Mojo code",
+    "Mojo ownership error",
+    "use of moved value",
+    "Write Mojo tests",
+    "Benchmark Mojo code",
+    "Define a Mojo struct",
+    "Mojo SIMD",
+    "Mojo LayoutTensor"
   ],
   "references": [
     {

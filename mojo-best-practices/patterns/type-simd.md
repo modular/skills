@@ -40,7 +40,6 @@ SIMD types process multiple values in a single instruction, utilizing hardware v
 
 ```mojo
 from memory import UnsafePointer
-from builtin.type_aliases import MutAnyOrigin
 
 # Type alias for cleaner code
 comptime Float32Ptr = UnsafePointer[mut=True, type=Float32, origin=MutAnyOrigin]
@@ -73,8 +72,8 @@ fn dot_product_4(a: SIMD[DType.float32, 4], b: SIMD[DType.float32, 4]) -> Float3
 
 > **Critical Notes:**
 > - `out` is a reserved keyword - use `result`, `dst`, or `output` for output parameters
-> - `MutAnyOrigin` must be imported from `builtin.type_aliases`
-> - Use `comptime` (preferred) or `alias` (both valid) for type aliases
+> - `MutAnyOrigin` and `ImmutAnyOrigin` are prelude symbols -- no import needed
+> - Use `comptime` for type aliases (`alias` is deprecated)
 
 ### Register-Passable Types
 
@@ -194,7 +193,6 @@ Use SIMD for parallel accumulation with final horizontal reduction.
 **Do:**
 ```mojo
 from memory import UnsafePointer
-from builtin.type_aliases import MutAnyOrigin
 
 comptime Float64Ptr = UnsafePointer[mut=True, type=Float64, origin=MutAnyOrigin]
 
@@ -727,7 +725,7 @@ fn compute_distances(x: SIMD[DType.float32, 8], y: SIMD[DType.float32, 8]) -> SI
 |---------|--------|-------|
 | **Constants** | `alias` or `comptime` | Both work; compiler warns on `alias` in v26.1+ |
 | **Register-passable** | `@register_passable("trivial")` deprecated in v26.2 | Use `TrivialRegisterPassable` trait instead |
-| **Type aliases** | `comptime Float32Ptr = ...` | Both `alias` and `comptime` work |
+| **Type aliases** | `comptime Float32Ptr = ...` | Use `comptime` (`alias` is deprecated) |
 | **Heap allocation** | `from memory import alloc; alloc[T](n)` | v26.1+ |
 
 **Example (current best practice):**
@@ -759,7 +757,7 @@ struct LegacyPoint:
 ```
 
 **Notes:**
-- Both `alias` and `comptime` work for compile-time constants; `comptime` is preferred going forward
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - `@register_passable("trivial")` is deprecated in v26.2; use `TrivialRegisterPassable` trait instead
 - `alloc()` is available in v26.1+ (not nightly-only)
 

@@ -6,7 +6,7 @@
 
 | Feature | v25.7 (old stable) | v26.1.0.0.0 (current stable) | Nightly (v26.2+) |
 |---------|-------------------|------------------------|------------------|
-| Constants | `alias` only | `comptime` (preferred), `alias` works | `comptime` preferred |
+| Constants | `alias` only | `comptime` (`alias` deprecated) | `comptime` preferred |
 | GPU imports | `from gpu.id import ...` | `from gpu import ...` (new) | `from gpu import ...` |
 | AddressSpace | `_GPUAddressSpace` | `AddressSpace` (unified) | `AddressSpace` |
 
@@ -16,7 +16,7 @@
 
 ### `comptime` Keyword (Preferred over `alias`)
 
-The `comptime` keyword is now the **preferred syntax** for compile-time constants. `alias` still works but future updates will migrate to `comptime`.
+The `comptime` keyword is now the **preferred syntax** for compile-time constants. `alias` is deprecated in nightly.
 
 ```mojo
 # v26.1.0.0.0+ preferred:
@@ -86,7 +86,6 @@ var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED](
 | Unqualified `T` | `Self.T` in struct bodies |
 | `Stringable` for print | `Writable` with `write_to` |
 | `free(ptr)` function | `ptr.free()` method |
-| `alloc[T](n)` from `memory.unsafe_pointer` | `UnsafePointer[T].alloc(n)` static method |
 | `UnsafePointer[T]` in structs | `UnsafePointer[mut=True, type=T, origin=MutAnyOrigin]` |
 | `memcpy(dst, src, n)` | `memcpy(dest=dst, src=src, count=n)` |
 | `s[i]` on String | `s.as_bytes()[i]` for byte access |
@@ -97,7 +96,7 @@ var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED](
 | `ref self` in `__getitem__` | `mut self` for mutable self reference |
 | `List[T]` elements | Elements must implement `Copyable` trait to be stored |
 
-## vnightly Changes (v26.2.0.dev2026030105+)
+## vnightly Changes (v26.2.0.dev2026030205+)
 
 ### Deprecations (NOW ACTIVE in Nightly)
 
@@ -113,6 +112,7 @@ var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED](
 | `Stringable` / `Representable` traits | `Writable` trait | **DEPRECATED** - `Tuple`, `Variant`, `Optional` now conform to `Writable` |
 | `Int` to `SIMD` implicit conversion | Explicit `SIMD[dtype, 1](int_val)` | **DEPRECATED** |
 | `**_` / `*_` in parameter binding | `...` | **REMOVED** - use `...` instead |
+| `alias` (for constants) | `comptime` | **DEPRECATED** in nightly |
 
 ### Lifecycle Method Renames (NIGHTLY)
 
@@ -874,10 +874,6 @@ fn main():
 The allocation API has changed in v0.26.2. Use the `alloc` function from `memory`:
 
 ```mojo
-# v26.1.0.0.0 (stable) - static method
-var ptr = UnsafePointer[Float32].alloc(count)
-
-# v0.26.2+ (nightly) - function from memory module
 from memory import alloc
 var ptr = alloc[Float32](count)
 ```
@@ -1075,11 +1071,9 @@ Module-level `var` declarations are NOT supported:
 
 ### UnsafePointer in Struct Fields
 
-Must use full type specification with imports:
+Must use full type specification:
 
 ```mojo
-from builtin.type_aliases import MutAnyOrigin
-
 struct Buffer:
     var data: UnsafePointer[mut=True, type=Float32, origin=MutAnyOrigin]
 ```

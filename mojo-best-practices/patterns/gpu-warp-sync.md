@@ -1096,7 +1096,7 @@ Core warp and block synchronization primitives are stable in v26.1:
 - Block barrier: `barrier()` and `syncwarp()`
 - Block collectives: `sum`, `max`, `min`, `broadcast`, `prefix_sum` from `gpu.primitives.block`
 
-Mbarrier, cluster sync, and async copy APIs require nightly (v26.2+). Both `alias` and `comptime` work for compile-time constants in v26.1+.
+Mbarrier, cluster sync, and async copy APIs require nightly (v26.2+). Use `comptime` for compile-time constants (`alias` is deprecated in nightly).
 
 ---
 

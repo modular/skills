@@ -46,7 +46,7 @@ When passing a value to a function that takes ownership (`var` argument), use th
 fn process_data(var data: List[Int]):
     # Function takes ownership of data
     for item in data:
-        print(item)  # List iterators yield values directly
+        print(item)  # Iterate over list elements
 
 fn main():
     var my_list = List[Int]()
@@ -180,10 +180,8 @@ Types that manage resources (memory, file handles, sockets) must implement appro
 
 ```mojo
 from memory import UnsafePointer
-from builtin.type_aliases import MutAnyOrigin
 
-# Both 'alias' and 'comptime' work for type aliases (v25.7+)
-# Use whichever is consistent with your codebase, but prefer 'comptime'.
+# alias is deprecated; use comptime
 comptime UInt8Ptr = UnsafePointer[mut=True, type=UInt8, origin=MutAnyOrigin]
 
 struct FileBuffer(Movable):
@@ -319,8 +317,6 @@ ptr.free()                               # Return memory to allocator
 
 ```mojo
 # nocompile
-from builtin.type_aliases import MutAnyOrigin
-
 struct OwnedPointer[T: Movable]:
     # CRITICAL: Use full type spec with named parameters
     var _inner: UnsafePointer[mut=True, type=Self.T, origin=MutAnyOrigin]
@@ -468,8 +464,7 @@ struct Container[T: Movable](Movable):
 
 ### Constants: alias and comptime
 
-Both `alias` and `comptime` work for compile-time constants, but prefer
-`comptime`.
+Use `comptime` for compile-time constants (`alias` is deprecated in nightly).
 
 ```mojo
 # Both syntaxes work in v26.1+
@@ -482,8 +477,8 @@ fn main():
 
 **Version guidance:**
 
-- Both `alias` and `comptime` work for compile-time constants
-- `comptime` is preferred going forward; `alias` remains functional
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
+- `alias` is deprecated in nightly
 
 ---
 

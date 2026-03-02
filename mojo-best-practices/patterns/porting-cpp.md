@@ -38,8 +38,8 @@ Complete guide for porting C++ code to Mojo with side-by-side examples. Covers s
 | C++23 | Mojo | Notes |
 |-------|------|-------|
 | `int x = 42;` | `var x: Int = 42` | No semicolons |
-| `const int X = 42;` | `alias X = 42` | Compile-time constant |
-| `constexpr int X = 42;` | `alias X = 42` | Same — compile-time |
+| `const int X = 42;` | `comptime X = 42` | Compile-time constant |
+| `constexpr int X = 42;` | `comptime X = 42` | Same — compile-time |
 | `auto x = 42;` | `var x = 42` | Type inference |
 | `float x = 3.14f;` | `var x: Float32 = 3.14` | Explicit precision |
 | `double x = 3.14;` | `var x: Float64 = 3.14` | Explicit precision |
@@ -48,7 +48,7 @@ Complete guide for porting C++ code to Mojo with side-by-side examples. Covers s
 | `/* block */` | `# line comments only` | No block comments |
 | `#include <header>` | `from module import name` | No headers |
 | `namespace foo { }` | Module files | File = module |
-| `using T = int;` | `alias T = Int` | Type alias |
+| `using T = int;` | `comptime T = Int` | Type alias |
 | `nullptr` | `UnsafePointer[T]()` | Null pointer |
 | `static_assert(cond)` | `comptime assert cond` | Compile-time assert |
 | `sizeof(T)` | `size_of[T]()` | Compile-time size (`from sys import size_of`) |
@@ -364,7 +364,7 @@ fn main() raises:
     var b = ctx.enqueue_create_buffer[DType.float32](n)
     var c = ctx.enqueue_create_buffer[DType.float32](n)
 
-    ctx.enqueue_function[vector_add_kernel](
+    ctx.enqueue_function[vector_add_kernel, vector_add_kernel](
         a.unsafe_ptr(), b.unsafe_ptr(), c.unsafe_ptr(), n,
         grid_dim=(n // 256 + 1,), block_dim=(256,),
     )

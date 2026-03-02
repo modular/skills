@@ -444,7 +444,7 @@ comptime WARP_GROUP_SIZE = 128  # 4 warps
 ```
 
 **Notes:**
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - SM90 WGMMA patterns (H100/Hopper) are stable in v26.1+
 - SM100 UMMA/TCGEN05 patterns (Blackwell) added in v26.2+ nightly
 - LayoutTensor and TensorCoreAsync wrappers are available in v26.1+

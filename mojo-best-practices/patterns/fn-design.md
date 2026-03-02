@@ -627,7 +627,7 @@ comptime MAX_SIZE_2: Int = 2048
 **Notes:**
 - Use `var` for ownership transfer arguments, `deinit` for destructors/move constructors
 - Use `mut` for mutable references
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - `raises` syntax remains unchanged between versions
 - Inlining decorators (`@always_inline`, `@no_inline`) are stable across versions
 

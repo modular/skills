@@ -50,7 +50,7 @@ Complete guide for porting Rust code to Mojo with side-by-side examples. Both la
 | `use std::io;` | `from io import ...` | Import |
 | `mod foo;` | Module files | File = module |
 | `pub fn foo()` | `fn foo()` | Public by default |
-| `type Alias = Vec<i32>;` | `alias Alias = List[Int]` | Type alias |
+| `type Alias = Vec<i32>;` | `comptime Alias = List[Int]` | Type alias |
 | `todo!()` | `pass` or `...` | Placeholder |
 | `unreachable!()` | `abort()` | Unreachable |
 | `assert!(cond);` | `debug_assert(cond)` | Runtime assert |
@@ -104,7 +104,7 @@ Complete guide for porting Rust code to Mojo with side-by-side examples. Both la
 | `trait Foo { fn bar(&self); }` | `trait Foo: fn bar(self):` | Similar |
 | `trait Foo: Bar { }` | `trait Foo(Bar):` | Trait inheritance |
 | `where T: Display + Clone` | `[T: Display & Clone]` | Combined constraints |
-| `enum Color { Red, Blue }` | `alias Red = 0; alias Blue = 1` | No sum types yet |
+| `enum Color { Red, Blue }` | `comptime Red = 0; comptime Blue = 1` | No sum types yet |
 | `enum Result<T, E> { Ok(T), Err(E) }` | `Variant[T, E]` or `raises` | Different approach |
 | `match x { ... }` | `if`/`elif` chains | No pattern matching yet |
 
@@ -286,7 +286,7 @@ fn gpu_kernel(data: UnsafePointer[Float32], n: Int):
 fn main() raises:
     var ctx = DeviceContext()
     var buf = ctx.enqueue_create_buffer[DType.float32](1024)
-    ctx.enqueue_function[gpu_kernel](
+    ctx.enqueue_function[gpu_kernel, gpu_kernel](
         buf.unsafe_ptr(), 1024,
         grid_dim=(4,), block_dim=(256,),
     )

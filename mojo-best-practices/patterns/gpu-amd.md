@@ -764,7 +764,7 @@ fn select_mfma_shape():
 ```
 
 **Notes:**
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - AMD MFMA instruction patterns are stable across versions
 - Schedule barriers (`schedule_group_barrier`, `AMDScheduleBarrierMask`) are PUBLIC via `gpu.sync`
 - `s_waitcnt` available in nightly (v26.2+)

@@ -116,7 +116,7 @@ int main() {
 # nocompile
 from gpu import global_idx
 from gpu.host import DeviceContext
-from memory import UnsafePointer, MutAnyOrigin, alloc
+from memory import UnsafePointer, alloc
 
 # GPU kernel — equivalent to __global__ void vector_add(...)
 fn vector_add(
@@ -854,7 +854,7 @@ from gpu.host import DeviceBuffer, DeviceContext, FuncAttribute
 from gpu.sync import barrier, syncwarp
 
 # === Memory ===
-from memory import UnsafePointer, MutAnyOrigin, alloc, stack_allocation, AddressSpace
+from memory import UnsafePointer, alloc, stack_allocation, AddressSpace
 from gpu.memory import external_memory, async_copy  # AddressSpace also available from gpu.memory
 
 # === Warp Operations ===

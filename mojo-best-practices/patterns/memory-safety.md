@@ -105,7 +105,6 @@ struct Container:
 
 ```mojo
 # Origin parameter syntax changed in nightly v26.2+
-from builtin.type_aliases import MutAnyOrigin, ImmutAnyOrigin
 
 struct Container:
     # GOOD: Explicit origin specification
@@ -289,7 +288,6 @@ When using `UnsafePointer` as a struct field, you MUST specify the full type wit
 ```mojo
 # nocompile
 from memory import UnsafePointer
-from builtin.type_aliases import MutAnyOrigin  # CRITICAL: Required import!
 
 # INCORRECT - will not compile:
 struct BadContainer:
@@ -441,8 +439,8 @@ fn reduction_kernel[dtype: DType](...):
 | Feature | Status | Notes |
 |---------|--------|-------|
 | **Heap allocation** | `from memory import alloc; alloc[T](n)` | Same syntax both versions |
-| **Type aliases** | `alias` or `comptime` | Both work; `comptime` preferred, compiler warns on `alias` |
-| **Origin imports** | `from builtin.type_aliases import MutAnyOrigin` | Unchanged |
+| **Type aliases** | `comptime` | `alias` is deprecated; use `comptime` |
+| **Origin types** | `MutAnyOrigin, ImmutAnyOrigin` | Prelude symbols — no import needed |
 | **OwnedPointer** | Available | Stable |
 | **ArcPointer** | Available | Stable |
 | `MutAnyOrigin` | `MutAnyOrigin` (v26.1+) | `MutableAnyOrigin` was renamed |
@@ -452,9 +450,8 @@ fn reduction_kernel[dtype: DType](...):
 
 ```mojo
 from memory import UnsafePointer, alloc
-from builtin.type_aliases import MutAnyOrigin
 
-# Both alias and comptime work in v26.1+
+# alias is deprecated; use comptime
 comptime Float32Ptr = UnsafePointer[mut=True, type=Float32, origin=MutAnyOrigin]
 
 fn allocate_buffer(size: Int) -> Float32Ptr:

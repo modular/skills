@@ -429,7 +429,7 @@ fn debug_computation(x: Float32) -> Float32:
 ```
 
 **Notes:**
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - Debugging methodology is stable across versions
 - `debug_assert` is stripped in release builds (stable behavior)
 - `comptime assert` for compile-time checks is stable

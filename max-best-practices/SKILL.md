@@ -1,38 +1,7 @@
 ---
 name: max-best-practices
-description: "MAX AI inference framework best practices from Modular. Use when deploying models with MAX Serve, building graphs with MAX Graph API, or optimizing inference performance. Covers multi-GPU, quantization, and production deployment. Supports both stable (v26.1.0.0.0) and nightly."
-license: Apache License v2.0 with LLVM Exceptions
-compatibility: "Requires MAX SDK (stable v26.1.0.0.0 or nightly). Multi-GPU requires NVIDIA Hopper+ (H100/H200/B200) or AMD MI300X. Container deployment requires Docker 24+ or Kubernetes 1.28+."
-metadata:
-  author: Modular Community
-  version: "3.2.2"
-  triggers:
-    - Deploy MAX model
-    - MAX Serve
-    - max serve
-    - MAX inference
-    - Multi-GPU inference
-    - MAX Graph
-    - MAX Engine
-    - MAX container
-    - OpenAI-compatible endpoint
-    - LLM serving
-    - Model deployment
-    - Create new MAX project
-    - Start a MAX project
-    - Initialize MAX project
-    - Install MAX
-  supported_versions:
-    stable: "26.1.0"
-    nightly: "nightly"
-  categories:
-    - serve
-    - multigpu
-    - engine
-    - graph
-    - model
-    - performance
-    - deployment
+description: "MAX AI inference framework best practices from Modular. Use when deploying models with MAX Serve, building MAX Graph pipelines, writing custom ops or kernels, or optimizing inference performance. Covers creating new MAX projects, installing MAX, serving LLMs with OpenAI-compatible endpoints, multi-GPU tensor parallelism, KV cache tuning, prefix caching, FP8/GPTQ quantization, LoRA, loading HuggingFace and GGUF models, streaming and structured output, Docker/Kubernetes deployment, monitoring, Apple Silicon, batch size tuning, and debugging MAX pipeline errors."
+argument-hint: "[topic or question]"
 globs: ["**/max.serve*", "**/max_serve*", "**/*max*.yaml", "**/*max*.yml"]
 alwaysApply: false
 ---
@@ -260,7 +229,7 @@ See [breaking changes](references/breaking-changes.md) for detailed API differen
 ### Complementary Skills
 
 **mojo-best-practices** – is a complementary skill for Mojo language and GPU kernel development.
-Available at: https://github.com/modular/modular/skills/mojo-best-practices
+Available at: https://github.com/modular/skills/tree/main/mojo-best-practices
 
 ### Cross-Skill: Building Custom Models with Mojo
 
@@ -372,13 +341,15 @@ max-best-practices/
 │   ├── multigpu-*.md      # Multi-GPU (1)
 │   ├── engine-*.md        # Engine (4)
 │   ├── graph-*.md         # Graph API (1)
-│   ├── model-*.md         # Model loading (1)
+│   ├── model-*.md         # Model loading (2)
 │   ├── perf-*.md          # Performance (1)
 │   └── deploy*.md         # Deployment (1)
 └── references/            # Detailed reference docs (loaded on-demand)
     ├── FULL_REFERENCE.md  # Complete pattern index (auto-generated)
     ├── ERROR_INDEX.md     # Error message → pattern lookup
     ├── SCENARIOS.md       # Task → pattern mapping
+    ├── ERROR_DISAMBIGUATION.md  # Similar error disambiguation
+    ├── GOTCHAS.md               # Common mistakes ❌→✅
     ├── breaking-changes.md
     ├── cli-flags.md
     └── installation.md
@@ -412,6 +383,7 @@ your-project/
 - **Start here**: This file (SKILL.md) - load first, then drill into patterns
 - **Common mistakes?** See [references/GOTCHAS.md](references/GOTCHAS.md) - ❌ wrong → ✅ correct examples
 - **Got an error?** See [references/ERROR_INDEX.md](references/ERROR_INDEX.md)
+- **Similar errors?** See [references/ERROR_DISAMBIGUATION.md](references/ERROR_DISAMBIGUATION.md)
 - **Task-based lookup?** See [references/SCENARIOS.md](references/SCENARIOS.md)
 - **CLI flags?** See [references/cli-flags.md](references/cli-flags.md)
 - **Installation?** See [references/installation.md](references/installation.md)

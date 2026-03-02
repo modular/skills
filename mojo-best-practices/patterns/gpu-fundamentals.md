@@ -124,7 +124,7 @@ fn main() raises:
     var num_blocks = (SIZE + BLOCK_SIZE - 1) // BLOCK_SIZE
 
     # Launch kernel — pass DeviceBuffer directly, not .unsafe_ptr()
-    ctx.enqueue_function_experimental[gpu_kernel](
+    ctx.enqueue_function[gpu_kernel, gpu_kernel](
         d_data,
         d_result,
         SIZE,
@@ -316,7 +316,7 @@ fn forward_with_native(x: UnsafePointer[Float32], size: Int) raises:
     ctx.enqueue_copy(d_x, x)
 
     # All kernel launches use native dispatch — pass DeviceBuffer directly
-    ctx.enqueue_function_experimental[my_kernel](d_x, size,
+    ctx.enqueue_function[my_kernel, my_kernel](d_x, size,
                                      grid_dim=blocks, block_dim=threads)
 
     # Single sync at end
@@ -503,7 +503,6 @@ GPU kernel parameters use origin annotations to declare read/write intent:
 
 ```mojo
 # nocompile
-from builtin.type_aliases import MutAnyOrigin, ImmutAnyOrigin
 
 fn my_kernel[dtype: DType, layout: Layout](
     output: LayoutTensor[dtype, layout, MutAnyOrigin],   # Read-write buffer
@@ -571,7 +570,7 @@ fn launch_2d_kernel() raises:
     var grid_y = (M + BLOCK_Y - 1) // BLOCK_Y  # Rows
 
     # Launch with 2D grid and block dimensions — pass DeviceBuffer directly
-    ctx.enqueue_function_experimental[matrix_kernel](
+    ctx.enqueue_function[matrix_kernel, matrix_kernel](
         d_C,
         d_A,
         d_B,
@@ -826,7 +825,7 @@ fn mixed_precision_dot[dtype: DType, N: Int](
 
 | Feature | v25.7 (old) | v26.1+ (stable) |
 |---------|-------------|-----------------|
-| **Constants** | `alias BLOCK = 256` | `alias` or `comptime` (both work) |
+| **Constants** | `alias BLOCK = 256` | `comptime BLOCK = 256` (`alias` is deprecated) |
 | **GPU imports** | `from gpu.id import ...` | `from gpu import ...` |
 | **AddressSpace** | `_GPUAddressSpace` or `AddressSpace` | `AddressSpace` preferred (`_GPUAddressSpace` is a deprecated alias) |
 | **DeviceContext** | `DeviceContext()` | `DeviceContext()` |
@@ -856,7 +855,7 @@ from gpu import thread_idx, block_idx, block_dim, grid_dim, global_idx, barrier
 from gpu.host import DeviceContext
 
 fn gpu_kernel():
-    comptime BLOCK_SIZE = 256  # Both alias and comptime work in v26.1+
+    comptime BLOCK_SIZE = 256  # alias is deprecated; use comptime
     var tid = global_idx.x   # Equivalent to: block_idx.x * block_dim.x + thread_idx.x
     # ...
 ```
@@ -878,7 +877,7 @@ var scan = prefix_sum[block_size=TPB](my_val)     # Inclusive prefix sum across 
 ```
 
 **Notes:**
-- Both `alias` and `comptime` work for compile-time constants in v26.1+
+- Use `comptime` for compile-time constants (`alias` is deprecated in nightly)
 - `_GPUAddressSpace` is a deprecated alias for `AddressSpace` in v26.1+; use `AddressSpace` directly (part of prelude)
 - Core APIs (`DeviceContext`, `barrier()`) are stable across all versions
 
@@ -894,7 +893,7 @@ var scan = prefix_sum[block_size=TPB](my_val)     # Inclusive prefix sum across 
 from time import perf_counter_ns
 
 var start = perf_counter_ns()
-ctx.enqueue_function[my_kernel](grid_dim, block_dim, args...)
+ctx.enqueue_function[my_kernel, my_kernel](grid_dim, block_dim, args...)
 ctx.synchronize()  # Wait for GPU to finish
 var elapsed_us = (perf_counter_ns() - start) / 1000
 print("Kernel time:", elapsed_us, "μs")
