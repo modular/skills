@@ -45,6 +45,7 @@ The following import paths are **deprecated** in v26.1.0.0.0 (still work with wa
 | `from gpu.semaphore import Semaphore` | `from gpu.sync.semaphore import Semaphore` |
 
 **Recommended pattern:**
+
 ```mojo
 # v26.1.0.0.0+ recommended:
 from gpu import thread_idx, block_idx, block_dim, grid_dim, barrier
@@ -95,7 +96,6 @@ var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED](
 | `borrowed` keyword | Does not exist - use `read` (immutable) or `mut` (mutable) |
 | `ref self` in `__getitem__` | `mut self` for mutable self reference |
 | `List[T]` elements | Elements must implement `Copyable` trait to be stored |
-
 
 ## vnightly Changes (v26.2.0.dev2026030105+)
 
@@ -179,7 +179,6 @@ Move and copy constructors have been renamed. Legacy names still compile but are
 | `uninit_move_n()`, `uninit_copy_n()`, `destroy_n()` | Bulk memory operations in memory module |
 | Iterator combinators | `cycle()`, `take_while[]`, `drop_while[]` added to iterators |
 | `ConditionalType` | New `utils/type_functions` module with conditional type selection |
-
 
 ## v24.1 Changes
 
@@ -630,7 +629,7 @@ Move and copy constructors have been renamed. Legacy names still compile but are
 
 | Feature | Description | Example |
 |---------|-------------|--------|
-| `variadics` | `VariadicList`, `VariadicListMem`, and `VariadicPack` mov... | |
+| `variadics` | `VariadicList`, and `VariadicPack` mov... | |
 | `Python.str()` | `Stringable`. Instead, the `PythonObject.__str__()` metho... | |
 | `def_function()` | A new `def_function()` API was added to `PythonModuleBuil... | |
 | `symmetrical` | The `math.isclose()` function now supports both symmetric... | |
@@ -857,6 +856,7 @@ fn main():
 ```
 
 **Use cases:**
+
 - Serialization frameworks (JSON, MessagePack)
 - Debug printing utilities
 - Compile-time validation of struct layouts
@@ -908,6 +908,7 @@ struct MyIter(Iterator):
 ```
 
 **How for-loops work in Mojo:**
+
 1. Call `__iter__()` to get an `Iterator`
 2. Call `__next__()` on the iterator
 3. If `__next__()` returns a value, bind it and execute the loop body
@@ -992,6 +993,7 @@ fn main():
 > **Current status:** The `@register_passable("trivial")` decorator has been fully replaced by the `TrivialRegisterPassable` trait. There are 0 occurrences of the old decorator in the current stdlib.
 
 **Old syntax (replaced):**
+
 ```mojo
 # nocompile - deprecated
 @register_passable("trivial")
@@ -1001,6 +1003,7 @@ struct Point:
 ```
 
 **New syntax:**
+
 ```mojo
 struct Point(TrivialRegisterPassable, Copyable):
     var x: Float32
@@ -1008,11 +1011,13 @@ struct Point(TrivialRegisterPassable, Copyable):
 ```
 
 **Size guidelines for TrivialRegisterPassable:**
+
 - Ideal: 2-4 machine words (16-32 bytes on 64-bit)
 - Maximum recommended: ~48 bytes (6 machine words)
 - Larger types: Use normal structs with `Copyable` + `Movable`
 
 **When to use TrivialRegisterPassable:**
+
 - Small fixed-size types with no heap allocations
 - Types that should be passed in registers (no pointer indirection)
 - Types with no lifecycle requirements (no `__del__` needed)
@@ -1041,6 +1046,7 @@ The following are reserved keywords and cannot be used as parameter or variable 
 | `in` | Membership testing | `input`, `data`, `value` |
 
 **`out` is reserved** - Cannot be used as a parameter name:
+
 ```mojo
 # WRONG: fn process(out: Buffer) - will not compile
 # CORRECT: fn process(result: Buffer)
@@ -1052,6 +1058,7 @@ fn my_kernel(output: Tensor, input: Tensor)  # OK
 ```
 
 **`match` is reserved** - Cannot be used as a variable name:
+
 ```mojo
 # WRONG: var match = regex_search(pattern, text)
 # CORRECT: var match_result = regex_search(pattern, text)
@@ -1060,6 +1067,7 @@ fn my_kernel(output: Tensor, input: Tensor)  # OK
 ### No Global Variables
 
 Module-level `var` declarations are NOT supported:
+
 ```mojo
 # WRONG: var global_counter: Int = 0
 # CORRECT: Encapsulate state in structs and pass explicitly
@@ -1068,6 +1076,7 @@ Module-level `var` declarations are NOT supported:
 ### UnsafePointer in Struct Fields
 
 Must use full type specification with imports:
+
 ```mojo
 from builtin.type_aliases import MutAnyOrigin
 
