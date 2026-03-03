@@ -1,9 +1,10 @@
 ---
 name: max-best-practices
 description: "MAX AI inference framework best practices from Modular. Use when deploying models with MAX Serve, building MAX Graph pipelines, writing custom ops or kernels, or optimizing inference performance. Covers creating new MAX projects, installing MAX, serving LLMs with OpenAI-compatible endpoints, multi-GPU tensor parallelism, KV cache tuning, prefix caching, FP8/GPTQ quantization, LoRA, loading HuggingFace and GGUF models, streaming and structured output, Docker/Kubernetes deployment, monitoring, Apple Silicon, batch size tuning, and debugging MAX pipeline errors."
-argument-hint: "[topic or question]"
-globs: ["**/max.serve*", "**/max_serve*", "**/*max*.yaml", "**/*max*.yml"]
-alwaysApply: false
+metadata:
+  argument-hint: "[topic or question]"
+  globs: "**/max.serve*, **/max_serve*, **/*max*.yaml, **/*max*.yml"
+  alwaysApply: "false"
 ---
 
 

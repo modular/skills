@@ -1,9 +1,10 @@
 ---
 name: mojo-best-practices
 description: "Mojo programming best practices. Use when writing, reviewing, debugging, or optimizing Mojo code. Covers creating new Mojo projects, installing Mojo, memory safety and ownership errors (use of moved value), GPU kernels (NVIDIA SM90/SM100 tensor cores, Apple Metal, AMD), LayoutTensor, SIMD vectorization, parallelization, BLAS/FFI, struct design, testing, benchmarking, and porting from Python, C++, Rust, or CUDA to Mojo."
-argument-hint: "[topic or question]"
-globs: ["**/*.mojo", "**/*.🔥"]
-alwaysApply: false
+metadata:
+  argument-hint: "[topic or question]"
+  globs: "**/*.mojo, **/*.🔥"
+  alwaysApply: "false"
 ---
 
 
