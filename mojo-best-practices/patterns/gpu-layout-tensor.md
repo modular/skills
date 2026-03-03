@@ -132,11 +132,75 @@ from layout import LayoutTensor, Layout
 
 fn example() raises:
     var ctx = DeviceContext()
-    var buf = ctx.enqueue_create_buffer[DType.float32](1024)
 
-    # Wrap buffer with 1D layout
-    var tensor = LayoutTensor[DType.float32, Layout.row_major(1024), MutAnyOrigin](buf)
+    # Preferred: derive buffer size from the layout — they can never go out of sync
+    comptime layout = Layout.row_major(32, 32)
+    var buf = ctx.enqueue_create_buffer[DType.float32](comptime (layout.size()))
+
+    # Wrap buffer with layout
+    var tensor = LayoutTensor[DType.float32, layout](buf)
 ```
+
+> **Best practice:** Use `comptime (layout.size())` for buffer allocation instead of manually computing `rows * cols`. This ensures the buffer size and layout dimensions are always consistent.
+
+---
+
+## Passing LayoutTensor to GPU Kernels
+
+**LayoutTensor constructed from a DeviceBuffer is directly passable as a GPU kernel parameter.** This is the preferred pattern over raw `UnsafePointer` — it provides type-safe multidimensional indexing with no manual stride math.
+
+```mojo
+# nocompile
+from gpu import thread_idx, block_idx, block_dim
+from gpu.host import DeviceContext
+from layout import Layout, LayoutTensor
+from math import ceildiv
+
+comptime dtype = DType.float32
+comptime ROWS = 512
+comptime COLS = 1024
+comptime layout = Layout.row_major(ROWS, COLS)
+
+# Kernel receives LayoutTensor directly — clean 2D indexing
+fn my_kernel(
+    output: LayoutTensor[dtype, layout, MutAnyOrigin],
+    input: LayoutTensor[dtype, layout, ImmutAnyOrigin],
+):
+    var row = block_idx.y * block_dim.y + thread_idx.y
+    var col = block_idx.x * block_dim.x + thread_idx.x
+    if row < UInt(ROWS) and col < UInt(COLS):
+        output[row, col] = rebind[Scalar[dtype]](input[row, col]) * Scalar[dtype](2.0)
+
+fn main() raises:
+    comptime BX = 16
+    comptime BY = 16
+    var ctx = DeviceContext()
+
+    # Allocate buffers and construct LayoutTensors on the host
+    var in_buf = ctx.enqueue_create_buffer[dtype](comptime (layout.size()))
+    var out_buf = ctx.enqueue_create_buffer[dtype](comptime (layout.size()))
+    var in_tensor = LayoutTensor[dtype, layout](in_buf)
+    var out_tensor = LayoutTensor[dtype, layout](out_buf)
+
+    # Pass LayoutTensors directly to the kernel — no UnsafePointer needed
+    ctx.enqueue_function[my_kernel, my_kernel](
+        out_tensor, in_tensor,
+        grid_dim=(ceildiv(COLS, BX), ceildiv(ROWS, BY)),
+        block_dim=(BX, BY),
+    )
+
+    # Read results with map_to_host() context manager
+    ctx.synchronize()
+    with out_buf.map_to_host() as host_buf:
+        var host_tensor = LayoutTensor[dtype, layout](host_buf)
+        # ... use host_tensor ...
+```
+
+**Key points:**
+- Construct LayoutTensor from DeviceBuffer on the host side
+- Pass it directly to `enqueue_function` — no need to extract raw pointers
+- Use `MutAnyOrigin` for output tensors, `ImmutAnyOrigin` for read-only inputs
+- The kernel signature receives `LayoutTensor[dtype, layout, Origin]` directly
 
 **From a custom op output (rebind required):**
 ```mojo

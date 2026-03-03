@@ -48,12 +48,15 @@ GPU programming in Mojo provides 10-100x speedups for parallel workloads. This p
 | `gpu.global_idx` | PUBLIC | Pre-computed global thread index (`block_dim * block_idx + thread_idx`) |
 | `gpu.barrier` (also `gpu.sync.barrier`) | PUBLIC | Block-level synchronization (both import paths work) |
 | `gpu.host.DeviceContext`, `gpu.host.DeviceBuffer` | PUBLIC | Device management |
+| `DeviceBuffer.map_to_host()` | PUBLIC | RAII device-to-host context manager |
 | `stack_allocation[N, T, address_space=AddressSpace.SHARED]()` | PUBLIC | Shared memory allocation |
 | `stack_allocation` with `AddressSpace.SHARED` | PUBLIC | Shared memory allocation (use `from memory import stack_allocation`) |
 | `memory.UnsafePointer` | PUBLIC | Standard library |
 | `sys.has_accelerator` | PUBLIC | System capability check |
 | `sys.is_nvidia_gpu`, `sys.is_amd_gpu`, `sys.is_apple_gpu` | PUBLIC | GPU vendor detection (compile-time) |
 | `LayoutTensor`, `Layout` | `from layout import LayoutTensor, Layout` | Type-safe tensor with compile-time layout |
+| `ComplexScalar`, `ComplexSIMD` | `from complex import ComplexScalar, ComplexSIMD` | Complex number types for GPU kernels |
+| `ceildiv` | `from math import ceildiv` | Ceiling division utility |
 
 > **Note:** All APIs listed above are available in the Mojo nightly toolchain (v26.2+). Code examples below are documentation snippets — adapt import paths and parameters for your use case.
 
@@ -93,6 +96,7 @@ Grid (entire kernel launch)
 
 from gpu import thread_idx, block_idx, block_dim, grid_dim, global_idx, barrier
 from gpu.host import DeviceContext
+from math import ceildiv
 from memory import UnsafePointer
 
 fn gpu_kernel(
@@ -120,8 +124,8 @@ fn main() raises:
     var d_data = ctx.enqueue_create_buffer[DType.float32](SIZE)
     var d_result = ctx.enqueue_create_buffer[DType.float32](SIZE)
 
-    # Calculate grid dimensions
-    var num_blocks = (SIZE + BLOCK_SIZE - 1) // BLOCK_SIZE
+    # Calculate grid dimensions using ceildiv (from math import ceildiv)
+    var num_blocks = ceildiv(SIZE, BLOCK_SIZE)
 
     # Launch kernel — pass DeviceBuffer directly, not .unsafe_ptr()
     ctx.enqueue_function[gpu_kernel, gpu_kernel](
@@ -135,6 +139,69 @@ fn main() raises:
 ```
 
 > **For element-wise operations**, prefer `algorithm.elementwise` over manual kernel launch — it handles grid/block sizing and striding automatically. See [`gpu-kernels.md`](gpu-kernels.md) for the idiomatic template. The manual pattern above is shown for educational purposes.
+
+### Preferred: LayoutTensor Kernel Pattern
+
+**LayoutTensor is directly passable to GPU kernels** when constructed from a DeviceBuffer. This is the preferred pattern — it provides type-safe multidimensional indexing and eliminates manual stride calculations.
+
+```mojo
+# nocompile
+from gpu import thread_idx, block_idx, block_dim
+from gpu.host import DeviceContext
+from layout import Layout, LayoutTensor
+from math import ceildiv
+
+# Define layout and dtype aliases at module level
+comptime float_dtype = DType.float32
+comptime int_dtype = DType.int32
+comptime HEIGHT = 512
+comptime WIDTH = 1024
+comptime layout = Layout.row_major(HEIGHT, WIDTH)
+
+# GPU kernel with LayoutTensor parameter — clean 2D indexing
+fn scale_kernel(
+    output: LayoutTensor[float_dtype, layout, MutAnyOrigin],
+    input: LayoutTensor[float_dtype, layout, ImmutAnyOrigin],
+    scale: Float32,
+):
+    var row = block_idx.y * block_dim.y + thread_idx.y
+    var col = block_idx.x * block_dim.x + thread_idx.x
+    if row < UInt(HEIGHT) and col < UInt(WIDTH):
+        output[row, col] = rebind[Scalar[float_dtype]](input[row, col]) * scale
+
+fn main() raises:
+    comptime BLOCK_X = 16
+    comptime BLOCK_Y = 16
+
+    var ctx = DeviceContext()
+
+    # Allocate buffer using layout.size() — stays in sync with layout definition
+    var in_buf = ctx.enqueue_create_buffer[float_dtype](comptime (layout.size()))
+    var out_buf = ctx.enqueue_create_buffer[float_dtype](comptime (layout.size()))
+
+    # Construct LayoutTensors from DeviceBuffers — passed directly to kernel
+    var in_tensor = LayoutTensor[float_dtype, layout](in_buf)
+    var out_tensor = LayoutTensor[float_dtype, layout](out_buf)
+
+    ctx.enqueue_function[scale_kernel, scale_kernel](
+        out_tensor, in_tensor, Float32(2.0),
+        grid_dim=(ceildiv(WIDTH, BLOCK_X), ceildiv(HEIGHT, BLOCK_Y)),
+        block_dim=(BLOCK_X, BLOCK_Y),
+    )
+
+    # Read results back safely with map_to_host()
+    ctx.synchronize()
+    with out_buf.map_to_host() as host_buf:
+        var host_tensor = LayoutTensor[float_dtype, layout](host_buf)
+        # ... use host_tensor ...
+```
+
+> **Key patterns shown above:**
+> - **LayoutTensor as kernel parameter** — constructed from DeviceBuffer, passed directly (no raw pointer needed)
+> - **`comptime (layout.size())`** — buffer size derived from layout, never goes out of sync
+> - **`comptime` dtype aliases** — centralize type definitions for easy precision changes
+> - **`ceildiv`** — stdlib utility for grid dimension calculation (replaces manual `(N + B - 1) // B`)
+> - **`map_to_host()`** — safe RAII device-to-host copy (replaces manual `alloc`/`enqueue_copy`/`free`)
 
 ---
 
@@ -323,6 +390,34 @@ fn forward_with_native(x: UnsafePointer[Float32], size: Int) raises:
     ctx.synchronize()
     ctx.enqueue_copy(x, d_x)
 ```
+
+### Device-to-Host Transfer: `map_to_host()` (Preferred)
+
+**When:** Reading GPU results back to the host
+
+The `map_to_host()` context manager provides safe RAII device-to-host transfer. It replaces the manual `alloc` + `enqueue_copy` + `free()` pattern.
+
+**Preferred — `map_to_host()` (safe, RAII):**
+```mojo
+# nocompile
+ctx.synchronize()
+with dev_buf.map_to_host() as host_buf:
+    var host_tensor = LayoutTensor[dtype, layout](host_buf)
+    # ... use host_tensor — automatic cleanup on context exit
+```
+
+**Alternative — manual copy (when you need the raw pointer outside the `with` block):**
+```mojo
+# nocompile
+from memory import alloc
+var h_output = alloc[Float32](n)
+ctx.enqueue_copy(h_output, d_output)
+ctx.synchronize()
+# ... use h_output ...
+h_output.free()  # Manual cleanup required
+```
+
+> **Prefer `map_to_host()`** — it prevents leaks on early return or exception and composes naturally with LayoutTensor. Use `enqueue_copy` only when you need the raw pointer for extended processing.
 
 ### Buffer Pooling
 
@@ -527,6 +622,7 @@ Using `ImmutAnyOrigin` for inputs enables compiler optimizations and catches acc
 
 from gpu import thread_idx, block_idx, block_dim
 from gpu.host import DeviceContext
+from math import ceildiv
 
 fn matrix_kernel(
     C: UnsafePointer[Float32, MutAnyOrigin],
@@ -566,8 +662,8 @@ fn launch_2d_kernel() raises:
     var d_C = ctx.enqueue_create_buffer[DType.float32](M * N)
 
     # Calculate 2D grid dimensions
-    var grid_x = (N + BLOCK_X - 1) // BLOCK_X  # Columns
-    var grid_y = (M + BLOCK_Y - 1) // BLOCK_Y  # Rows
+    var grid_x = ceildiv(N, BLOCK_X)  # Columns
+    var grid_y = ceildiv(M, BLOCK_Y)  # Rows
 
     # Launch with 2D grid and block dimensions — pass DeviceBuffer directly
     ctx.enqueue_function[matrix_kernel, matrix_kernel](
@@ -687,6 +783,27 @@ comptime _is_metal = _accelerator_arch() in (
 var val = Scalar[DType.float32](1.0)  # Explicit construction
 var flag = Scalar[dtype](1.0) if condition else Scalar[dtype](0.0)  # With generic dtype
 ```
+
+### Complex Number Types for GPU Kernels
+
+For scientific computing (Mandelbrot, FFT, signal processing), use `ComplexScalar` and `ComplexSIMD` instead of manually tracking real/imaginary components:
+
+```mojo
+# nocompile
+from complex import ComplexScalar, ComplexSIMD
+
+# GPU-compatible complex arithmetic
+var c = ComplexScalar[DType.float32](cx, cy)
+var z = ComplexScalar[DType.float32](0, 0)
+
+# Clean methods instead of manual arithmetic:
+var norm = z.squared_norm()        # z.real*z.real + z.imag*z.imag
+z = z.squared_add(c)               # z*z + c (fused, no temp variables)
+var in_set = norm.le(4.0)          # SIMD-friendly comparison
+iters = in_set.select(iters + 1, iters)  # Masked SIMD update
+```
+
+`ComplexScalar[dtype]` is a scalar complex number. `ComplexSIMD[dtype, width]` is a SIMD-width complex vector for vectorized kernels.
 
 ### LayoutTensor Element Type Mismatch
 

@@ -50,6 +50,7 @@ Complete guide for porting CUDA kernels to Mojo with side-by-side examples, from
 | `extern __shared__ float smem[]` | `external_memory[Float32, address_space=AddressSpace.SHARED]()` | `from gpu.memory import external_memory` (**NVIDIA only** -- not supported on Apple GPU/Metal) |
 | `cudaMalloc(&ptr, size)` | `ctx.enqueue_create_buffer[dtype](count)` | `from gpu.host import DeviceContext` |
 | `cudaMemcpy(dst, src, size, ...)` | `ctx.enqueue_copy(dst, src)` | `from gpu.host import DeviceContext` |
+| `cudaMemcpy(h, d, ..., D2H)` | `with dev_buf.map_to_host() as host_buf:` (preferred) | RAII context manager, auto-cleanup |
 | `cudaFree(ptr)` | Automatic (RAII) or `buffer.free()` | — |
 
 ### Synchronization
@@ -76,6 +77,7 @@ Complete guide for porting CUDA kernels to Mojo with side-by-side examples, from
 | `__nv_bfloat16` | `BFloat16` |
 | `int` | `Int` or `Int32` |
 | `unsigned int` | `UInt` or `UInt32` |
+| `cuComplex` / manual `real`/`imag` | `ComplexScalar[float_dtype]` | `from complex import ComplexScalar, ComplexSIMD` |
 
 ---
 
@@ -116,6 +118,7 @@ int main() {
 # nocompile
 from gpu import global_idx
 from gpu.host import DeviceContext
+from math import ceildiv
 from memory import UnsafePointer, alloc
 
 # GPU kernel — equivalent to __global__ void vector_add(...)
@@ -155,7 +158,7 @@ def main():
         # Launch kernel: <<<grid_dim, block_dim>>>
         ctx.enqueue_function[vector_add, vector_add](
             d_a, d_b, d_c, n,
-            grid_dim=(n // block_dim,),
+            grid_dim=(ceildiv(n, block_dim),),
             block_dim=(block_dim,),
         )
 
@@ -182,6 +185,22 @@ def main():
 | Memory copy | `cudaMemcpy(dst, src, bytes, direction)` | `ctx.enqueue_copy(dst, src)` — direction inferred |
 | Kernel launch | `<<<grid, block>>>` | Named parameters: `grid_dim=..., block_dim=...` |
 | Type safety | Manual `sizeof(float)` | Compile-time `DType.float32` |
+
+### Device-to-Host Transfer: `map_to_host()` (Preferred)
+
+The `map_to_host()` context manager provides safe RAII device-to-host transfer — no manual `alloc`/`free` required:
+
+```mojo
+# nocompile
+# Instead of: var h_output = alloc[Float32](n); ctx.enqueue_copy(h_output, d_buf); h_output.free()
+# Use:
+ctx.synchronize()
+with d_buf.map_to_host() as host_buf:
+    var host_tensor = LayoutTensor[DType.float32, layout](host_buf)
+    # ... use host_tensor — automatic cleanup on context exit
+```
+
+Use `enqueue_copy` when you need the raw pointer for further processing outside the `with` block.
 
 > **Production note:** For simple element-wise kernels like `vector_add`, prefer `algorithm.elementwise` over manual `enqueue_function` — it handles grid/block sizing automatically. The manual form above is shown to illustrate the CUDA-to-Mojo mapping.
 
@@ -219,6 +238,7 @@ from gpu import thread_idx, block_idx, block_dim, global_idx
 from gpu.host import DeviceContext, FuncAttribute
 from gpu.memory import external_memory
 from gpu.sync import barrier
+from math import ceildiv
 from memory import UnsafePointer
 
 fn neighbor_sum(input: UnsafePointer[Float32, MutAnyOrigin], output: UnsafePointer[Float32, MutAnyOrigin], n: Int):
@@ -261,7 +281,7 @@ def main():
 
         ctx.enqueue_function[neighbor_sum, neighbor_sum](
             d_in, d_out, n,
-            grid_dim=(n // block_size,),
+            grid_dim=(ceildiv(n, block_size),),
             block_dim=(block_size,),
             shared_mem_bytes=smem_bytes,
             func_attribute=FuncAttribute.MAX_DYNAMIC_SHARED_SIZE_BYTES(smem_bytes),
@@ -714,6 +734,7 @@ from gpu.intrinsics import warpgroup_reg_alloc, warpgroup_reg_dealloc
 from layout import Layout, LayoutTensor
 from layout.tensor_core_async import TensorCoreAsync, warpgroup_fence
 from layout.tma_async import TMATensorTile, SharedMemBarrier
+from math import ceildiv
 
 struct HopperGEMM[
     # Type parameters
@@ -744,7 +765,7 @@ struct HopperGEMM[
         # 2. Determine this block's tile coordinates
         var block_m = block_idx.x
         var block_n = block_idx.y
-        var num_k_tiles = (K + BK - 1) // BK
+        var num_k_tiles = ceildiv(K, BK)
 
         # 3. Split warp groups into roles
         var wg_id = thread_idx.x // 128  # 128 threads per warp group
@@ -835,10 +856,18 @@ var smem_ptr = stack_allocation[
 fn kernel(
     data: UnsafePointer[Float32, MutAnyOrigin],  # Pointers need MutAnyOrigin for DevicePassable
     n: Int,                                       # Scalars are device-passable
-    # LayoutTensor is NOT directly passable — pass pointer + construct inside kernel
 ):
     ...
+
+# Preferred: LayoutTensor IS directly passable to GPU kernels
+# Construct from DeviceBuffer on host, pass directly — no raw pointer needed
+fn kernel_lt(
+    tensor: LayoutTensor[DType.float32, layout, MutAnyOrigin],  # Clean 2D indexing
+):
+    tensor[row, col] = result  # No manual index math
 ```
+
+> **Prefer LayoutTensor over UnsafePointer** for kernel parameters. LayoutTensor constructed from a DeviceBuffer is directly passable — it provides type-safe multidimensional indexing and eliminates manual stride calculations.
 
 ---
 

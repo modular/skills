@@ -356,6 +356,31 @@ except e:
 
 ---
 
+### `String` Character Access Requires `byte=` Keyword
+
+**❌ WRONG:** Indexing a string like Python
+```mojo
+# nocompile - Demonstrates anti-pattern
+var s = String("hello")
+var ch = s[0]  # Error: requires byte= keyword argument
+```
+
+**✅ CORRECT:** Index with `byte=` keyword for character access
+```mojo
+# For compile-time strings:
+comptime sr = StringSlice(".,c8M@jawrpogOQEPGJ")
+var ch = sr[byte=idx]  # Access individual byte by index
+print(ch, end="")      # Directly printable
+
+# For runtime strings:
+var s = String("hello")
+var ch2 = s.as_string_slice()[byte=0]  # Access via StringSlice
+```
+
+**Why?** Mojo strings are UTF-8, so byte indexing is explicit via the `byte=` keyword argument. This prevents accidental mid-codepoint indexing. Use `StringSlice` (not `String`) for compile-time string constants — it avoids heap allocation and works directly with `byte=`.
+
+---
+
 ## Testing & Benchmarks
 
 ### Test Imports Must Be Top-Level with `TestSuite.discover_tests`
@@ -425,6 +450,44 @@ Also: `BenchConfig` is not `ImplicitlyCopyable` — pass to `Bench` with `^`: `B
 ---
 
 ## GPU Programming
+
+### Prefer LayoutTensor Over UnsafePointer for GPU Kernel Parameters
+
+**❌ WRONG:** Using raw `UnsafePointer` with manual index math for GPU kernels
+```mojo
+# nocompile - Demonstrates anti-pattern
+fn my_kernel(
+    data: UnsafePointer[Float32, MutAnyOrigin],
+    rows: Int, cols: Int,
+):
+    var row = block_idx.y * block_dim.y + thread_idx.y
+    var col = block_idx.x * block_dim.x + thread_idx.x
+    data[row * cols + col] = Float32(42.0)  # Manual stride math — error-prone!
+```
+
+**✅ CORRECT:** Use LayoutTensor constructed from DeviceBuffer — pass directly to kernel
+```mojo
+# nocompile
+from layout import Layout, LayoutTensor
+
+comptime layout = Layout.row_major(512, 1024)
+
+fn my_kernel(tensor: LayoutTensor[DType.float32, layout, MutAnyOrigin]):
+    var row = block_idx.y * block_dim.y + thread_idx.y
+    var col = block_idx.x * block_dim.x + thread_idx.x
+    tensor[row, col] = Float32(42.0)  # Clean 2D indexing — no manual math
+
+# Host side:
+var buf = ctx.enqueue_create_buffer[DType.float32](comptime (layout.size()))
+var tensor = LayoutTensor[DType.float32, layout](buf)
+ctx.enqueue_function[my_kernel, my_kernel](tensor, grid_dim=..., block_dim=...)
+```
+
+**Why?** LayoutTensor constructed from a DeviceBuffer **is directly passable** to GPU kernels. It provides type-safe multidimensional indexing, eliminates manual stride calculations, and catches shape mismatches at compile time.
+
+**See:** [`gpu-layout-tensor.md`](../patterns/gpu-layout-tensor.md) for complete patterns.
+
+---
 
 ### LayoutTensor Reads Need `rebind` (Most Common Error)
 
@@ -702,6 +765,8 @@ comptime SIZE2 = 128    # Also works
 | "would need to copy" / missing `^` | Missing transfer operator | [Missing Transfer](#missing--in-ownership-transfer) |
 | Slow GPU kernel | Uncoalesced access | [Uncoalesced Memory](#uncoalesced-memory-access) |
 | `@register_passable` deprecated | Use `TrivialRegisterPassable` trait | [Version-Specific](#version-specific) |
+| `String[0]` fails / no index access | Index using the `byte=` keyword | [String byte=](#string-character-access-requires-byte-keyword) |
+| Raw `UnsafePointer` in GPU kernel | Prefer LayoutTensor from DeviceBuffer | [Prefer LayoutTensor](#prefer-layouttensor-over-unsafepointer-for-gpu-kernel-parameters) |
 | "invalid use of mutating method on rvalue" | `as_c_string_slice()` on String | [FFI String unsafe_ptr](#stringunsafe_ptr-for-ffi-not-as_c_string_sliceunsafe_ptr) |
 | `StringSlice` passed to `String` param | `.strip()` / slicing returns `StringSlice` | [StringSlice vs String](#stringslice-vs-string--conversions-required) |
 | `Span[Byte]` passed to `List[UInt8]` param | `as_bytes()` returns Span, not List | [List vs Span](#listuint8-vs-spanbyte-from-as_bytes) |
