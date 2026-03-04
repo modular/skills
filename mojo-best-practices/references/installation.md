@@ -9,24 +9,27 @@ Install Mojo using pixi (recommended), uv, pip, or conda. Choose **stable** for 
 When the user wants to create a new Mojo project, interactively determine:
 1. **Project name** — ask if not specified
 2. **Environment manager** — Pixi (recommended) or uv
-3. **Channel** — stable (production) or nightly (latest features)
+3. **If uv**: **Project type** — full uv project (`uv init` + `uv add`, recommended) or quick uv environment (`uv venv` + `uv pip install`, lighter weight)
+4. **Channel** — stable (production) or nightly (latest features)
 
 Then follow the appropriate section below (Pixi or uv) to initialize the project.
-
-## Version Check
-
-```bash
-mojo --version                   # Direct check
-pixi list | grep mojo            # In pixi environment
-```
-
-**Current versions:** Stable v26.1.0.0.0 (Mojo 0.26.1.0.0) | Nightly v26.2 (Mojo 0.26.2)
 
 ---
 
 ## Pixi (Recommended)
 
-Pixi manages both Python and native dependencies in a reproducible environment.
+Pixi manages Python, Mojo, and other dependencies in a reproducible
+manner inside a controlled environment.
+
+First, determine if `pixi` is installed. If it is not available for use at the
+command line, install it with
+
+```bash
+curl -fsSL https://pixi.sh/install.sh | sh
+```
+
+You may need to place the `pixi` tool in the local shell environment after
+installation if it had not already been installed.
 
 ### Nightly
 
@@ -62,25 +65,49 @@ pixi add "mojo==0.26.1.0.0.0"
 
 ## uv
 
-uv is a fast Python package manager. Good for Python-only workflows.
+uv is a fast and very popular package manager, familiar to developers coming
+from a Python background. It also works well with Mojo projects.
 
-### Nightly
+### Nightly (project)
 
 ```bash
 uv init my-project && cd my-project
-uv venv && source .venv/bin/activate
+uv add mojo \
+  --index https://whl.modular.com/nightly/simple/ \
+  --prerelease allow
+```
+
+### Stable (project)
+
+```bash
+uv init my-project && cd my-project
+uv add mojo \
+  --extra-index-url https://modular.gateway.scarf.sh/simple/
+```
+
+### Nightly (quick environment)
+
+```bash
+mkdir my-project && cd my-project
+uv venv
 uv pip install mojo \
   --index https://whl.modular.com/nightly/simple/ \
   --prerelease allow
 ```
 
-### Stable
+### Stable (quick environment)
 
 ```bash
-uv init my-project && cd my-project
-uv venv && source .venv/bin/activate
+mkdir my-project && cd my-project
+uv venv
 uv pip install mojo \
   --extra-index-url https://modular.gateway.scarf.sh/simple/
+```
+
+When using `uv`, you can use `mojo` directly by working within the project environment:
+
+```bash
+ source .venv/bin/activate
 ```
 
 ---
@@ -133,8 +160,8 @@ If using MAX with custom Mojo kernels, versions must match:
 
 ```bash
 # Check alignment
-pip show modular | grep Version   # e.g., 26.2.0
-mojo --version                    # Must match major.minor (e.g., 0.26.2)
+uv pip show mojo | grep Version   # e.g., 0.26.2
+pixi run mojo --version           # Must match major.minor (e.g., 0.26.2)
 ```
 
 Mismatched versions cause kernel compilation failures. Always use the same channel (stable or nightly) for both.

@@ -17,11 +17,11 @@ Mojo best practices loaded (v5.3.1, 36 patterns across 13 categories).
 
 Here are 5 things I can help you with right now:
 
-1. Write a GPU kernel — NVIDIA tensor cores (SM90/SM100), AMD MFMA, or Apple Metal
-2. Port your code — from Python (10x-17,000x speedup), C++, Rust, or CUDA
-3. Optimize performance — SIMD vectorization (4-16x), parallelization, Apple BLAS (25-32x)
-4. Fix memory issues — ownership transfer, use-after-free, origin tracking
-5. Build a custom MAX op — @compiler.register, graph integration, multi-kernel pipelines
+1. Write GPU code — for NVIDIA, AMD (CDNA or RDNA), or Apple silicon GPUs
+2. Port your code — from Python, C++, Rust, or more
+3. Convert a CUDA kernel to Mojo - targeting any supported GPU
+4. Optimize performance of Mojo code — using techniques like SIMD vectorization
+5. Fix issues in Mojo code — syntax errors, memory safety, deprecated APIs
 
 Just ask naturally — "help me write a GPU kernel" or "port this Python to Mojo" works great.
 ```
