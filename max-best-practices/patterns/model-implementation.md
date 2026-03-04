@@ -67,7 +67,7 @@ Comprehensive patterns for implementing neural network models in MAX, including 
 | **Device handling** | `module.to(device)` | `DeviceRef` in constructors |
 | **Production use** | New — standalone models | All production pipeline models |
 | **MAX Serve** | Not yet used in pipeline models | Required for `max serve` |
-| **API reference** | [`max.nn`](https://docs.modular.com/max/api/python/nn/) | [`max.nn.module_v3`](https://docs.modular.com/max/api/python/nn/module_v3/) |
+| **API reference** | [`max.nn`](https://docs.modular.com/max/api/python/nn/) | [`max.experimental.nn](https://docs.modular.com/max/api/python/experimental/nn/) |
 
 **❌ WRONG:** Mixing tensor types across APIs
 
