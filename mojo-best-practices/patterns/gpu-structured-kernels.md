@@ -909,7 +909,7 @@ max/kernels/src/linalg/matmul/gpu/apple_structured/
 | Non-uniform pointer error | VGPR pointer where SGPR expected | Use `readfirstlane()` for uniform pointers |
 | Barrier deadlock | Wrong barrier type on AMD | Use `s_barrier()` for control-flow, `barrier()` for memory fence |
 | Slow SMEM access (16x) | Missing address space qualification | Use `ref[AddressSpace.SHARED] self` for SMEM methods |
-| Env var not working | Using `env_get_bool` for runtime flag | `env_get_bool` reads values at compile time and bakes them into the binary; cached `.mojopkg` files serve stale values. Use `getenv()` for runtime flags or `mojo -D FLAG=value` for compile-time defines |
+| Env var not working | Using `get_defined_bool` for runtime flag | `get_defined_bool` reads values at compile time and bakes them into the binary; cached `.mojopkg` files serve stale values. Use `getenv()` for runtime flags or `mojo -D FLAG=value` for compile-time defines |
 | Type mismatch in generic | Compiler can't prove type equality | Use `rebind[TargetType]()` for same-layout types |
 | Pointer element type error | Need to reinterpret pointer type | Use `bitcast` for pointer element conversion |
 | TMEM not deallocated | Missing dealloc barrier wait | Ensure MMA warp waits on dealloc barrier in __exit__ |
