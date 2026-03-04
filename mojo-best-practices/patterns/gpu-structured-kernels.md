@@ -992,19 +992,4 @@ max/kernels/src/linalg/matmul/gpu/apple_structured/
 
 > **Note:** Apple Metal structured kernel support is in active development. The directory currently contains only the module init file. The structured kernel patterns shown in the Apple Metal section above are design targets, not yet implemented as separate files.
 
-**Documentation (Internal):**
-```
-Kernels/cursor_docs/
-├── anatomy/
-│   └── anatomy_of_structured_kernels.md          # 1808 lines
-├── blog_series/
-│   ├── part1_why_structured_kernels.md          # Motivation
-│   ├── part2_three_pillars.md                   # Component details
-│   ├── part3_platform_implementations.md         # Platform specifics
-│   └── part4_composition_unification.md          # Extensibility
-└── sm100/
-    ├── sm100_structured_architecture.md          # Implementation guide
-    └── structured_kernel_porting_recipe.md
-```
-
 **Key Insight:** The structured kernel architecture demonstrates that maintainable GPU code with zero runtime overhead is achievable through careful abstraction design. The patterns shown here are language-agnostic and applicable to any GPU kernel development.
