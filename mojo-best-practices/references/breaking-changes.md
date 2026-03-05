@@ -96,7 +96,7 @@ var shared = stack_allocation[1024, Float32, address_space=AddressSpace.SHARED](
 | `ref self` in `__getitem__` | `mut self` for mutable self reference |
 | `List[T]` elements | Elements must implement `Copyable` trait to be stored |
 
-## vnightly Changes (v26.2.0.dev2026030205+)
+## vnightly Changes (v26.2.0.dev2026030405+)
 
 ### Deprecations (NOW ACTIVE in Nightly)
 
