@@ -58,6 +58,22 @@ the needed details upfront for such a project (working against nightly or
 stable, what package manager to use, etc.) or your agent will prompt you for
 any missing information.
 
+### `mojo-syntax`
+
+[This skill](mojo-syntax/SKILL.md) adjusts the pretrained behavior of many
+coding models around generating Mojo code to overcome incorrect assumptions and
+allow them to generate correct modern Mojo syntax. This skill should be hooked
+in whenever an agent is writing Mojo code.
+
+### `mojo-gpu-fundamentals`
+
+[This skill](mojo-gpu-fundamentals/SKILL.md) builds upon the fundamentals in
+`mojo-syntax` and makes sure that the correct modern patterns for programming
+GPUs using Mojo are followed. It is activated when Mojo code targeting an
+accelerator is being generated. This skill does not go into
+architecture-specific optimizations, but covers general patterns of how GPUs
+are programmed using Mojo.
+
 ## Examples
 
 Once these skills are installed, you can use them for many common tasks.

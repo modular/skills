@@ -13,7 +13,7 @@ The options to determine are:
 2. **Type of project** — Mojo or MAX (infer from context if the user said "Mojo project" or "MAX project")
 3. **Environment manager** — Pixi (recommended) or uv
 4. **If uv**: **UV project type** — full uv project (`uv init` + `uv add`, recommended) or quick uv environment (`uv venv` + `uv pip install`, lighter weight)
-5. **Channel** — stable (production) or nightly (latest features)
+5. **Channel** — nightly (latest features, recommended) or stable (production) 
 
 Then follow the appropriate section below (Pixi or uv) to initialize the
 project and choose `max` or `mojo` as appropriate. For stable versions in the
