@@ -22,7 +22,7 @@ npx skills add modular/skills
 Individual skills can also be installed in isolation:
 
 ```bash
-npx skills add modular/skills --skill mojo-best-practices
+npx skills add modular/skills --skill new-modular-project
 ```
 
 This will install the latest version of the Modular skills into the appropriate
@@ -41,30 +41,22 @@ Clone this repository:
 git clone https://github.com/modular/skills.git
 ```
 
-and then copy or symbolically link this into the relevant location in your AI
-coding agent's configuration directory. For Claude Code, that would be
-`~/.claude/plugins/skills/`. Refer to your specific agent's documentation for
-where this lives.
+and then copy or symbolically link the individual skills into the relevant
+location in your AI coding agent's configuration directory. For Claude Code,
+that would be `~/.claude/skills/`. Refer to your specific agent's documentation
+for where this lives.
 
 ## Skills
 
-### `mojo-best-practices`
+### `new-modular-project`
 
-[This skill](mojo-best-practices/SKILL.md) gives your AI coding agent the right
-context for working with modern Mojo code, from current syntax to the best ways
-to maximize performance on accelerator hardware. Mojo is a rapidly-evolving
-language, and this skill helps agents stay up-to-date and develop functional
-and fast Mojo code.
-
-Dedicated instructions are also present for starting new Mojo projects from
-scratch, installing both stable and nightly versions of the language, and
-helping you to translate from other languages.
-
-### `max-best-practices`
-
-[This skill](max-best-practices/SKILL.md) provides the fundamentals for working
-with MAX, ranging from AI model construction to serving. This skill is in the
-early stages of development and testing.
+[This skill](new-modular-project/SKILL.md) provides a wizard-like experience
+for creating a new MAX or Mojo project, letting your AI agent install the right
+tools and modules you need to get started. This is triggered on asking your
+agent to help you begin a new Mojo or MAX project. You can either provide all
+the needed details upfront for such a project (working against nightly or
+stable, what package manager to use, etc.) or your agent will prompt you for
+any missing information.
 
 ## Examples
 
