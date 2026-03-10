@@ -74,6 +74,14 @@ accelerator is being generated. This skill does not go into
 architecture-specific optimizations, but covers general patterns of how GPUs
 are programmed using Mojo.
 
+### `mojo-python-interop`
+
+[This skill](mojo-python-interop/SKILL.md) pairs with `mojo-syntax` to handle
+cases where either Mojo works with Python or Python calls into Mojo. It is
+triggered when Python types are used Mojo or a Python module needs to interact
+with Mojo code. Many capabilities of Mojo - Python interoperability are fairly
+new, and existing coding agents don't handle them correctly without guidance.
+
 ## Examples
 
 Once these skills are installed, you can use them for many common tasks.

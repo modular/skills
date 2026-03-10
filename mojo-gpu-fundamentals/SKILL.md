@@ -125,6 +125,35 @@ fragment.copy_from(source_fragment)          # sync copy
 var val = tensor[row, col].cast[DType.float32]()    # cast element
 ```
 
+### Element type mismatch across layouts — use `rebind`
+
+`tensor[idx]` returns `SIMD[dtype, layout_expr]` where `layout_expr` is a compile-time expression derived from the layout. Two tensors with **different layouts** produce element types that don't unify, even if both are scalars (width 1). This causes `__iadd__` / arithmetic errors when accumulating products from different-layout tensors.
+
+```mojo
+# WRONG — fails when conv_kernel and s_data have different layouts:
+var sum: Scalar[dtype] = 0
+sum += conv_kernel[k] * s_data[idx]   # error: cannot convert element_type to Float32
+
+# CORRECT — rebind each element to Scalar[dtype]:
+var sum: Scalar[dtype] = 0
+var k_val = rebind[Scalar[dtype]](conv_kernel[k])
+var s_val = rebind[Scalar[dtype]](s_data[idx])
+sum += k_val * s_val
+```
+
+`rebind` is a builtin (no import needed). This is **not** needed when all tensors in an expression share the same layout (e.g., the matmul example where `sa` and `sb` have identical tile layouts).
+
+Also use `rebind` when reading/writing individual elements for scalar arithmetic or passing to helper functions — even with a single tensor:
+
+```mojo
+# Read element as plain scalar
+var val = rebind[Scalar[dtype]](tensor[idx])
+# Write scalar back to tensor
+tensor[idx] = rebind[tensor.element_type](computed_scalar)
+```
+
+`tensor.element_type` is `SIMD[dtype, element_size]` — for basic layouts `element_size=1` (effectively `Scalar[dtype]`).
+
 ## Memory management
 
 ```mojo

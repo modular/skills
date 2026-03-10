@@ -75,6 +75,8 @@ comptime for i in range(10):                 # compile-time loop
 comptime assert N > 0, "N must be positive"  # compile-time assertion
 ```
 
+**`comptime assert` must be inside a function body** — not at module/struct scope. Place them in `main()`, `__init__`, or the function that depends on the invariant.
+
 Inside structs, `comptime` defines associated constants and type aliases:
 
 ```mojo
@@ -154,7 +156,9 @@ from std.python import PythonObject
 import std.random
 ```
 
-Prelude auto-imports (no import needed): `Int`, `String`, `Bool`, `List`, `Dict`, `Optional`, `SIMD`, `Float32`, `Float64`, `UInt8`, `Pointer`, `UnsafePointer`, `Span`, `Error`, `DType`, `Writable`, `Writer`, `Copyable`, `Movable`, `Equatable`, `Hashable`, `print`, `range`, `len`, and more.
+Prelude auto-imports (no import needed): `Int`, `String`, `Bool`, `List`, `Dict`, `Optional`, `SIMD`, `Float32`, `Float64`, `UInt8`, `Pointer`, `UnsafePointer`, `Span`, `Error`, `DType`, `Writable`, `Writer`, `Copyable`, `Movable`, `Equatable`, `Hashable`, `rebind`, `print`, `range`, `len`, and more.
+
+`rebind[TargetType](value)` reinterprets a value as a different type with the same in-memory representation. Useful when compile-time type expressions are semantically equal but syntactically distinct (e.g., LayoutTensor element types — see GPU skill).
 
 ## `Writable` / `Writer` (replaces `Stringable`)
 
@@ -228,9 +232,16 @@ def main() raises:
 
 ## Collection literals
 
+`List` has **no variadic positional constructor**. Use bracket literal syntax:
+
 ```mojo
-var numbers = [1, 2, 3]             # List[Int]
-var scores = {"alice": 95, "bob": 87}  # Dict[String, Int]
+# WRONG — no List[T](elem1, elem2, ...) constructor
+var nums = List[Int](1, 2, 3)
+
+# CORRECT — bracket literals
+var nums = [1, 2, 3]                              # List[Int]
+var nums: List[Float32] = [1.0, 2.0, 3.0]         # explicit element type
+var scores = {"alice": 95, "bob": 87}              # Dict[String, Int]
 ```
 
 ## Common decorators
@@ -248,11 +259,48 @@ var scores = {"alice": 95, "bob": 87}  # Dict[String, Int]
 
 ## Numeric conversions — must be explicit
 
-No implicit conversions between numeric types. Use explicit constructors:
+No implicit conversions between numeric *variables*. Use explicit constructors:
 
 ```mojo
 var x = Float32(my_int) * scale    # CORRECT: Int → Float32
 var y = Int(my_uint)               # CORRECT: UInt → Int
+```
+
+**Literals are polymorphic** — `FloatLiteral` and `IntLiteral` auto-adapt to context:
+
+```mojo
+var a: Float32 = 0.5              # literal becomes Float32
+var b = Float32(x) * 0.003921    # literal adapts — no wrapping needed
+var v = SIMD[DType.float32, 4](1.0, 2.0, 3.0, 4.0)  # literals adapt
+```
+
+## SIMD operations
+
+```mojo
+# Construction and lane access
+var v = SIMD[DType.float32, 4](1.0, 2.0, 3.0, 4.0)
+v[0]                              # read lane → Scalar[DType.float32]
+v[0] = 5.0                        # write lane
+
+# Type cast
+v.cast[DType.uint32]()            # element-wise → SIMD[DType.uint32, 4]
+
+# Clamp (method)
+v.clamp(0.0, 1.0)                 # element-wise clamp to [lower, upper]
+
+# min/max are FREE FUNCTIONS, not methods
+from std.math import min, max
+min(a, b)                          # element-wise min (same-type SIMD args)
+max(a, b)                          # element-wise max
+
+# Element-wise ternary via bool SIMD
+var mask = (v > 0.0)              # SIMD[DType.bool, 4]
+mask.select(true_case, false_case) # picks per-lane
+
+# Reductions
+v.reduce_add()                     # horizontal sum → Scalar
+v.reduce_max()                     # horizontal max → Scalar
+v.reduce_min()                     # horizontal min → Scalar
 ```
 
 ## Strings
@@ -316,14 +364,6 @@ comptime SIMDFunc = fn[width: Int](Int) capturing[_] -> None
 # vectorize pattern
 from std.algorithm import vectorize
 vectorize[simd_width](size, my_closure)
-```
-
-## Python interop
-
-```mojo
-from std.python import PythonObject
-var np = Python.import_module("numpy")
-var arr = np.array([1, 2, 3])
 ```
 
 ## Type hierarchy
