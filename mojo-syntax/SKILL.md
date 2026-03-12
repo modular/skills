@@ -59,6 +59,9 @@ def compute(x: Int) -> Int:              # non-raising (compiler enforced)
 
 def load(path: String) raises -> String: # explicitly raising
     return open(path).read()
+
+def main() raises:                       # main usually raises → def raises
+    ...
 ```
 
 Note: existing stdlib code still uses `fn` during migration. New code should always use `def`.
@@ -131,7 +134,7 @@ struct Point(Copyable, Movable, Writable):
 # Trait composition with &
 comptime KeyElement = Copyable & Hashable & Equatable
 struct Node[T: Copyable & Writable]:
-    var value: T
+    var value: Self.T          # Self-qualify struct parameters
 
 # Parametric struct — // separates inferred from explicit params
 struct Span[mut: Bool, //, T: AnyType, origin: Origin[mut=mut]](
@@ -146,6 +149,38 @@ def __init__(out self, value: Int):
 ```
 
 The compiler synthesizes copy/move constructors when a struct conforms to `Copyable`/`Movable` and all fields support it.
+
+### Self-qualify struct parameters
+
+Inside a struct body, **always** use `Self.ParamName` — bare parameter names are errors:
+
+```mojo
+# WRONG — bare parameter access
+struct Container[T: Writable]:
+    var data: T                        # ERROR: use Self.T
+    def size(self) -> T:                # ERROR: use Self.T
+
+# CORRECT — Self-qualified
+struct Container[T: Writable]:
+    var data: Self.T
+    def size(self) -> Self.T:
+        return self.data
+```
+
+This applies to all struct parameters (`T`, `N`, `mut`, `origin`, etc.) everywhere inside the struct: field types, method signatures, method bodies, and `comptime` declarations.
+
+### Explicit copy / transfer
+
+Types not conforming to `ImplicitlyCopyable` (e.g., `Dict`, `List`) require explicit `.copy()` or ownership transfer `^`:
+
+```mojo
+# WRONG — implicit copy of non-ImplicitlyCopyable type
+var d = some_dict
+var result = MyStruct(headers=d)   # ERROR
+
+# CORRECT — explicit copy or transfer
+var result = MyStruct(headers=d.copy())  # or: headers=d^
+```
 
 ## Imports use `std.` prefix
 
@@ -200,11 +235,22 @@ For-in: `for item in col:` (immutable) / `for ref item in col:` (mutable).
 
 | Type | Use |
 |---|---|
-| `Pointer(to=val)` | Safe, non-nullable. Deref with `p[]`. |
-| `alloc[T](n)` / `UnsafePointer[T]` | Free function `alloc[T](count)` → `UnsafePointer`. `.free()` required. |
+| `Pointer[T, mut=M, origin=O]` | Safe, non-nullable. Deref with `p[]`. |
+| `alloc[T](n)` / `UnsafePointer` | Free function `alloc[T](count)` → `UnsafePointer`. `.free()` required. |
 | `Span(list)` | Non-owning contiguous view. |
 | `OwnedPointer[T]` | Unique ownership (like Rust `Box`). |
 | `ArcPointer[T]` | Reference-counted shared ownership. |
+
+`UnsafePointer` has an `origin` parameter that must be specified for struct fields. Use `MutExternalOrigin` for owned heap data (this is what stdlib `ArcPointer` uses):
+
+```mojo
+# Struct field — specify origin explicitly
+var _ptr: UnsafePointer[Self.T, MutExternalOrigin]
+
+# Allocate with alloc[]
+fn __init__(out self, size: Int):
+    self._ptr = alloc[Self.T](size)
+```
 
 ## Origin system (not "lifetime")
 
@@ -228,6 +274,18 @@ def test_my_feature() raises:
 
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()
+```
+
+## Dict iteration
+
+Dict entries are iterated directly — no `[]` deref:
+
+```mojo
+for entry in my_dict.items():
+    print(entry.key, entry.value)      # direct field access, NOT entry[].key
+
+for key in my_dict:
+    print(key, my_dict[key])
 ```
 
 ## Collection literals

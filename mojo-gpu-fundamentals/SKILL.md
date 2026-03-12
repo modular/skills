@@ -23,7 +23,7 @@ Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`, `__s
 
 | CUDA / What you'd guess | Mojo GPU |
 |---|---|
-| `__global__ void kernel(...)` | Plain `fn kernel(...)` — no decorator |
+| `__global__ void kernel(...)` | Plain `def kernel(...)` — no decorator |
 | `kernel<<<grid, block>>>(args)` | `ctx.enqueue_function[kernel, kernel](args, grid_dim=..., block_dim=...)` |
 | `cudaMalloc(&ptr, size)` | `ctx.enqueue_create_buffer[dtype](count)` |
 | `cudaMemcpy(dst, src, ...)` | `ctx.enqueue_copy(dst_buf, src_buf)` or `ctx.enqueue_copy(dst_buf=..., src_buf=...)` |
@@ -60,7 +60,7 @@ from layout import Layout, LayoutTensor
 Kernels are **plain functions** — no decorator, no special return type. Parameters use `MutAnyOrigin`:
 
 ```mojo
-fn my_kernel(
+def my_kernel(
     input: LayoutTensor[DType.float32, layout, MutAnyOrigin],
     output: LayoutTensor[DType.float32, layout, MutAnyOrigin],
     size: Int,                                    # scalar args are fine
@@ -70,7 +70,7 @@ fn my_kernel(
         output[tid] = input[tid] * 2
 ```
 
-- Kernel functions use `fn` (not `def`) — they cannot raise.
+- Kernel functions cannot raise.
 - Bounds check with `UInt(size)` since `global_idx.x` returns `UInt`.
 - Host-side helper functions accepting LayoutTensors use `...` for origin: `LayoutTensor[dtype, layout, ...]`.
 
@@ -358,7 +358,7 @@ comptime N = 1024
 comptime BLOCK = 256
 comptime layout = Layout.row_major(N)
 
-fn add_kernel(
+def add_kernel(
     a: LayoutTensor[dtype, layout, MutAnyOrigin],
     b: LayoutTensor[dtype, layout, MutAnyOrigin],
     c: LayoutTensor[dtype, layout, MutAnyOrigin],
@@ -414,7 +414,7 @@ comptime c_layout = Layout.row_major(M, N)
 comptime tile_a = Layout.row_major(TILE, TILE)
 comptime tile_b = Layout.row_major(TILE, TILE)
 
-fn matmul_kernel(
+def matmul_kernel(
     A: LayoutTensor[dtype, a_layout, MutAnyOrigin],
     B: LayoutTensor[dtype, b_layout, MutAnyOrigin],
     C: LayoutTensor[dtype, c_layout, MutAnyOrigin],
@@ -472,7 +472,7 @@ var vec_tensor = tensor.vectorize[1, 4]()  # group elements into SIMD[4]
 ## Reduction pattern
 
 ```mojo
-fn block_reduce(
+def block_reduce(
     output: UnsafePointer[Int32, MutAnyOrigin],
     input: UnsafePointer[Int32, MutAnyOrigin],
 ):
@@ -511,10 +511,10 @@ from std.benchmark import Bench, BenchConfig, Bencher, BenchId, BenchMetric, Thr
 
 @parameter
 @always_inline
-fn bench_fn(mut b: Bencher) capturing raises:
+def bench_fn(mut b: Bencher) capturing raises:
     @parameter
     @always_inline
-    fn launch(ctx: DeviceContext) raises:
+    def launch(ctx: DeviceContext) raises:
         ctx.enqueue_function[kernel, kernel](args, grid_dim=G, block_dim=B)
     b.iter_custom[launch](ctx)
 

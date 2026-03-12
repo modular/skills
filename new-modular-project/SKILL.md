@@ -31,11 +31,8 @@ Pixi manages Python, Mojo, and other dependencies in a reproducible
 manner inside a controlled environment.
 
 First, determine if `pixi` is installed. If it is not available for use at the
-command line, install it with
-
-```bash
-curl -fsSL https://pixi.sh/install.sh | sh
-```
+command line, install it using the latest instructions found on
+https://pixi.prefix.dev/latest/#installation
 
 You may need to place the `pixi` tool in the local shell environment after
 installation if it had not already been installed.
