@@ -312,7 +312,7 @@ var scores = {"alice": 95, "bob": 87}              # Dict[String, Int]
 | `@no_inline` | Prevent inline |
 | `@staticmethod` | Static method |
 | `@deprecated("msg")` | Deprecation warning |
-| `@doc_private` | Hide from docs |
+| `@doc_hidden` | Hide from docs |
 | `@explicit_destroy` | Linear type (no implicit destruction) |
 
 ## Numeric conversions — must be explicit
