@@ -82,6 +82,15 @@ triggered when Python types are used Mojo or a Python module needs to interact
 with Mojo code. Many capabilities of Mojo - Python interoperability are fairly
 new, and existing coding agents don't handle them correctly without guidance.
 
+### `mojo-stdlib-contributing`
+
+[This skill](mojo-stdlib-contributing/SKILL.md) captures patterns and pitfalls
+for contributing to the Mojo standard library, distilled from 30+ reviewed PRs.
+It covers process (GitHub issues before new APIs, draft PRs), assertion
+semantics (`assert_mode="safe"` is intentional), benchmark patterns, testing
+requirements, SIMD/memory safety, and common reviewer feedback. Use when
+modifying code under `mojo/stdlib/`.
+
 ## Examples
 
 Once these skills are installed, you can use them for many common tasks.
