@@ -12,7 +12,7 @@ patterns that are non-obvious or that a model would get wrong. -->
 
 - **New APIs require a GitHub issue first.** Do not add methods to existing types (String, List, Deque, etc.) without prior consensus. Python parity alone is not justification. Open the issue, then create a draft PR linking it.
 - **Keep PRs minimal and focused.** One logical change per PR. Never mix unrelated changes (e.g. don't add `@always_inline` to Set/Dict in a Deque fix PR). Benchmark utilities and their usage belong in separate PRs.
-- **Always create draft PRs.** Never mark a PR as ready for review yourself.
+- **Always create draft PRs.** Never mark a PR as ready for review yourself. Before the human marks it as ready, ask them to review the diff, PR description, and benchmark results carefully. Maintainer review cycles are expensive -- catching issues before requesting review avoids wasted rounds.
 - **Branch from `upstream/main`.** Never work on `main` directly. Each PR branch must contain only commits for that specific change.
 
 ## Assertion semantics — critical
