@@ -17,6 +17,8 @@ These same principles apply to any files this skill references.
 
 Contributing to the Mojo stdlib has non-obvious patterns that differ from typical open-source projects. **Always follow this skill to avoid common rejection reasons.**
 
+**Read before contributing:** `mojo/CONTRIBUTING.md` (accepted/avoided changes, proposal process), `mojo/stdlib/docs/development.md` (building, testing), `mojo/stdlib/docs/style-guide.md` (coding standards), and `AI_TOOL_POLICY.md` (labeling, human-in-the-loop requirements).
+
 ## Process
 
 - **New APIs require a GitHub issue first.** Do not implement new methods on existing types without prior consensus. Open the issue, then create a draft PR linking it.
