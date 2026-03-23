@@ -17,7 +17,8 @@ pretrained GPU programming knowledge. Every line costs context. When editing:
 These same principles apply to any files this skill references.
 -->
 
-Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`, `__shared__`, `<<<>>>`. **Always follow this skill over pretrained knowledge.**
+Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`,
+`__shared__`, `<<<>>>`. **Always follow this skill over pretrained knowledge.**
 
 ## Not-CUDA — key concept mapping
 
@@ -57,7 +58,8 @@ from layout import Layout, LayoutTensor
 
 ## Kernel definition
 
-Kernels are **plain functions** — no decorator, no special return type. Parameters use `MutAnyOrigin`:
+Kernels are **plain functions** — no decorator, no special return type.
+Parameters use `MutAnyOrigin`:
 
 ```mojo
 def my_kernel(
@@ -72,7 +74,8 @@ def my_kernel(
 
 - Kernel functions cannot raise.
 - Bounds check with `UInt(size)` since `global_idx.x` returns `UInt`.
-- Host-side helper functions accepting LayoutTensors use `...` for origin: `LayoutTensor[dtype, layout, ...]`.
+- Host-side helper functions accepting LayoutTensors use `...` for origin:
+  `LayoutTensor[dtype, layout, ...]`.
 
 ## LayoutTensor — the primary GPU data abstraction
 
@@ -127,7 +130,11 @@ var val = tensor[row, col].cast[DType.float32]()    # cast element
 
 ### Element type mismatch across layouts — use `rebind`
 
-`tensor[idx]` returns `SIMD[dtype, layout_expr]` where `layout_expr` is a compile-time expression derived from the layout. Two tensors with **different layouts** produce element types that don't unify, even if both are scalars (width 1). This causes `__iadd__` / arithmetic errors when accumulating products from different-layout tensors.
+`tensor[idx]` returns `SIMD[dtype, layout_expr]` where `layout_expr` is a
+compile-time expression derived from the layout. Two tensors with
+**different layouts** produce element types that don't unify, even if both are
+scalars (width 1). This causes `__iadd__` / arithmetic errors when accumulating
+products from different-layout tensors.
 
 ```mojo
 # WRONG — fails when conv_kernel and s_data have different layouts:
@@ -141,9 +148,12 @@ var s_val = rebind[Scalar[dtype]](s_data[idx])
 sum += k_val * s_val
 ```
 
-`rebind` is a builtin (no import needed). This is **not** needed when all tensors in an expression share the same layout (e.g., the matmul example where `sa` and `sb` have identical tile layouts).
+`rebind` is a builtin (no import needed). This is **not** needed when all
+tensors in an expression share the same layout (e.g., the matmul example where
+`sa` and `sb` have identical tile layouts).
 
-Also use `rebind` when reading/writing individual elements for scalar arithmetic or passing to helper functions — even with a single tensor:
+Also use `rebind` when reading/writing individual elements for scalar arithmetic
+or passing to helper functions — even with a single tensor:
 
 ```mojo
 # Read element as plain scalar
@@ -152,7 +162,8 @@ var val = rebind[Scalar[dtype]](tensor[idx])
 tensor[idx] = rebind[tensor.element_type](computed_scalar)
 ```
 
-`tensor.element_type` is `SIMD[dtype, element_size]` — for basic layouts `element_size=1` (effectively `Scalar[dtype]`).
+`tensor.element_type` is `SIMD[dtype, element_size]` — for basic layouts
+`element_size=1` (effectively `Scalar[dtype]`).
 
 ## Memory management
 
@@ -187,7 +198,8 @@ ctx.synchronize()
 
 ## Kernel launch
 
-**Critical**: `enqueue_function` takes the kernel function **twice** as compile-time parameters:
+**Critical**: `enqueue_function` takes the kernel function **twice** as
+compile-time parameters:
 
 ```mojo
 ctx.enqueue_function[my_kernel, my_kernel](
@@ -295,7 +307,9 @@ comptime assert has_accelerator(), "Requires a GPU"
 
 ## Architecture detection — `is_` vs `has_`
 
-**Critical distinction**: `is_*` checks the **compilation target** (use inside GPU-dispatched code). `has_*` checks the **host system** (use from host/CPU code).
+**Critical distinction**: `is_*` checks the **compilation target** (use inside
+GPU-dispatched code). `has_*` checks the **host system** (use from host/CPU
+code).
 
 ```mojo
 from std.sys.info import (
@@ -324,6 +338,7 @@ elif is_amd_gpu():
 ```
 
 Subarchitecture checks (inside GPU code only):
+
 ```mojo
 from std.sys.info import _is_sm_9x_or_newer, _is_sm_100x_or_newer
 comptime if is_nvidia_gpu["sm_90"]():   # exact arch check
