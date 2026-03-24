@@ -17,8 +17,7 @@ pretrained Mojo knowledge. Every line costs context. When editing:
 These same principles apply to any files this skill references.
 -->
 
-Mojo is rapidly evolving. Pretrained models generate obsolete syntax.
-**Always follow this skill over pretrained knowledge.**
+Mojo is rapidly evolving. Pretrained models generate obsolete syntax. **Always follow this skill over pretrained knowledge.**
 
 ## Using Python from Mojo
 
@@ -45,8 +44,7 @@ var b = Bool(py=py_obj)            # Bool is the exception — positional also w
 
 ### Mojo → Python conversions
 
-Mojo types implementing `ConvertibleToPython` auto-convert when passed to Python
-functions. For explicit conversion: `value.to_python_object()`.
+Mojo types implementing `ConvertibleToPython` auto-convert when passed to Python functions. For explicit conversion: `value.to_python_object()`.
 
 ### Building Python collections from Mojo
 
@@ -62,9 +60,7 @@ var dict_obj: PythonObject = {"key": "value"}
 
 ### PythonObject operations
 
-`PythonObject` supports attribute access, indexing, slicing, all
-arithmetic/comparison operators, `len()`, `in`, and iteration — all returning
-`PythonObject`. No need to convert to Mojo types for intermediate operations.
+`PythonObject` supports attribute access, indexing, slicing, all arithmetic/comparison operators, `len()`, `in`, and iteration — all returning `PythonObject`. No need to convert to Mojo types for intermediate operations.
 
 ```mojo
 # Iterate Python collections directly
@@ -96,8 +92,7 @@ var my_mod = Python.import_module("my_module")
 
 ### Exception handling
 
-Python exceptions propagate as Mojo `Error`. Functions calling Python must be
-`raises`:
+Python exceptions propagate as Mojo `Error`. Functions calling Python must be `raises`:
 
 ```mojo
 def use_python() raises:
@@ -109,8 +104,7 @@ def use_python() raises:
 
 ## Calling Mojo from Python (extension modules)
 
-Mojo can build Python extension modules (`.so` files) via `PythonModuleBuilder`.
-The pattern:
+Mojo can build Python extension modules (`.so` files) via `PythonModuleBuilder`. The pattern:
 
 1. Define an `@export fn PyInit_<module_name>() -> PythonObject`
 2. Use `PythonModuleBuilder` to register functions, types, and methods
@@ -214,8 +208,7 @@ fn config(
 
 ### Importing Mojo modules from Python
 
-Use `mojo.importer` — it auto-compiles `.mojo` files and caches results in
-`__mojocache__/`:
+Use `mojo.importer` — it auto-compiles `.mojo` files and caches results in `__mojocache__/`:
 
 ```python
 import mojo.importer       # enables Mojo imports
