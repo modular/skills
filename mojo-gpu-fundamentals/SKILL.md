@@ -324,6 +324,7 @@ elif is_amd_gpu():
 ```
 
 Subarchitecture checks (inside GPU code only):
+
 ```mojo
 from std.sys.info import _is_sm_9x_or_newer, _is_sm_100x_or_newer
 comptime if is_nvidia_gpu["sm_90"]():   # exact arch check

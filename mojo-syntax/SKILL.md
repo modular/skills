@@ -426,7 +426,7 @@ vectorize[simd_width](size, my_closure)
 
 ## Type hierarchy
 
-```
+```text
 AnyType
   ImplicitlyDestructible          — auto __del__; most types
   Movable                         — __init__(out self, *, deinit take: Self)
