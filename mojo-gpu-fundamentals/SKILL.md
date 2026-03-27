@@ -22,21 +22,21 @@ Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`,
 
 ## Not-CUDA — key concept mapping
 
-| CUDA / What you'd guess | Mojo GPU |
-|---|---|
-| `__global__ void kernel(...)` | Plain `def kernel(...)` — no decorator |
-| `kernel<<<grid, block>>>(args)` | `ctx.enqueue_function[kernel, kernel](args, grid_dim=..., block_dim=...)` |
-| `cudaMalloc(&ptr, size)` | `ctx.enqueue_create_buffer[dtype](count)` |
-| `cudaMemcpy(dst, src, ...)` | `ctx.enqueue_copy(dst_buf, src_buf)` or `ctx.enqueue_copy(dst_buf=..., src_buf=...)` |
-| `cudaDeviceSynchronize()` | `ctx.synchronize()` |
-| `__syncthreads()` | `barrier()` from `std.gpu` or `std.gpu.sync` |
-| `__shared__ float s[N]` | `LayoutTensor[...address_space=AddressSpace.SHARED].stack_allocation()` |
-| `threadIdx.x` | `thread_idx.x` (returns `UInt`) |
-| `blockIdx.x * blockDim.x + threadIdx.x` | `global_idx.x` (convenience) |
-| `__shfl_down_sync(mask, val, d)` | `warp.sum(val)`, `warp.reduce[...]()` |
-| `atomicAdd(&ptr, val)` | `Atomic.fetch_add(ptr, val)` |
-| Raw `float*` kernel args | `LayoutTensor[dtype, layout, MutAnyOrigin]` |
-| `cudaFree(ptr)` | Automatic — buffers freed when out of scope |
+| CUDA / What you'd guess                 | Mojo GPU                                                                             |
+|-----------------------------------------|--------------------------------------------------------------------------------------|
+| `__global__ void kernel(...)`           | Plain `def kernel(...)` — no decorator                                               |
+| `kernel<<<grid, block>>>(args)`         | `ctx.enqueue_function[kernel, kernel](args, grid_dim=..., block_dim=...)`            |
+| `cudaMalloc(&ptr, size)`                | `ctx.enqueue_create_buffer[dtype](count)`                                            |
+| `cudaMemcpy(dst, src, ...)`             | `ctx.enqueue_copy(dst_buf, src_buf)` or `ctx.enqueue_copy(dst_buf=..., src_buf=...)` |
+| `cudaDeviceSynchronize()`               | `ctx.synchronize()`                                                                  |
+| `__syncthreads()`                       | `barrier()` from `std.gpu` or `std.gpu.sync`                                         |
+| `__shared__ float s[N]`                 | `LayoutTensor[...address_space=AddressSpace.SHARED].stack_allocation()`              |
+| `threadIdx.x`                           | `thread_idx.x` (returns `UInt`)                                                      |
+| `blockIdx.x * blockDim.x + threadIdx.x` | `global_idx.x` (convenience)                                                         |
+| `__shfl_down_sync(mask, val, d)`        | `warp.sum(val)`, `warp.reduce[...]()`                                                |
+| `atomicAdd(&ptr, val)`                  | `Atomic.fetch_add(ptr, val)`                                                         |
+| Raw `float*` kernel args                | `LayoutTensor[dtype, layout, MutAnyOrigin]`                                          |
+| `cudaFree(ptr)`                         | Automatic — buffers freed when out of scope                                          |
 
 ## Imports
 
@@ -542,10 +542,10 @@ bench.bench_function[bench_fn](
 
 ## Hardware details
 
-| Property | NVIDIA | AMD CDNA | AMD RDNA |
-|---|---|---|---|
-| Warp size | 32 | 64 | 32 |
-| Shared memory | 48-228 KB/block | 64 KB/block | configurable |
-| Tensor cores | SM70+ (WMMA) | Matrix cores | WMMA (RDNA3+) |
-| TMA | SM90+ (Hopper) | N/A | N/A |
-| Clusters | SM90+ | N/A | N/A |
+| Property      | NVIDIA          | AMD CDNA     | AMD RDNA      |
+|---------------|-----------------|--------------|---------------|
+| Warp size     | 32              | 64           | 32            |
+| Shared memory | 48-228 KB/block | 64 KB/block  | configurable  |
+| Tensor cores  | SM70+ (WMMA)    | Matrix cores | WMMA (RDNA3+) |
+| TMA           | SM90+ (Hopper)  | N/A          | N/A           |
+| Clusters      | SM90+           | N/A          | N/A           |

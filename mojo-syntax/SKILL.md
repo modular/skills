@@ -28,29 +28,29 @@ slightly in functionality.
 
 ## Removed syntax — DO NOT generate these
 
-| Removed | Replacement |
-|---|---|
-| `alias X = ...` | `comptime X = ...` |
-| `@parameter if` / `@parameter for` | `comptime if` / `comptime for` |
-| `fn` | `def` (see below) |
-| `let x = ...` | `var x = ...` (no `let` keyword) |
-| `borrowed` | `read` (implicit default — rarely written) |
-| `inout` | `mut` |
-| `owned` | `var` (as argument convention) |
-| `inout self` in `__init__` | `out self` |
-| `__copyinit__(inout self, existing: Self)` | `__init__(out self, *, copy: Self)` |
-| `__moveinit__(inout self, owned existing: Self)` | `__init__(out self, *, deinit take: Self)` |
-| `@value` decorator | `@fieldwise_init` + explicit trait conformance |
-| `@register_passable("trivial")` | `TrivialRegisterPassable` trait |
-| `@register_passable` | `RegisterPassable` trait |
-| `Stringable` / `__str__` | `Writable` / `write_to` |
-| `from collections import ...` | `from std.collections import ...` |
-| `from memory import ...` | `from std.memory import ...` |
-| `constrained(cond, msg)` | `comptime assert cond, msg` |
-| `DynamicVector[T]` | `List[T]` |
-| `InlinedFixedVector[T, N]` | `InlineArray[T, N]` |
-| `Tensor[T]` | Not in stdlib (use SIMD, List, UnsafePointer) |
-| `@parameter fn` (nested) | Still used for nested compile-time closures |
+| Removed                                          | Replacement                                    |
+|--------------------------------------------------|------------------------------------------------|
+| `alias X = ...`                                  | `comptime X = ...`                             |
+| `@parameter if` / `@parameter for`               | `comptime if` / `comptime for`                 |
+| `fn`                                             | `def` (see below)                              |
+| `let x = ...`                                    | `var x = ...` (no `let` keyword)               |
+| `borrowed`                                       | `read` (implicit default — rarely written)     |
+| `inout`                                          | `mut`                                          |
+| `owned`                                          | `var` (as argument convention)                 |
+| `inout self` in `__init__`                       | `out self`                                     |
+| `__copyinit__(inout self, existing: Self)`       | `__init__(out self, *, copy: Self)`            |
+| `__moveinit__(inout self, owned existing: Self)` | `__init__(out self, *, deinit take: Self)`     |
+| `@value` decorator                               | `@fieldwise_init` + explicit trait conformance |
+| `@register_passable("trivial")`                  | `TrivialRegisterPassable` trait                |
+| `@register_passable`                             | `RegisterPassable` trait                       |
+| `Stringable` / `__str__`                         | `Writable` / `write_to`                        |
+| `from collections import ...`                    | `from std.collections import ...`              |
+| `from memory import ...`                         | `from std.memory import ...`                   |
+| `constrained(cond, msg)`                         | `comptime assert cond, msg`                    |
+| `DynamicVector[T]`                               | `List[T]`                                      |
+| `InlinedFixedVector[T, N]`                       | `InlineArray[T, N]`                            |
+| `Tensor[T]`                                      | Not in stdlib (use SIMD, List, UnsafePointer)  |
+| `@parameter fn` (nested)                         | Still used for nested compile-time closures    |
 
 ## `def` is the only function keyword
 
@@ -253,13 +253,13 @@ For-in: `for item in col:` (immutable) / `for ref item in col:` (mutable).
 
 ## Memory and pointer types
 
-| Type | Use |
-|---|---|
-| `Pointer[T, mut=M, origin=O]` | Safe, non-nullable. Deref with `p[]`. |
+| Type                            | Use                                                                    |
+|---------------------------------|------------------------------------------------------------------------|
+| `Pointer[T, mut=M, origin=O]`   | Safe, non-nullable. Deref with `p[]`.                                  |
 | `alloc[T](n)` / `UnsafePointer` | Free function `alloc[T](count)` → `UnsafePointer`. `.free()` required. |
-| `Span(list)` | Non-owning contiguous view. |
-| `OwnedPointer[T]` | Unique ownership (like Rust `Box`). |
-| `ArcPointer[T]` | Reference-counted shared ownership. |
+| `Span(list)`                    | Non-owning contiguous view.                                            |
+| `OwnedPointer[T]`               | Unique ownership (like Rust `Box`).                                    |
+| `ArcPointer[T]`                 | Reference-counted shared ownership.                                    |
 
 `UnsafePointer` has an `origin` parameter that must be specified for struct
 fields. Use `MutExternalOrigin` for owned heap data (this is what stdlib
@@ -328,16 +328,16 @@ var scores = {"alice": 95, "bob": 87}              # Dict[String, Int]
 
 ## Common decorators
 
-| Decorator | Purpose |
-|---|---|
-| `@fieldwise_init` | Generate fieldwise constructor |
-| `@implicit` | Allow implicit conversion |
-| `@always_inline` / `@always_inline("nodebug")` | Force inline |
-| `@no_inline` | Prevent inline |
-| `@staticmethod` | Static method |
-| `@deprecated("msg")` | Deprecation warning |
-| `@doc_hidden` | Hide from docs |
-| `@explicit_destroy` | Linear type (no implicit destruction) |
+| Decorator                                      | Purpose                               |
+|------------------------------------------------|---------------------------------------|
+| `@fieldwise_init`                              | Generate fieldwise constructor        |
+| `@implicit`                                    | Allow implicit conversion             |
+| `@always_inline` / `@always_inline("nodebug")` | Force inline                          |
+| `@no_inline`                                   | Prevent inline                        |
+| `@staticmethod`                                | Static method                         |
+| `@deprecated("msg")`                           | Deprecation warning                   |
+| `@doc_hidden`                                  | Hide from docs                        |
+| `@explicit_destroy`                            | Linear type (no implicit destruction) |
 
 ## Numeric conversions — must be explicit
 

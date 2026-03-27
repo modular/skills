@@ -36,11 +36,11 @@ var b = Bool(py=py_obj)            # Bool is the exception — positional also w
 # Works with numpy types: Int(py=np.int64(1)), Float64(py=np.float64(3.14))
 ```
 
-| WRONG | CORRECT |
-|---|---|
-| `Int(py_obj)` | `Int(py=py_obj)` |
-| `Float64(py_obj)` | `Float64(py=py_obj)` |
-| `String(py_obj)` | `String(py=py_obj)` |
+| WRONG                    | CORRECT                      |
+|--------------------------|------------------------------|
+| `Int(py_obj)`            | `Int(py=py_obj)`             |
+| `Float64(py_obj)`        | `Float64(py=py_obj)`         |
+| `String(py_obj)`         | `String(py=py_obj)`          |
 | `from python import ...` | `from std.python import ...` |
 
 ### Mojo → Python conversions
@@ -190,10 +190,10 @@ fn PyInit_counter_module() -> PythonObject:
 
 ### Method signatures — two patterns
 
-| Pattern | First parameter | Use when |
-|---|---|---|
-| Manual downcast | `py_self: PythonObject` | Need raw PythonObject access |
-| Auto downcast | `self_ptr: UnsafePointer[Self, MutAnyOrigin]` | Simpler, direct field access |
+| Pattern         | First parameter                               | Use when                     |
+|-----------------|-----------------------------------------------|------------------------------|
+| Manual downcast | `py_self: PythonObject`                       | Need raw PythonObject access |
+| Auto downcast   | `self_ptr: UnsafePointer[Self, MutAnyOrigin]` | Simpler, direct field access |
 
 Both are registered with `.def_method[Type.method]("name")`.
 
