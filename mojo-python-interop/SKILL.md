@@ -102,42 +102,38 @@ def use_python() raises:
         print(String(e))     # "No module named 'nonexistent'"
 ```
 
-## Common FFI patterns
-
-### Environment variables
+### Common FFI patterns
 
 ```mojo
-var os = Python.import_module("os")
-var val = os.environ.get("MY_VAR", Python.none())
-if val is not Python.none():
-    var my_var = String(py=val)
+# Environment variables
+# WRONG — no native Mojo env var access
+# var val = env.get("MY_VAR")
+
+# CORRECT — Python os module
+def read_env(name: String) raises -> String:
+    var os = Python.import_module("os")
+    var val = os.environ.get(name, Python.none())
+    if val is not Python.none():
+        return String(py=val)
+    raise Error("env var not set: " + name)
 ```
 
-### Dictionary .get() with defaults
+```mojo
+# Sorting with custom key
+# WRONG — Mojo has no lambda syntax
+# var sorted = my_list.sort(key=lambda x: x["score"])
 
-PythonObject supports standard Python dict methods including `.get()`, `.keys()`, `.values()`, `.items()`:
+# CORRECT — Python.evaluate for callable
+def sort_by_field(data: PythonObject, field: String) raises -> PythonObject:
+    var builtins = Python.import_module("builtins")
+    var key_fn = Python.evaluate("lambda x: x['" + field + "']")
+    return builtins.sorted(data, key=key_fn)
+```
 
 ```mojo
-var data = json.loads(response.text)
+# Dict .get() works on PythonObject
 var name = data.get("name", PythonObject("unknown"))
 var count = Int(py=data.get("count", PythonObject(0)))
-```
-
-### Sort with custom key (lambda via Python.evaluate)
-
-```mojo
-var builtins = Python.import_module("builtins")
-var key_fn = Python.evaluate("lambda x: -x['score']")
-var sorted_list = builtins.sorted(my_list, key=key_fn)
-```
-
-### Python slice objects (workaround for Mojo string slicing)
-
-Mojo strings don't support slice syntax. When working with PythonObject strings, use Python slice objects:
-
-```mojo
-var py_str = PythonObject("Hello, World!")
-var sliced = py_str.__getitem__(Python.evaluate("slice(0, 5)"))  # "Hello"
 ```
 
 ## Calling Mojo from Python (extension modules)
