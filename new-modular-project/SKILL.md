@@ -11,9 +11,12 @@ interaction. Do NOT ask about options the user has already provided or implied.
 The options to determine are:
 
 1. **Project name** — ask if not specified
-2. **Type of project** — Mojo or MAX (infer from context if the user said "Mojo project" or "MAX project")
+2. **Type of project** — Mojo or MAX (infer from context if the user said "Mojo
+   project" or "MAX project")
 3. **Environment manager** — Pixi (recommended) or uv
-4. **If uv**: **UV project type** — full uv project (`uv init` + `uv add`, recommended) or quick uv environment (`uv venv` + `uv pip install`, lighter weight)
+4. **If uv**: **UV project type** — full uv project (`uv init` + `uv add`,
+   recommended) or quick uv environment (`uv venv` + `uv pip install`, lighter
+   weight)
 5. **Channel** — nightly (latest features, recommended) or stable (production)
 
 Then follow the appropriate section below (Pixi or uv) to initialize the
@@ -111,7 +114,8 @@ uv pip install [max / mojo] \
   --extra-index-url https://modular.gateway.scarf.sh/simple/
 ```
 
-When using `uv`, you can use `max` or `mojo` directly by working within the project environment:
+When using `uv`, you can use `max` or `mojo` directly by working within the
+project environment:
 
 ```bash
  source .venv/bin/activate
@@ -171,7 +175,8 @@ uv pip show mojo | grep Version   # e.g., 0.26.2
 pixi run mojo --version           # Must match major.minor (e.g., 0.26.2)
 ```
 
-Mismatched versions cause kernel compilation failures. Always use the same channel (stable or nightly) for both.
+Mismatched versions cause kernel compilation failures. Always use the same
+channel (stable or nightly) for both.
 
 ---
 
