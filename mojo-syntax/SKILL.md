@@ -41,6 +41,11 @@ This skill specifically works on the latest Mojo, and stable versions may differ
 | `@register_passable("trivial")` | `TrivialRegisterPassable` trait |
 | `@register_passable` | `RegisterPassable` trait |
 | `Stringable` / `__str__` | `Writable` / `write_to` |
+| `s[i]` | `s[byte=i]` — returns `StringSlice`; wrap in `String()` if needed |
+| `s[0:10]`, `s[:5]` | No slice syntax on String — use `s.codepoint_slices()` or Python FFI |
+| `from sys import ...` | `from std.sys import ...` |
+| `from os import ...` | `from std.os import ...` |
+| `from pathlib import ...` | `from std.pathlib import ...` |
 | `from collections import ...` | `from std.collections import ...` |
 | `from memory import ...` | `from std.memory import ...` |
 | `constrained(cond, msg)` | `comptime assert cond, msg` |
@@ -183,6 +188,8 @@ var result = MyStruct(headers=d.copy())  # or: headers=d^
 ```
 
 ## Imports use `std.` prefix
+
+**All stdlib imports require the `std.` prefix.** The removed-syntax table shows the most common corrections, but the rule is universal.
 
 ```mojo
 from std.testing import assert_equal, TestSuite
@@ -364,6 +371,27 @@ v.reduce_min()                     # horizontal min → Scalar
 ## Strings
 
 `len(s)` returns **byte length**, not codepoint count. Mojo strings are UTF-8. Byte indexing requires keyword syntax: `s[byte=idx]` (not `s[idx]`).
+
+### String indexing (common error)
+
+```mojo
+# WRONG — compile error
+var ch = s[0]
+var sub = s[0:10]
+
+# CORRECT — byte-level access
+var ch = s[byte=0]        # returns StringSlice
+var ch_str = String(s[byte=0])  # if you need a String
+
+# CORRECT — iterate codepoints for truncation
+var result = String("")
+var count = 0
+for cp in s.codepoint_slices():
+    if count >= 10:
+        break
+    result += String(cp)
+    count += 1
+```
 
 ```mojo
 var s = "Hello"
