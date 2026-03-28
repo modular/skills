@@ -107,6 +107,37 @@ def use_python() raises:
         print(String(e))     # "No module named 'nonexistent'"
 ```
 
+### Common Python / Mojo interoperability patterns
+
+```mojo
+# Environment variables
+# WRONG — using Python os module for env vars
+# var os = Python.import_module("os")
+# var val = os.environ.get("MY_VAR")
+
+# CORRECT — Mojo has native env var access via std.os
+from std.os import getenv
+var val = getenv("MY_VAR")  # returns Optional[String]
+```
+
+```mojo
+# Sorting with custom key
+# WRONG — Mojo has no lambda syntax
+# var sorted = my_list.sort(key=lambda x: x["score"])
+
+# CORRECT — Python.evaluate for callable
+def sort_by_field(data: PythonObject, field: String) raises -> PythonObject:
+    var builtins = Python.import_module("builtins")
+    var key_fn = Python.evaluate("lambda x: x['" + field + "']")
+    return builtins.sorted(data, key=key_fn)
+```
+
+```mojo
+# Dict .get() works on PythonObject
+var name = data.get("name", PythonObject("unknown"))
+var count = Int(py=data.get("count", PythonObject(0)))
+```
+
 ## Calling Mojo from Python (extension modules)
 
 Mojo can build Python extension modules (`.so` files) via `PythonModuleBuilder`.

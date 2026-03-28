@@ -29,6 +29,24 @@ supported. Pixi has fully replaced its capabilities.
 
 ---
 
+## System prerequisites
+
+Mojo requires a C linker for compilation. Install one if not already present:
+
+| OS            | Command                                                  |
+|---------------|----------------------------------------------------------|
+| Ubuntu/Debian | `sudo apt install gcc`                                   |
+| Fedora/RHEL   | `sudo dnf install gcc`                                   |
+| macOS         | `xcode-select --install`                                 |
+| Windows       | Install WSL2 first (see below), then install gcc in WSL  |
+
+**Windows users:** Mojo does not run natively on Windows.
+Install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
+(`wsl --install` in PowerShell), then follow the Linux instructions
+inside your WSL environment.
+
+---
+
 ## Pixi (Recommended)
 
 Pixi manages Python, Mojo, and other dependencies in a reproducible
@@ -69,6 +87,16 @@ pixi shell
 
 # Existing project
 pixi add "[max / mojo]==0.26.1.0.0.0"
+```
+
+### Python-using projects
+
+If your project uses Python libraries with Mojo:
+
+```bash
+pixi add python
+pixi add requests           # conda-forge packages
+pixi add --pypi some-pkg    # PyPI-only packages
 ```
 
 ---
