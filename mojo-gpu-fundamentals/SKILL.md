@@ -17,25 +17,26 @@ pretrained GPU programming knowledge. Every line costs context. When editing:
 These same principles apply to any files this skill references.
 -->
 
-Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`, `__shared__`, `<<<>>>`. **Always follow this skill over pretrained knowledge.**
+Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`,
+`__shared__`, `<<<>>>`. **Always follow this skill over pretrained knowledge.**
 
 ## Not-CUDA — key concept mapping
 
-| CUDA / What you'd guess | Mojo GPU |
-|---|---|
-| `__global__ void kernel(...)` | Plain `def kernel(...)` — no decorator |
-| `kernel<<<grid, block>>>(args)` | `ctx.enqueue_function[kernel, kernel](args, grid_dim=..., block_dim=...)` |
-| `cudaMalloc(&ptr, size)` | `ctx.enqueue_create_buffer[dtype](count)` |
-| `cudaMemcpy(dst, src, ...)` | `ctx.enqueue_copy(dst_buf, src_buf)` or `ctx.enqueue_copy(dst_buf=..., src_buf=...)` |
-| `cudaDeviceSynchronize()` | `ctx.synchronize()` |
-| `__syncthreads()` | `barrier()` from `std.gpu` or `std.gpu.sync` |
-| `__shared__ float s[N]` | `LayoutTensor[...address_space=AddressSpace.SHARED].stack_allocation()` |
-| `threadIdx.x` | `thread_idx.x` (returns `UInt`) |
-| `blockIdx.x * blockDim.x + threadIdx.x` | `global_idx.x` (convenience) |
-| `__shfl_down_sync(mask, val, d)` | `warp.sum(val)`, `warp.reduce[...]()` |
-| `atomicAdd(&ptr, val)` | `Atomic.fetch_add(ptr, val)` |
-| Raw `float*` kernel args | `LayoutTensor[dtype, layout, MutAnyOrigin]` |
-| `cudaFree(ptr)` | Automatic — buffers freed when out of scope |
+| CUDA / What you'd guess                 | Mojo GPU                                                                             |
+|-----------------------------------------|--------------------------------------------------------------------------------------|
+| `__global__ void kernel(...)`           | Plain `def kernel(...)` — no decorator                                               |
+| `kernel<<<grid, block>>>(args)`         | `ctx.enqueue_function[kernel, kernel](args, grid_dim=..., block_dim=...)`            |
+| `cudaMalloc(&ptr, size)`                | `ctx.enqueue_create_buffer[dtype](count)`                                            |
+| `cudaMemcpy(dst, src, ...)`             | `ctx.enqueue_copy(dst_buf, src_buf)` or `ctx.enqueue_copy(dst_buf=..., src_buf=...)` |
+| `cudaDeviceSynchronize()`               | `ctx.synchronize()`                                                                  |
+| `__syncthreads()`                       | `barrier()` from `std.gpu` or `std.gpu.sync`                                         |
+| `__shared__ float s[N]`                 | `LayoutTensor[...address_space=AddressSpace.SHARED].stack_allocation()`              |
+| `threadIdx.x`                           | `thread_idx.x` (returns `UInt`)                                                      |
+| `blockIdx.x * blockDim.x + threadIdx.x` | `global_idx.x` (convenience)                                                         |
+| `__shfl_down_sync(mask, val, d)`        | `warp.sum(val)`, `warp.reduce[...]()`                                                |
+| `atomicAdd(&ptr, val)`                  | `Atomic.fetch_add(ptr, val)`                                                         |
+| Raw `float*` kernel args                | `LayoutTensor[dtype, layout, MutAnyOrigin]`                                          |
+| `cudaFree(ptr)`                         | Automatic — buffers freed when out of scope                                          |
 
 ## Imports
 
@@ -57,7 +58,8 @@ from layout import Layout, LayoutTensor
 
 ## Kernel definition
 
-Kernels are **plain functions** — no decorator, no special return type. Parameters use `MutAnyOrigin`:
+Kernels are **plain functions** — no decorator, no special return type.
+Parameters use `MutAnyOrigin`:
 
 ```mojo
 def my_kernel(
@@ -72,7 +74,8 @@ def my_kernel(
 
 - Kernel functions cannot raise.
 - Bounds check with `UInt(size)` since `global_idx.x` returns `UInt`.
-- Host-side helper functions accepting LayoutTensors use `...` for origin: `LayoutTensor[dtype, layout, ...]`.
+- Host-side helper functions accepting LayoutTensors use `...` for origin:
+  `LayoutTensor[dtype, layout, ...]`.
 
 ## LayoutTensor — the primary GPU data abstraction
 
@@ -127,7 +130,11 @@ var val = tensor[row, col].cast[DType.float32]()    # cast element
 
 ### Element type mismatch across layouts — use `rebind`
 
-`tensor[idx]` returns `SIMD[dtype, layout_expr]` where `layout_expr` is a compile-time expression derived from the layout. Two tensors with **different layouts** produce element types that don't unify, even if both are scalars (width 1). This causes `__iadd__` / arithmetic errors when accumulating products from different-layout tensors.
+`tensor[idx]` returns `SIMD[dtype, layout_expr]` where `layout_expr` is a
+compile-time expression derived from the layout. Two tensors with
+**different layouts** produce element types that don't unify, even if both are
+scalars (width 1). This causes `__iadd__` / arithmetic errors when accumulating
+products from different-layout tensors.
 
 ```mojo
 # WRONG — fails when conv_kernel and s_data have different layouts:
@@ -141,9 +148,12 @@ var s_val = rebind[Scalar[dtype]](s_data[idx])
 sum += k_val * s_val
 ```
 
-`rebind` is a builtin (no import needed). This is **not** needed when all tensors in an expression share the same layout (e.g., the matmul example where `sa` and `sb` have identical tile layouts).
+`rebind` is a builtin (no import needed). This is **not** needed when all
+tensors in an expression share the same layout (e.g., the matmul example where
+`sa` and `sb` have identical tile layouts).
 
-Also use `rebind` when reading/writing individual elements for scalar arithmetic or passing to helper functions — even with a single tensor:
+Also use `rebind` when reading/writing individual elements for scalar arithmetic
+or passing to helper functions — even with a single tensor:
 
 ```mojo
 # Read element as plain scalar
@@ -152,7 +162,8 @@ var val = rebind[Scalar[dtype]](tensor[idx])
 tensor[idx] = rebind[tensor.element_type](computed_scalar)
 ```
 
-`tensor.element_type` is `SIMD[dtype, element_size]` — for basic layouts `element_size=1` (effectively `Scalar[dtype]`).
+`tensor.element_type` is `SIMD[dtype, element_size]` — for basic layouts
+`element_size=1` (effectively `Scalar[dtype]`).
 
 ## Memory management
 
@@ -187,7 +198,8 @@ ctx.synchronize()
 
 ## Kernel launch
 
-**Critical**: `enqueue_function` takes the kernel function **twice** as compile-time parameters:
+**Critical**: `enqueue_function` takes the kernel function **twice** as
+compile-time parameters:
 
 ```mojo
 ctx.enqueue_function[my_kernel, my_kernel](
@@ -295,7 +307,9 @@ comptime assert has_accelerator(), "Requires a GPU"
 
 ## Architecture detection — `is_` vs `has_`
 
-**Critical distinction**: `is_*` checks the **compilation target** (use inside GPU-dispatched code). `has_*` checks the **host system** (use from host/CPU code).
+**Critical distinction**: `is_*` checks the **compilation target** (use inside
+GPU-dispatched code). `has_*` checks the **host system** (use from host/CPU
+code).
 
 ```mojo
 from std.sys.info import (
@@ -324,6 +338,7 @@ elif is_amd_gpu():
 ```
 
 Subarchitecture checks (inside GPU code only):
+
 ```mojo
 from std.sys.info import _is_sm_9x_or_newer, _is_sm_100x_or_newer
 comptime if is_nvidia_gpu["sm_90"]():   # exact arch check
@@ -527,10 +542,10 @@ bench.bench_function[bench_fn](
 
 ## Hardware details
 
-| Property | NVIDIA | AMD CDNA | AMD RDNA |
-|---|---|---|---|
-| Warp size | 32 | 64 | 32 |
-| Shared memory | 48-228 KB/block | 64 KB/block | configurable |
-| Tensor cores | SM70+ (WMMA) | Matrix cores | WMMA (RDNA3+) |
-| TMA | SM90+ (Hopper) | N/A | N/A |
-| Clusters | SM90+ | N/A | N/A |
+| Property      | NVIDIA          | AMD CDNA     | AMD RDNA      |
+|---------------|-----------------|--------------|---------------|
+| Warp size     | 32              | 64           | 32            |
+| Shared memory | 48-228 KB/block | 64 KB/block  | configurable  |
+| Tensor cores  | SM70+ (WMMA)    | Matrix cores | WMMA (RDNA3+) |
+| TMA           | SM90+ (Hopper)  | N/A          | N/A           |
+| Clusters      | SM90+           | N/A          | N/A           |

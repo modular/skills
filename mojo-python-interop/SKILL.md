@@ -17,7 +17,8 @@ pretrained Mojo knowledge. Every line costs context. When editing:
 These same principles apply to any files this skill references.
 -->
 
-Mojo is rapidly evolving. Pretrained models generate obsolete syntax. **Always follow this skill over pretrained knowledge.**
+Mojo is rapidly evolving. Pretrained models generate obsolete syntax.
+**Always follow this skill over pretrained knowledge.**
 
 ## Using Python from Mojo
 
@@ -35,16 +36,17 @@ var b = Bool(py=py_obj)            # Bool is the exception — positional also w
 # Works with numpy types: Int(py=np.int64(1)), Float64(py=np.float64(3.14))
 ```
 
-| WRONG | CORRECT |
-|---|---|
-| `Int(py_obj)` | `Int(py=py_obj)` |
-| `Float64(py_obj)` | `Float64(py=py_obj)` |
-| `String(py_obj)` | `String(py=py_obj)` |
+| WRONG                    | CORRECT                      |
+|--------------------------|------------------------------|
+| `Int(py_obj)`            | `Int(py=py_obj)`             |
+| `Float64(py_obj)`        | `Float64(py=py_obj)`         |
+| `String(py_obj)`         | `String(py=py_obj)`          |
 | `from python import ...` | `from std.python import ...` |
 
 ### Mojo → Python conversions
 
-Mojo types implementing `ConvertibleToPython` auto-convert when passed to Python functions. For explicit conversion: `value.to_python_object()`.
+Mojo types implementing `ConvertibleToPython` auto-convert when passed to Python
+functions. For explicit conversion: `value.to_python_object()`.
 
 ### Building Python collections from Mojo
 
@@ -60,7 +62,9 @@ var dict_obj: PythonObject = {"key": "value"}
 
 ### PythonObject operations
 
-`PythonObject` supports attribute access, indexing, slicing, all arithmetic/comparison operators, `len()`, `in`, and iteration — all returning `PythonObject`. No need to convert to Mojo types for intermediate operations.
+`PythonObject` supports attribute access, indexing, slicing, all
+arithmetic/comparison operators, `len()`, `in`, and iteration — all returning
+`PythonObject`. No need to convert to Mojo types for intermediate operations.
 
 ```mojo
 # Iterate Python collections directly
@@ -92,7 +96,8 @@ var my_mod = Python.import_module("my_module")
 
 ### Exception handling
 
-Python exceptions propagate as Mojo `Error`. Functions calling Python must be `raises`:
+Python exceptions propagate as Mojo `Error`. Functions calling Python must be
+`raises`:
 
 ```mojo
 def use_python() raises:
@@ -102,9 +107,41 @@ def use_python() raises:
         print(String(e))     # "No module named 'nonexistent'"
 ```
 
+### Common Python / Mojo interoperability patterns
+
+```mojo
+# Environment variables
+# WRONG — using Python os module for env vars
+# var os = Python.import_module("os")
+# var val = os.environ.get("MY_VAR")
+
+# CORRECT — Mojo has native env var access via std.os
+from std.os import getenv
+var val = getenv("MY_VAR")  # returns Optional[String]
+```
+
+```mojo
+# Sorting with custom key
+# WRONG — Mojo has no lambda syntax
+# var sorted = my_list.sort(key=lambda x: x["score"])
+
+# CORRECT — Python.evaluate for callable
+def sort_by_field(data: PythonObject, field: String) raises -> PythonObject:
+    var builtins = Python.import_module("builtins")
+    var key_fn = Python.evaluate("lambda x: x['" + field + "']")
+    return builtins.sorted(data, key=key_fn)
+```
+
+```mojo
+# Dict .get() works on PythonObject
+var name = data.get("name", PythonObject("unknown"))
+var count = Int(py=data.get("count", PythonObject(0)))
+```
+
 ## Calling Mojo from Python (extension modules)
 
-Mojo can build Python extension modules (`.so` files) via `PythonModuleBuilder`. The pattern:
+Mojo can build Python extension modules (`.so` files) via `PythonModuleBuilder`.
+The pattern:
 
 1. Define an `@export fn PyInit_<module_name>() -> PythonObject`
 2. Use `PythonModuleBuilder` to register functions, types, and methods
@@ -184,10 +221,10 @@ fn PyInit_counter_module() -> PythonObject:
 
 ### Method signatures — two patterns
 
-| Pattern | First parameter | Use when |
-|---|---|---|
-| Manual downcast | `py_self: PythonObject` | Need raw PythonObject access |
-| Auto downcast | `self_ptr: UnsafePointer[Self, MutAnyOrigin]` | Simpler, direct field access |
+| Pattern         | First parameter                               | Use when                     |
+|-----------------|-----------------------------------------------|------------------------------|
+| Manual downcast | `py_self: PythonObject`                       | Need raw PythonObject access |
+| Auto downcast   | `self_ptr: UnsafePointer[Self, MutAnyOrigin]` | Simpler, direct field access |
 
 Both are registered with `.def_method[Type.method]("name")`.
 
@@ -208,7 +245,8 @@ fn config(
 
 ### Importing Mojo modules from Python
 
-Use `mojo.importer` — it auto-compiles `.mojo` files and caches results in `__mojocache__/`:
+Use `mojo.importer` — it auto-compiles `.mojo` files and caches results in
+`__mojocache__/`:
 
 ```python
 import mojo.importer       # enables Mojo imports

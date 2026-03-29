@@ -9,11 +9,15 @@ possible from the user's request (e.g., "new Mojo project" means type=Mojo,
 plain text) to gather only the **remaining unspecified** options in a single
 interaction. Do NOT ask about options the user has already provided or implied.
 The options to determine are:
+
 1. **Project name** — ask if not specified
-2. **Type of project** — Mojo or MAX (infer from context if the user said "Mojo project" or "MAX project")
+2. **Type of project** — Mojo or MAX (infer from context if the user said "Mojo
+   project" or "MAX project")
 3. **Environment manager** — Pixi (recommended) or uv
-4. **If uv**: **UV project type** — full uv project (`uv init` + `uv add`, recommended) or quick uv environment (`uv venv` + `uv pip install`, lighter weight)
-5. **Channel** — nightly (latest features, recommended) or stable (production) 
+4. **If uv**: **UV project type** — full uv project (`uv init` + `uv add`,
+   recommended) or quick uv environment (`uv venv` + `uv pip install`, lighter
+   weight)
+5. **Channel** — nightly (latest features, recommended) or stable (production)
 
 Then follow the appropriate section below (Pixi or uv) to initialize the
 project and choose `max` or `mojo` as appropriate. For stable versions in the
@@ -25,6 +29,24 @@ supported. Pixi has fully replaced its capabilities.
 
 ---
 
+## System prerequisites
+
+Mojo requires a C linker for compilation. Install one if not already present:
+
+| OS            | Command                                                  |
+|---------------|----------------------------------------------------------|
+| Ubuntu/Debian | `sudo apt install gcc`                                   |
+| Fedora/RHEL   | `sudo dnf install gcc`                                   |
+| macOS         | `xcode-select --install`                                 |
+| Windows       | Install WSL2 first (see below), then install gcc in WSL  |
+
+**Windows users:** Mojo does not run natively on Windows.
+Install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
+(`wsl --install` in PowerShell), then follow the Linux instructions
+inside your WSL environment.
+
+---
+
 ## Pixi (Recommended)
 
 Pixi manages Python, Mojo, and other dependencies in a reproducible
@@ -32,7 +54,7 @@ manner inside a controlled environment.
 
 First, determine if `pixi` is installed. If it is not available for use at the
 command line, install it using the latest instructions found on
-https://pixi.prefix.dev/latest/#installation
+<https://pixi.prefix.dev/latest/#installation>
 
 You may need to place the `pixi` tool in the local shell environment after
 installation if it had not already been installed.
@@ -65,6 +87,16 @@ pixi shell
 
 # Existing project
 pixi add "[max / mojo]==0.26.1.0.0.0"
+```
+
+### Python-using projects
+
+If your project uses Python libraries with Mojo:
+
+```bash
+pixi add python
+pixi add requests           # conda-forge packages
+pixi add --pypi some-pkg    # PyPI-only packages
 ```
 
 ---
@@ -110,7 +142,8 @@ uv pip install [max / mojo] \
   --extra-index-url https://modular.gateway.scarf.sh/simple/
 ```
 
-When using `uv`, you can use `max` or `mojo` directly by working within the project environment:
+When using `uv`, you can use `max` or `mojo` directly by working within the
+project environment:
 
 ```bash
  source .venv/bin/activate
@@ -170,7 +203,8 @@ uv pip show mojo | grep Version   # e.g., 0.26.2
 pixi run mojo --version           # Must match major.minor (e.g., 0.26.2)
 ```
 
-Mismatched versions cause kernel compilation failures. Always use the same channel (stable or nightly) for both.
+Mismatched versions cause kernel compilation failures. Always use the same
+channel (stable or nightly) for both.
 
 ---
 
