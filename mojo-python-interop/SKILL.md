@@ -55,6 +55,11 @@ var py_list = Python.list(1, 2.5, "three")
 var py_tuple = Python.tuple(1, 2, 3)
 var py_dict = Python.dict(name="value", count=42)
 
+# Python.dict() is generic over a single value type V for all kwargs.
+# Mixed types fail because the compiler can't infer one V.
+# WRONG:  Python.dict(flag=my_bool, count=42)
+# CORRECT: Python.dict(flag=PythonObject(my_bool), count=PythonObject(42))
+
 # Literal syntax also works:
 var list_obj: PythonObject = [1, 2, 3]
 var dict_obj: PythonObject = {"key": "value"}
@@ -143,7 +148,7 @@ var count = Int(py=data.get("count", PythonObject(0)))
 Mojo can build Python extension modules (`.so` files) via `PythonModuleBuilder`.
 The pattern:
 
-1. Define an `@export fn PyInit_<module_name>() -> PythonObject`
+1. Define an `@export def PyInit_<module_name>() -> PythonObject`
 2. Use `PythonModuleBuilder` to register functions, types, and methods
 3. Compile with `mojo build --emit shared-lib`
 4. Import from Python (or use `import mojo.importer` for auto-compilation)
@@ -156,7 +161,7 @@ from std.python import PythonObject
 from std.python.bindings import PythonModuleBuilder
 
 @export
-fn PyInit_my_module() -> PythonObject:
+def PyInit_my_module() -> PythonObject:
     try:
         var m = PythonModuleBuilder("my_module")
         m.def_function[add]("add")
@@ -166,10 +171,10 @@ fn PyInit_my_module() -> PythonObject:
         abort(String("failed to create module: ", e))
 
 # Functions take/return PythonObject. Up to 6 args with def_function.
-fn add(a: PythonObject, b: PythonObject) raises -> PythonObject:
+def add(a: PythonObject, b: PythonObject) raises -> PythonObject:
     return a + b
 
-fn greet(name: PythonObject) raises -> PythonObject:
+def greet(name: PythonObject) raises -> PythonObject:
     var s = String(py=name)
     return PythonObject("Hello, " + s + "!")
 ```
@@ -181,12 +186,12 @@ fn greet(name: PythonObject) raises -> PythonObject:
 struct Counter(Defaultable, Movable, Writable):
     var count: Int
 
-    fn __init__(out self):
+    def __init__(out self):
         self.count = 0
 
     # Constructor from Python args
     @staticmethod
-    fn py_init(out self: Counter, args: PythonObject, kwargs: PythonObject) raises:
+    def py_init(out self: Counter, args: PythonObject, kwargs: PythonObject) raises:
         if len(args) == 1:
             self = Self(Int(py=args[0]))
         else:
@@ -194,18 +199,18 @@ struct Counter(Defaultable, Movable, Writable):
 
     # Methods are @staticmethod — first arg is py_self (PythonObject)
     @staticmethod
-    fn increment(py_self: PythonObject) raises -> PythonObject:
+    def increment(py_self: PythonObject) raises -> PythonObject:
         var self_ptr = py_self.downcast_value_ptr[Self]()
         self_ptr[].count += 1
         return PythonObject(self_ptr[].count)
 
     # Auto-downcast alternative: first arg is UnsafePointer[Self, MutAnyOrigin]
     @staticmethod
-    fn get_count(self_ptr: UnsafePointer[Self, MutAnyOrigin]) -> PythonObject:
+    def get_count(self_ptr: UnsafePointer[Self, MutAnyOrigin]) -> PythonObject:
         return PythonObject(self_ptr[].count)
 
 @export
-fn PyInit_counter_module() -> PythonObject:
+def PyInit_counter_module() -> PythonObject:
     try:
         var m = PythonModuleBuilder("counter_module")
         _ = (
@@ -235,7 +240,7 @@ from std.collections import OwnedKwargsDict
 
 # In a method:
 @staticmethod
-fn config(
+def config(
     py_self: PythonObject, kwargs: OwnedKwargsDict[PythonObject]
 ) raises -> PythonObject:
     for entry in kwargs.items():
@@ -256,6 +261,11 @@ print(my_module.add(1, 2))
 ```
 
 The module name in `PyInit_<name>` must match the `.mojo` filename.
+
+The `.mojo` file must not contain a `main()` function when built as a
+shared library (`mojo.importer` or `--emit shared-lib`). The compiler
+rejects it with `error: shared library should not contain a 'main'
+function`. Keep test/CLI code in a separate file.
 
 ### Returning Mojo values to Python
 
