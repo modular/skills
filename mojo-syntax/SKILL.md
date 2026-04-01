@@ -216,7 +216,7 @@ Prelude auto-imports (no import needed): `Int`, `String`, `Bool`, `List`,
 
 `rebind[TargetType](value)` reinterprets a value as a different type with the
 same in-memory representation. Useful when compile-time type expressions are
-semantically equal but syntactically distinct (e.g., LayoutTensor element types
+semantically equal but syntactically distinct (e.g., TileTensor element types
 — see GPU skill).
 
 ## `Writable` / `Writer` (replaces `Stringable`)
