@@ -31,8 +31,8 @@ Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`,
 | `cudaDeviceSynchronize()`               | `ctx.synchronize()`                                                                  |
 | `__syncthreads()`                       | `barrier()` from `std.gpu` or `std.gpu.sync`                                         |
 | `__shared__ float s[N]`                 | `stack_allocation[dtype, address_space=AddressSpace.SHARED](layout)`                 |
-| `threadIdx.x`                           | `thread_idx.x` (returns `UInt`)                                                      |
-| `blockIdx.x * blockDim.x + threadIdx.x` | `global_idx.x` (convenience)                                                         |
+| `threadIdx.x`                           | `thread_idx.x`                                                                       |
+| `blockIdx.x * blockDim.x + threadIdx.x` | `global_idx.x` (convenience, returns `Int`)                                          |
 | `__shfl_down_sync(mask, val, d)`        | `warp.sum(val)`, `warp.reduce[...]()`                                                |
 | `atomicAdd(&ptr, val)`                  | `Atomic.fetch_add(ptr, val)`                                                         |
 | Raw `float*` kernel args                | `TileTensor[dtype, LayoutType, MutAnyOrigin]`                                        |
@@ -73,12 +73,12 @@ def my_kernel[
 ):
     comptime assert input.flat_rank == 1, "expected 1D tensor"
     var tid = global_idx.x
-    if tid < UInt(size):
+    if tid < size:
         output[tid] = input[tid] * 2
 ```
 
 - Kernel functions cannot raise.
-- Bounds check with `UInt(size)` since `global_idx.x` returns `UInt`.
+- `global_idx.x` returns `Int` — compare directly with `size`.
 - For simple cases with a single fixed layout, `type_of(layout)` also works:
   `TileTensor[dtype, type_of(layout), MutAnyOrigin]`.
 
@@ -288,7 +288,7 @@ from std.gpu import lane_id, WARP_SIZE
 var my_lane = lane_id()          # 0..WARP_SIZE-1
 ```
 
-All return `UInt`. Compare with `UInt(int_val)` for bounds checks.
+All return `Int` — no casting needed for bounds checks.
 
 ## Synchronization and warp operations
 
@@ -395,7 +395,7 @@ def add_kernel(
     size: Int,
 ):
     var tid = global_idx.x
-    if tid < UInt(size):
+    if tid < size:
         c[tid] = a[tid] + b[tid]
 
 def main() raises:
@@ -462,12 +462,12 @@ def matmul_kernel[
 
     var acc: C.ElementType = 0.0
     comptime for k_tile in range(0, K, TILE):
-        if row < M and UInt(k_tile) + tx < K:
-            sa[ty, tx] = A[row, UInt(k_tile) + tx]
+        if row < M and k_tile + tx < K:
+            sa[ty, tx] = A[row, k_tile + tx]
         else:
             sa[ty, tx] = 0.0
-        if UInt(k_tile) + ty < K and col < N:
-            sb[ty, tx] = B[UInt(k_tile) + ty, col]
+        if k_tile + ty < K and col < N:
+            sb[ty, tx] = B[k_tile + ty, col]
         else:
             sb[ty, tx] = 0.0
         barrier()
@@ -523,7 +523,7 @@ def block_reduce(
         barrier()
 
     # Final warp reduction + atomic accumulate
-    if tid < UInt(WARP_SIZE):
+    if tid < WARP_SIZE:
         var v = warp.sum(sums[tid][0])
         if tid == 0:
             _ = Atomic.fetch_add(output, v)
