@@ -18,10 +18,9 @@ These same principles apply to any files this skill references.
 -->
 
 Apply these patterns **on top of `mojo-syntax`** — they assume you already know
-modern Mojo syntax. These rules are extracted from real optimization work on a
-production Mojo codebase where a matcher hot path went from ~4 µs to ~1.3 µs
-(3x) by composing them. They compound: isolated use gives small wins, chained
-use is where the order-of-magnitude speedups come from.
+modern Mojo syntax. These patterns compound: any one of them in isolation
+gives a small win, but chaining several on the same hot path is where
+order-of-magnitude speedups come from.
 
 **Measure before and after every change.** Never guess.
 
@@ -42,16 +41,16 @@ from std.benchmark import (
 # One benchmark = an @parameter def that takes `mut b: Bencher`.
 # The inner @always_inline @parameter closure is what gets measured.
 @parameter
-def bench_match_first(mut b: Bencher) raises:
-    var compiled = compile_regex(PATTERN)      # setup OUTSIDE the timed body
+def bench_parse_json(mut b: Bencher) raises:
+    var source = load_fixture("large.json")     # setup OUTSIDE the timed body
     @always_inline
     @parameter
     def call_fn() raises:
         for _ in range(1000):                   # batch to amortize per-iter overhead
-            var r = compiled.match_first(TEXT)
+            var r = parse_json(source)
             keep(r)                             # prevent dead-code elimination
     b.iter[call_fn]()
-    keep(Bool(compiled))                        # keep the setup alive past the loop
+    keep(Bool(source))                          # keep the setup alive past the loop
 
 # Parametric benchmarks use compile-time params; the harness calls them
 # once per specialization.
@@ -68,7 +67,7 @@ def bench_insert[size: Int](mut b: Bencher) raises:
 
 def main() raises:
     var m = Bench(BenchConfig(num_repetitions=5))
-    m.bench_function[bench_match_first](BenchId("match_first"))
+    m.bench_function[bench_parse_json](BenchId("parse_json"))
     comptime for size in (10, 100, 1_000, 10_000):
         m.bench_function[bench_insert[size]](
             BenchId(String("insert[", size, "]"))
@@ -79,7 +78,7 @@ def main() raises:
 Key rules the harness enforces, so you don't:
 
 - **Setup outside `call_fn`.** Anything built inside the inner closure is
-  rebuilt on every iteration. Compile regex, allocate buffers, load fixtures
+  rebuilt on every iteration. Load fixtures, allocate buffers, pre-compile
   before `b.iter[...]`.
 - **`keep(value)` every result.** Without it the optimizer deletes the call
   you're trying to measure. `keep(Bool(container))` at the end of the outer
@@ -135,15 +134,15 @@ without `@always_inline`, LLVM can't fold the call chain and the fast path pays
 `@always_inline`:
 
 ```mojo
-# CompiledRegex -> HybridMatcher -> DFAMatcher -> DFAEngine : all @always_inline
-struct DFAMatcher:
+# JsonParser -> Tokenizer -> ByteScanner : all @always_inline
+struct Tokenizer:
     @always_inline
-    def is_match(self, text: ImmSlice, start: Int = 0) -> Bool:
-        return self.engine_ptr[].is_match(text, start)
+    def peek(self) -> UInt8:
+        return self.scanner_ptr[].peek()
 
     @always_inline
-    def match_first(self, text: ImmSlice, start: Int = 0) -> Optional[Match]:
-        return self.engine_ptr[].match_first(text, start)
+    def next_token(mut self) -> Token:
+        return self.scanner_ptr[].next_token()
 ```
 
 - One link missing `@always_inline` breaks the fold — check the whole chain.
@@ -247,12 +246,12 @@ Small, trivially-copyable structs pass in registers and avoid memcpy. Aim to
 keep hot-iterated structs under a cache line (64 bytes), ideally 32 bytes.
 
 ```mojo
-struct Match(Copyable, Movable, TrivialRegisterPassable):
+struct Token(Copyable, Movable, TrivialRegisterPassable):
     comptime __copy_ctor_is_trivial = True   # LLVM elides the copy entirely
-    var group_id: Int                         # 8
-    var start_idx: Int                        # 8
-    var end_idx: Int                          # 8
-    var text_ptr: UnsafePointer[Byte, ImmutAnyOrigin]   # 8
+    var kind: Int                             # 8
+    var start: Int                            # 8
+    var length: Int                           # 8
+    var source_ptr: UnsafePointer[Byte, ImmutAnyOrigin]   # 8
     # Total: 32 bytes — fits in 4 registers, no stack ops on copy.
 ```
 
@@ -273,7 +272,7 @@ Define a module alias so every layer agrees on the same type:
 ```mojo
 comptime ImmSlice = StringSlice[ImmutAnyOrigin]
 
-def search(pattern: ImmSlice, text: ImmSlice) raises -> Optional[Match]:
+def tokenize(source: ImmSlice) raises -> List[Token]:
     ...                                       # callers pass literals, zero alloc
 ```
 
@@ -283,30 +282,30 @@ machine words but carries provenance and can't go out of sync.
 
 ## Avoid copies in loops: `ref` over `var`
 
-Iterating a container of large structs (`ASTNode`, `Match`, records) with
+Iterating a container of large structs (records, tree nodes, tokens) with
 `var x = container[i]` **copies** on every step. Use `ref` to alias:
 
 ```mojo
 # WRONG — full struct copy per iteration
-for i in range(len(nodes)):
-    var node = nodes[i]        # copy
-    process(node)
+for i in range(len(rows)):
+    var row = rows[i]          # copy
+    process(row)
 
 # CORRECT — zero-copy reference
-for i in range(len(nodes)):
-    ref node = nodes[i]        # alias
-    process(node)
+for i in range(len(rows)):
+    ref row = rows[i]          # alias
+    process(row)
 
 # Also for local bindings to nested fields:
-ref matchers = matchers_ptr[]  # instead of `var matchers = matchers_ptr[]`
+ref table = table_ptr[]        # instead of `var table = table_ptr[]`
 ```
 
 `^` transfer: when you *do* want ownership but won't use the source again, use
-`value^` to move instead of copy: `engine_ptr.init_pointee_move(engine^)`.
+`value^` to move instead of copy: `ptr.init_pointee_move(value^)`.
 
 ## Lazy-initialized global caches
 
-For precomputed lookup tables, matcher dictionaries, or any expensive
+For precomputed lookup tables, interned symbol caches, or any expensive
 build-once value, use `_Global` from `std.ffi`. It guarantees single-shot
 lazy initialization behind a pointer you can mutate through:
 
@@ -314,28 +313,28 @@ lazy initialization behind a pointer you can mutate through:
 from std.ffi import _Global
 from std.os import abort
 
-comptime MatcherCache = Dict[Int, SomeMatcher]
-comptime _MATCHER_CACHE = _Global["MatcherCache", _init_matcher_cache]
+comptime SymbolTable = Dict[Int, InternedSymbol]
+comptime _SYMBOL_TABLE = _Global["SymbolTable", _init_symbol_table]
 
-def _init_matcher_cache() -> MatcherCache:
-    return MatcherCache()
+def _init_symbol_table() -> SymbolTable:
+    return SymbolTable()
 
-def _get_matcher_cache() -> UnsafePointer[MatcherCache, MutAnyOrigin]:
+def _get_symbol_table() -> UnsafePointer[SymbolTable, MutAnyOrigin]:
     try:
-        return _MATCHER_CACHE.get_or_create_ptr()
+        return _SYMBOL_TABLE.get_or_create_ptr()
     except e:
         abort[prefix="ERROR:"](String(e))
 
 @always_inline
-def get_matcher(key: Int) raises -> SomeMatcher:
-    var cache_ptr = _get_matcher_cache()
-    ref cache = cache_ptr[]
-    if key not in cache:
-        cache[key] = build_matcher(key)
-    return cache[key]
+def intern(id: Int) raises -> InternedSymbol:
+    var table_ptr = _get_symbol_table()
+    ref table = table_ptr[]
+    if id not in table:
+        table[id] = InternedSymbol(id)
+    return table[id]
 ```
 
-- The string key in `_Global["MatcherCache", ...]` is the **global identity** —
+- The string key in `_Global["SymbolTable", ...]` is the **global identity** —
   must be unique per cache across the whole program.
 - Return `UnsafePointer` for interior mutability even when the caller is
   `read`-self: this is how you cache through a trait method that demands
@@ -349,12 +348,12 @@ destructor logic on garbage — a classic flaky double-free at process exit:
 
 ```mojo
 # WRONG — move-assign into uninitialized memory, undefined behavior
-self._lazy_dfa_ptr = alloc[LazyDFA](1)
-self._lazy_dfa_ptr[] = LazyDFA(vm^)     # UB
+self._arena_ptr = alloc[Arena](1)
+self._arena_ptr[] = Arena(capacity^)     # UB
 
 # CORRECT — construct in place
-self._lazy_dfa_ptr = alloc[LazyDFA](1)
-self._lazy_dfa_ptr.init_pointee_move(LazyDFA(vm^))
+self._arena_ptr = alloc[Arena](1)
+self._arena_ptr.init_pointee_move(Arena(capacity^))
 ```
 
 Same rule applies in `__copyinit__` when copying heap-owned fields:
@@ -427,22 +426,23 @@ comptime DIGIT_LUT = _build_digit_lut()  # runs at compile time
 
 ## SIMD byte scanning: nibble-based lookup
 
-For byte-level character class scans (matching `[a-z]`, `\d`, `\w`, arbitrary
-byte sets), the naive 256-entry lookup table is too big for `_dynamic_shuffle`.
-Decompose each byte into two **nibbles** (4-bit halves) and use two 16-entry
-tables — this fits exactly in a single `pshufb`/`vpshufb` instruction:
+For byte-level membership tests — JSON whitespace (`\t \n \r ' '`), CSV
+delimiters, URL-safe characters, digit ranges, any fixed byte set — the naive
+256-entry lookup table is too big for `_dynamic_shuffle`. Decompose each byte
+into two **nibbles** (4-bit halves) and use two 16-entry tables — this fits
+exactly in a single `pshufb`/`vpshufb` instruction:
 
 ```mojo
 # Two 16-entry tables, precomputed at compile time
 var lo = low_nibble_lut._dynamic_shuffle(chunk & 0x0F)
 var hi = high_nibble_lut._dynamic_shuffle((chunk >> 4) & 0x0F)
 var matches: SIMD[DType.bool, 16] = (lo & hi) != 0
-# matches[i] is True iff chunk[i] is in the class
+# matches[i] is True iff chunk[i] is in the byte set
 ```
 
 Nibble lookup is typically **20-100x faster** than per-byte scalar dispatch on
-hot paths. For *contiguous* ranges like `[a-z]`, `[0-9]`, an even cheaper path
-exists:
+hot paths. For *contiguous* ranges (e.g., `a`-`z`, `0`-`9`), an even cheaper
+path exists:
 
 ```mojo
 # Range check via unsigned subtract — no lookup table needed
@@ -450,43 +450,44 @@ var offset = chunk - SIMD[DType.uint8, 32](range_start)
 var matches = offset <= SIMD[DType.uint8, 32](range_end - range_start)
 ```
 
-Record `range_start`/`range_end` on the matcher struct at construction time so
-the hot path can pick this fast path. Non-contiguous classes fall back to the
+Record `range_start`/`range_end` on the scanner struct at construction time so
+the hot path can pick this fast path. Non-contiguous sets fall back to the
 nibble tables.
 
-## Prefilters: cheap scan before the expensive match
+## Prefilters: cheap scan before the expensive path
 
-Full engine invocation per byte is the wrong granularity. Extract a *cheap*
-signal from the pattern — a required literal substring, a first-byte set, a
-fixed prefix — and use the fastest available scan primitive to locate
-candidate positions first. The expensive matcher only runs where the prefilter
-says "maybe":
+Running the full processing pipeline per byte is the wrong granularity.
+Extract a *cheap* signal — a required literal substring, a lead-byte set,
+a fixed prefix — and use the fastest scan primitive to locate candidate
+positions first. The expensive logic only runs where the prefilter says
+"maybe". This applies to parsers, validators, search engines, log scanners,
+packet decoders, etc.
 
-| Prefilter                | Scan primitive                   | Use when                       |
-|--------------------------|----------------------------------|--------------------------------|
-| Required literal         | `StringSlice.find`               | Pattern contains a fixed substr|
-| Last-literal for `.*LIT` | `String.rfind` (single pass)     | `.*literal` prefix pattern     |
-| First-byte set           | SIMD equality sweep + bitmask    | Small (<8) set of start bytes  |
-| Byte class (`\d`, `\w`)  | Nibble SIMD scan                 | Start is a character class     |
+| Prefilter          | Scan primitive                | Example                                |
+|--------------------|-------------------------------|----------------------------------------|
+| Required literal   | `StringSlice.find`            | Scan for `"error"` before parsing line |
+| Last occurrence    | `String.rfind` (single pass)  | Find last `/` to extract filename      |
+| Lead-byte set      | SIMD equality sweep + bitmask | Scan for `{`, `[`, `"` to find JSON values |
+| Byte range/class   | Nibble SIMD scan              | Skip to first digit before number parse|
 
 **Critical anti-pattern**: using repeated forward `find` to locate the *last*
-occurrence is O(N × occurrences). Use `rfind` for a single reverse O(N) pass:
+occurrence is O(N x occurrences). Use `rfind` for a single reverse O(N) pass:
 
 ```mojo
 # WRONG — O(N * k)
 var pos = 0
 while True:
-    var next = text.find(literal, pos)
+    var next = text.find(delimiter, pos)
     if next == -1: break
     pos = next + 1
 var last = pos - 1
 
 # CORRECT — O(N)
-var last = text.rfind(literal)
+var last = text.rfind(delimiter)
 ```
 
-Real PR impact: this one change took `.*@example\.com` on a large text from
-**39x slower** to **10x faster** than Python.
+In practice, switching from repeated-`find` to `rfind` for a "find last
+suffix" operation has delivered **8-40x speedups** on multi-KB inputs.
 
 ## Numeric accumulation over string concat
 
@@ -513,34 +514,33 @@ Same pattern applies to checksum accumulation, hash building, and any
 
 ## Fast-path dispatch by input shape
 
-At construction time (not match time), classify the input and record which
-optimized path can run. Cheap patterns (single literal, fixed-length sequence,
-anchored prefix) should bypass the general engine entirely:
+At construction time (not execution time), classify the workload and record
+which optimized path can run. Simple cases should bypass the general engine
+entirely — the analysis cost is paid once and amortized across every call:
 
 ```mojo
-struct CompiledRegex:
-    var _simple_literal: Bool       # pattern is a fixed string
-    var _literal: String             # extracted literal if any
-    var _has_dotstar_prefix: Bool    # .*LITERAL
-    var _engine: Engine              # general fallback
+struct QueryPlan:
+    var _is_pk_lookup: Bool         # equality on primary key
+    var _is_simple_scan: Bool       # single-table, no joins
+    var _executor: GeneralExecutor  # general fallback
 
-    def __init__(out self, var ast: ASTNode, pattern: String):
-        self._simple_literal = _is_simple_literal(ast)
-        ...                           # analyze once at compile time
-        self._engine = build_engine(ast)
+    def __init__(out self, query: Query):
+        self._is_pk_lookup = _has_pk_equality(query)
+        self._is_simple_scan = _is_single_table(query)
+        self._executor = plan_general(query)
 
     @always_inline
-    def match_first(self, text: ImmSlice) -> Optional[Match]:
-        if self._simple_literal:
-            return _literal_search(text, self._literal)   # 100x faster path
-        if self._has_dotstar_prefix:
-            return _dotstar_literal_path(text, self._literal)
-        return self._engine.match_first(text)
+    def execute(self, db: Database) -> ResultSet:
+        if self._is_pk_lookup:
+            return _pk_index_lookup(db, self._executor.key)   # O(1) path
+        if self._is_simple_scan:
+            return _sequential_scan(db, self._executor.table)
+        return self._executor.run(db)
 ```
 
-Per-match analysis overhead is amortized across every call on the same
-compiled object. Keep the analysis in `__init__`; keep the hot path branchy
-but cheap.
+Keep the classification in `__init__`; keep the hot path branchy but cheap.
+The same pattern applies to parsers (literal vs. complex grammar), formatters
+(fixed-width vs. general), and serializers (flat struct vs. nested).
 
 ## Unlikely-branch hoisting
 
@@ -549,12 +549,12 @@ so the fallback isn't inlined into the hot prologue:
 
 ```mojo
 @always_inline
-def is_match(self, text: ImmSlice) -> Bool:
-    if len(text) == 0:            # cold edge case
-        return self._matches_empty
-    if self._simple_literal:      # hot path, short-circuits
-        return _literal_eq(text, self._literal)
-    return self._engine.is_match(text)   # general path, not inlined hot
+def validate(self, input: ImmSlice) -> Bool:
+    if len(input) == 0:            # cold edge case
+        return self._empty_valid
+    if self._exact_mode:           # hot path, short-circuits
+        return _byte_eq(input, self._expected)
+    return self._general.check(input)    # general path, not inlined hot
 ```
 
 Pair with `@no_inline` on the general-path helper if it's large, so the inlined
