@@ -27,34 +27,104 @@ use is where the order-of-magnitude speedups come from.
 
 ## The profile-driven workflow
 
-Before optimizing, build a benchmark harness that isolates the hot path:
+Use `std.benchmark` — **never** hand-roll a `perf_counter_ns` harness.
+`Bench`/`Bencher` handles warmup, auto-calibration, repetitions, and
+statistical summary for you. The stdlib `mojo/stdlib/benchmarks/` tree is the
+reference — copy-paste from there when starting a new file.
 
 ```mojo
-from std.time import perf_counter_ns
+from std.benchmark import (
+    Bench, BenchConfig, Bencher, BenchId,
+    BenchMetric, ThroughputMeasure,
+    keep, black_box,
+)
 
-# 1. Build once, outside the timing loop. Never include setup in measurements.
-var compiled = compile_once(pattern)
+# One benchmark = an @parameter def that takes `mut b: Bencher`.
+# The inner @always_inline @parameter closure is what gets measured.
+@parameter
+def bench_match_first(mut b: Bencher) raises:
+    var compiled = compile_regex(PATTERN)      # setup OUTSIDE the timed body
+    @always_inline
+    @parameter
+    def call_fn() raises:
+        for _ in range(1000):                   # batch to amortize per-iter overhead
+            var r = compiled.match_first(TEXT)
+            keep(r)                             # prevent dead-code elimination
+    b.iter[call_fn]()
+    keep(Bool(compiled))                        # keep the setup alive past the loop
 
-# 2. Warmup — first N iterations are discarded (cache cold, JIT artifacts).
-for _ in range(WARMUP_ITERATIONS):
-    _ = compiled.run(input)
+# Parametric benchmarks use compile-time params; the harness calls them
+# once per specialization.
+@parameter
+def bench_insert[size: Int](mut b: Bencher) raises:
+    var items = make_dict[size]()
+    @always_inline
+    @parameter
+    def call_fn() raises:
+        for k in range(size, size + 10):
+            items[k] = k
+    b.iter[call_fn]()
+    keep(Bool(items))
 
-# 3. Auto-calibrate iters so each sample takes >= 1 ms (OS jitter dominates
-#    sub-ms samples).
-var iters = initial_iters
-var cal_start = perf_counter_ns()
-for _ in range(iters):
-    _ = compiled.run(input)
-if perf_counter_ns() - cal_start < 1_000_000:
-    iters *= (1_000_000 // (perf_counter_ns() - cal_start)) + 1
-
-# 4. Collect samples until ~500 ms total, take **median** (not mean).
+def main() raises:
+    var m = Bench(BenchConfig(num_repetitions=5))
+    m.bench_function[bench_match_first](BenchId("match_first"))
+    comptime for size in (10, 100, 1_000, 10_000):
+        m.bench_function[bench_insert[size]](
+            BenchId(String("insert[", size, "]"))
+        )
+    print(m)                                   # prints the results table
 ```
 
-**Common mistakes a pretrained model will make**: including pattern compilation
-inside the timing loop; reporting mean (outliers skew it); running <100 ms
-total; skipping warmup. All of these were real issues fixed in the source
-project (and re-introduced by naive rewrites).
+Key rules the harness enforces, so you don't:
+
+- **Setup outside `call_fn`.** Anything built inside the inner closure is
+  rebuilt on every iteration. Compile regex, allocate buffers, load fixtures
+  before `b.iter[...]`.
+- **`keep(value)` every result.** Without it the optimizer deletes the call
+  you're trying to measure. `keep(Bool(container))` at the end of the outer
+  function keeps setup alive past the timed region. `black_box(x)` is the
+  stronger sibling — use it on inputs you want to force through memory.
+- **Batch inside `call_fn`** (e.g., `for _ in range(1000)`) when a single
+  call is sub-microsecond. The harness auto-calibrates, but batching further
+  reduces timer overhead for very fast ops.
+- **`num_repetitions > 1`** when you care about stability; the harness
+  reports min/mean/max across repetitions.
+- **Throughput units**: pass `ThroughputMeasure` so results are normalized to
+  GElems/s, GB/s, or GFLOPS/s instead of raw time. Use `bench_with_input` to
+  pipe a fixture to a parametric bench fn:
+
+```mojo
+m.bench_with_input[InputT, bench_fn](
+    BenchId("atof", filename),
+    input_data,
+    [
+        ThroughputMeasure(BenchMetric.elements, len(input_data)),
+        ThroughputMeasure(BenchMetric.bytes, total_bytes),
+    ],
+)
+```
+
+- **`iter_custom`** is the escape hatch when the thing you're measuring needs
+  its own context (e.g., GPU dispatch). Pass a closure taking an iteration
+  count and returning elapsed ns. Use this only when `iter[...]` can't
+  express the setup.
+
+`BenchConfig` defaults are sensible: `num_warmup_iters=10`,
+`max_runtime_secs=1.0`, `max_iters=1_000`. Override `num_repetitions` (for
+stability) and `max_runtime_secs` (for precision) first; leave the rest alone
+unless you've measured a reason.
+
+File layout: name benchmark files `bench_<thing>.mojo`, mirror the source
+tree, and put them under a `benchmarks/` directory. Stdlib tooling keys on
+the `bench_` prefix.
+
+**Common mistakes a pretrained model will make**: hand-rolling
+`perf_counter_ns` loops; omitting `keep(...)` so the compiler deletes the
+work; constructing inputs inside `call_fn`; reporting a single run instead of
+`num_repetitions>1`; forgetting `@parameter` on the bench function or
+`@always_inline @parameter` on the inner closure; using `Bench()` without
+printing `print(m)` at the end (nothing renders otherwise).
 
 ## Inlining hot-path trampolines
 
