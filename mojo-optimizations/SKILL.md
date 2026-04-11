@@ -157,17 +157,35 @@ struct DFAMatcher:
 
 ## Unsafe pointer access in inner loops
 
-`List`/`Span`/`StringSlice` indexing emits a bounds check on every access. For
-loops that run millions of times, hoist the bounds check out and use
-`unsafe_ptr()` for the actual reads/writes:
+Know what `__getitem__` actually costs — it differs by type. All three go
+through `normalize_index`, but with different assert modes:
+
+| Type                  | Default-release check                              | Extra per-access work |
+|-----------------------|----------------------------------------------------|-----------------------|
+| `List[T][i]`          | **None** (`assert_mode="none"`, compiled out)      | Negative-index normalization branch |
+| `Span[T][i]`          | **None** (`assert_mode="none"`, compiled out)      | Negative-index normalization branch |
+| `StringSlice[byte=i]` | **Bounds check + UTF-8 start-byte assert** (`"safe"`) | Negative-index normalization branch |
+
+The global `ASSERT` mode defaults to `safe`. Under `-D ASSERT=all` or a
+debug build, **all three** types emit bounds checks on every access. So
+whether `unsafe_ptr()` actually saves a branch depends on the build mode.
+
+What `unsafe_ptr()` reliably buys you, even in default release:
+
+1. Skips the negative-index normalization branch (a conditional on every
+   access for signed index types).
+2. Removes the `StringSlice[byte=i]` bounds check + UTF-8 assert.
+3. Enables more aggressive loop optimization — with no possible trap, LLVM
+   can vectorize, unroll, and hoist more freely.
+4. Makes `-D ASSERT=all` debug builds as fast as release on the hot path.
 
 ```mojo
-# WRONG — bounds check per iteration
+# Safe but slow in -D ASSERT=all, and still branches per iter on sign check
 for i in range(len(states)):
-    if states[i].is_active:        # len check every step
+    if states[i].is_active:
         ...
 
-# CORRECT — one bounds proof, then unchecked access
+# Pointer-based hot loop — no normalization, no possible trap
 var states_ptr = states.unsafe_ptr()
 var n = len(states)
 for i in range(n):
@@ -175,13 +193,15 @@ for i in range(n):
         ...
 ```
 
-Apply the same to `StringSlice.unsafe_ptr()` for byte scans, and to
-`List[T].unsafe_ptr()` inside inner DFA/state-machine loops.
+For `List` specifically, `list.unsafe_get(idx)` is a safer middle ground —
+it asserts in debug (`assert_mode` default) but still avoids negative-index
+handling. Use `unsafe_ptr()` only when you also want the raw-pointer loop
+form (e.g., to feed `+ offset` arithmetic or SIMD loads).
 
-**Also audit the loop for checks that are always true for the input type**:
-`uint8_val >= 0` is always true; `char_code < 256` is always true for
-`UInt8`-typed inputs. Such dead conditions still cost instructions — delete
-them.
+**Separately, audit the loop for checks that are always true for the input
+type**: `uint8_val >= 0` is always true; `char_code < 256` is always true
+for `UInt8`-typed inputs. Such dead conditions still cost instructions —
+delete them.
 
 ## Pre-allocate collections; lazy-allocate when zero is common
 
