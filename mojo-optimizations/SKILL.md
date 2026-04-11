@@ -370,29 +370,30 @@ these.
 
 ## Cache by hash, not by string
 
-When a cache key is a string, keying the `Dict` on `String` forces callers to
-allocate just to check cache membership. Key on `hash(slice)` instead — cache
-hits become zero-allocation:
+`Dict[String, V]` forces callers to allocate a `String` just to check cache
+membership. Hash the slice instead — cache hits become zero-allocation.
+Works for any "expensive value keyed by a string": parsed configs, compiled
+templates, resolved file paths, interned symbols, SQL plans.
 
 ```mojo
-comptime RegexCache = Dict[UInt64, CompiledRegex]
+# Generic pattern: expensive T built from a string key, memoized.
+comptime Cache = Dict[UInt64, Entry]
 
-def compile_regex(pattern: ImmSlice) raises -> CompiledRegex:
-    var cache_ptr = _get_regex_cache()
-    var key = hash(pattern)
-    if key in cache_ptr[]:
-        var cached = cache_ptr[][key]
-        if cached.pattern == pattern:       # collision guard: byte-compare
-            return cached
-    # miss or collision — allocate String once for the stored copy
-    var compiled = CompiledRegex(String(pattern))
-    cache_ptr[][key] = compiled
-    return compiled
+def get_or_build(key: StringSlice, mut cache: Cache) raises -> Entry:
+    var h = hash(key)
+    if h in cache:
+        ref hit = cache[h]
+        if hit.source == key:               # collision guard: byte-compare
+            return hit.copy()
+    var built = build(String(key))          # allocate the String once, on miss
+    cache[h] = built
+    return built
 ```
 
-Always keep the collision guard (`cached.pattern == pattern`) — 64-bit hash
-collisions are astronomically rare but not zero. On collision, fall through
-to a fresh compile.
+The collision guard is mandatory. 64-bit hash collisions are astronomically
+rare but not zero, and silently returning the wrong value under a collided
+key is the worst possible failure mode. On mismatch, fall through to a fresh
+build.
 
 ## Comptime specialization for fast-path code
 
