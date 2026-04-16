@@ -50,7 +50,7 @@ from std.gpu.primitives import warp                               # warp.sum, wa
 from std.gpu.memory import AddressSpace                           # for shared memory
 from std.gpu.memory import async_copy_wait_all                    # async copy sync
 from std.gpu.host import DeviceContext, DeviceBuffer              # host-side API
-from std.os.atomic import Atomic                                  # atomics
+from std.atomic import Atomic                                  # atomics
 
 # Layout system — NOT in std, separate package
 from layout import TileTensor, TensorLayout, Idx, row_major, stack_allocation
@@ -295,7 +295,7 @@ All return `Int` — no casting needed for bounds checks.
 ```mojo
 from std.gpu import barrier
 from std.gpu.primitives import warp
-from std.os.atomic import Atomic
+from std.atomic import Atomic
 
 barrier()                                    # block-level sync
 var warp_sum = warp.sum(my_value)           # warp-wide sum reduction
