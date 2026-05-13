@@ -3,13 +3,14 @@ name: mojo-stdlib-review
 description: >
   Red-team adversarial review of Mojo stdlib PRs. Spawns parallel agents that deep-read every
   changed file, extract factual claims, verify each against the actual stdlib source of truth and
-  the rules in `mojo-stdlib-contributing`, and either post review comments on the PR (default "post
-  mode") or write findings to `.specs/` ("local mode", triggered by "in local mode" / "no post" in
-  the arguments). Use when the user mentions "adversarial review", "red team review", "deep review",
-  "fact-check PR", or wants thorough verification of a Mojo stdlib PR before requesting maintainer
-  review. Distilled from 30+ reviewed PRs to `modular/modular`.
+  the rules in `mojo-stdlib-contributing`, and write findings to `.specs/` by default ("local
+  mode") so the author can self-review before flipping a draft PR to ready. Pass "in post mode" /
+  "post comments" / "post to PR" in the arguments to post review comments on the PR via
+  `gh pr review` instead. Use when the user mentions "adversarial review", "red team review",
+  "deep review", "fact-check PR", or wants thorough verification of a Mojo stdlib PR before
+  requesting maintainer review. Distilled from 30+ reviewed PRs to `modular/modular`.
 user-invocable: true
-argument-hint: "[PR numbers or URLs, space-separated] [\"in local mode\"]"
+argument-hint: "[PR numbers or URLs, space-separated] [\"in post mode\"]"
 ---
 
 Red-team adversarial review of Mojo stdlib PRs: $ARGUMENTS
@@ -29,21 +30,23 @@ The skill spawns one `general-purpose` agent per PR in parallel. Each agent:
 3. Extracts every verifiable claim and every removed line
 4. Verifies each claim against the source of truth
 5. Double-checks findings before reporting
-6. Either posts review comments on the PR (default) or writes findings to a local file for the
-   author to auto-fix (local mode)
+6. Writes findings to a local file for the author to auto-fix (default), or posts review
+   comments on the PR (opt-in via "in post mode")
 
 ## Output modes
 
-Default is **post mode**: findings are posted on the PR via `gh pr review --comment`. Use this
-when reviewing someone else's PR.
+Default is **local mode**: write findings to `.specs/stdlib-review-<PR>.md` and return the path
+plus per-category counts to the caller. Do NOT post PR comments. This is the canonical
+"self-review gate" used by stdlib contributors before flipping a draft PR to ready-for-review.
+It runs on the local Claude Code subscription and avoids spamming the PR with comments that the
+author will resolve before any maintainer sees them.
 
-If `$ARGUMENTS` contains "local", "local mode", "local fix", "no post", or equivalent phrasing,
-switch to **local mode**: write findings to `.specs/stdlib-review-<PR>.md` and return the path
-plus per-category counts to the caller. Do NOT post PR comments.
+If `$ARGUMENTS` contains "post", "post mode", "post comments", "post to PR", or equivalent
+phrasing, switch to **post mode**: findings are posted on the PR via `gh pr review --comment`.
+Use this when reviewing someone else's PR rather than self-reviewing your own draft.
 
-Local mode is the canonical "self-review gate" used by stdlib contributors before flipping a
-draft PR to ready-for-review. It runs on the local Claude Code subscription and avoids spamming
-the PR with comments that the author will resolve before any maintainer sees them.
+Phrases like "in local mode" / "local fix" / "no post" also explicitly request the default
+local mode and are accepted (no-op).
 
 ## Phase 1: Parse Input
 
@@ -96,9 +99,10 @@ For each PR, spawn a `general-purpose` agent using the Agent tool with `run_in_b
 Use `stdlib-review-{pr_number}` as the agent `description` (e.g., `"stdlib-review-6276"`).
 Capture the returned agent ID from each Agent tool call.
 
-Before spawning, choose **one** emit block (post mode default OR local mode) based on
+Before spawning, choose **one** emit block (local mode default OR post mode) based on
 `$ARGUMENTS` and inline it as `{EMIT_SECTION}` so the agent receives a single unambiguous
-instruction.
+instruction. Default is local mode; switch to post mode only if `$ARGUMENTS` explicitly opts
+in via "post", "post mode", "post comments", "post to PR", or equivalent phrasing.
 
 ### Agent Prompt Template
 
@@ -392,7 +396,17 @@ IMPORTANT:
 
 Inject exactly one of these as `{EMIT_SECTION}` based on `$ARGUMENTS`:
 
-**Post mode (default):**
+**Local mode (default):**
+
+```
+Do NOT call `gh pr review`. Write the REVIEW_BODY markdown to
+`.specs/stdlib-review-{PR_NUMBER}.md` (create the parent directory if needed) and return the
+absolute path plus the issue counts (Critical/Factual/Completeness/Inconsistency/Question/Minor)
+to the orchestrator. The author will read this file, resolve findings, and re-run this skill to
+confirm the PR is clean before flipping the draft to ready-for-review.
+```
+
+**Post mode (opt-in via "in post mode"):**
 
 ```
 Post the review to the PR using a heredoc to avoid shell quoting issues:
@@ -403,16 +417,6 @@ REVIEW_BODY
 EOF
 )"
 \`\`\`
-```
-
-**Local mode:**
-
-```
-Do NOT call `gh pr review`. Write the REVIEW_BODY markdown to
-`.specs/stdlib-review-{PR_NUMBER}.md` (create the parent directory if needed) and return the
-absolute path plus the issue counts (Critical/Factual/Completeness/Inconsistency/Question/Minor)
-to the orchestrator. The author will read this file, resolve findings, and re-run this skill to
-confirm the PR is clean before flipping the draft to ready-for-review.
 ```
 
 ---
@@ -427,7 +431,7 @@ As each agent completes, record its results:
 
 - Number of issues by category (Critical / Factual / Completeness / Inconsistency / Question / Minor)
 - Number of claims verified correct
-- Whether the review was posted (post mode) or written to `.specs/` (local mode)
+- Whether the review was written to `.specs/` (local mode, default) or posted (post mode)
 
 Report each completion to the user with a brief summary.
 
@@ -458,8 +462,8 @@ If an agent fails (e.g. `gh` auth issue, missing file, hit token budget):
 - [Suggestions to fold new rules into `mojo-stdlib-contributing`]
 ```
 
+In **local mode** (default), end with the list of `.specs/stdlib-review-<PR>.md` paths.
 In **post mode**, end with: "All review comments have been posted on each PR."
-In **local mode**, end with the list of `.specs/stdlib-review-<PR>.md` paths.
 
 ### Step 8: Follow-up options
 
@@ -467,9 +471,9 @@ Ask the user via `AskUserQuestion`:
 
 **Next steps** (header: "Next steps"):
 
+- **Fix locally** (default for local-mode runs): Read each `.specs/stdlib-review-<PR>.md` and
+  apply fixes on the local branch.
 - **Done**: Reviews are in place, nothing more needed.
-- **Fix locally**: For local-mode runs, read each `.specs/stdlib-review-<PR>.md` and apply fixes
-  on the local branch.
 - **Re-review**: Run another pass on specific PRs (e.g. after the author pushes fixes).
 - **Update `mojo-stdlib-contributing`**: If a recurring pattern surfaced that isn't in the
   contributing skill yet, propose an edit.
@@ -483,13 +487,15 @@ Ask the user via `AskUserQuestion`:
 - **Agent type**: Always `general-purpose`. Stdlib expertise comes from the prompt (and from
   reading `mojo-stdlib-contributing` as the agent's first move), not the agent type.
 - **Parallelism**: All agents MUST be launched in a single message for maximum parallelism.
-- **False-positive prevention**: Step 6 (double-check) is critical. A review that posts wrong
-  comments costs the author trust and review-bandwidth. When in doubt, classify as Question.
-- **Scope**: This skill emits reviews; it does NOT modify code. Author + caller fix issues.
-- **Idempotent in local mode**: re-running overwrites `.specs/stdlib-review-<PR>.md`. In post
-  mode, re-running posts a fresh review comment -- warn the user before re-reviewing a PR you
-  already reviewed.
+- **False-positive prevention**: Step 6 (double-check) is critical. A review that surfaces
+  wrong findings wastes the author's time and, in post mode, costs trust and review-bandwidth.
+  When in doubt, classify as Question.
+- **Scope**: This skill emits reviews; it does NOT modify code. The author (or caller) fixes
+  issues based on the findings file (local mode) or PR comments (post mode).
+- **Default is local mode**: re-running overwrites `.specs/stdlib-review-<PR>.md` (idempotent).
+  In post mode, re-running posts a fresh review comment each time -- warn the user before
+  re-reviewing a PR you already reviewed in post mode.
 - **Cost**: Each agent reads heavily (PR files + stdlib source + sibling APIs + the
-  contributing skill). For N PRs, expect proportional reads. Local mode amortizes this: run it
-  once before flipping to ready-for-review and you avoid triggering the paid CI reviewer on
-  every push.
+  contributing skill). For N PRs, expect proportional reads. Local mode (default) amortizes
+  this: run it once before flipping to ready-for-review and you avoid triggering the paid CI
+  reviewer on every push.

@@ -97,11 +97,11 @@ modifying code under `mojo/stdlib/`.
 review of one or more Mojo stdlib PRs. It spawns parallel agents that
 fact-check every claim in the diff against the actual stdlib source and the
 rules in `mojo-stdlib-contributing`, classify findings (Critical / Factual /
-Completeness / Inconsistency / Question / Minor), and either post review
-comments on the PR (default) or write a local findings file for the author to
-fix before flipping a draft PR to ready-for-review. Use when you want a
-thorough self-review pass on a stdlib contribution, or to fact-check someone
-else's stdlib PR.
+Completeness / Inconsistency / Question / Minor), and write a local findings
+file for the author to fix before flipping a draft PR to ready-for-review.
+Pass `"in post mode"` in the arguments to post review comments on the PR via
+`gh pr review` instead. Use when you want a thorough self-review pass on a
+stdlib contribution, or to fact-check someone else's stdlib PR.
 
 ## Examples
 
