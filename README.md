@@ -91,6 +91,18 @@ semantics (`assert_mode="safe"` is intentional), benchmark patterns, testing
 requirements, SIMD/memory safety, and common reviewer feedback. Use when
 modifying code under `mojo/stdlib/`.
 
+### `mojo-stdlib-review`
+
+[This skill](mojo-stdlib-review/SKILL.md) performs an adversarial (red-team)
+review of one or more Mojo stdlib PRs. It spawns parallel agents that
+fact-check every claim in the diff against the actual stdlib source and the
+rules in `mojo-stdlib-contributing`, classify findings (Critical / Factual /
+Completeness / Inconsistency / Question / Minor), and either post review
+comments on the PR (default) or write a local findings file for the author to
+fix before flipping a draft PR to ready-for-review. Use when you want a
+thorough self-review pass on a stdlib contribution, or to fact-check someone
+else's stdlib PR.
+
 ## Examples
 
 Once these skills are installed, you can use them for many common tasks.
