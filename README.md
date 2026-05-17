@@ -82,6 +82,16 @@ triggered when Python types are used Mojo or a Python module needs to interact
 with Mojo code. Many capabilities of Mojo - Python interoperability are fairly
 new, and existing coding agents don't handle them correctly without guidance.
 
+### `mojo-optimizations`
+
+[This skill](mojo-optimizations/SKILL.md) captures performance optimization
+patterns for Mojo. It layers on top of `mojo-syntax` and is triggered when
+profiling, benchmarking, tuning latency, or porting performance-sensitive code
+to Mojo. It covers hot-path inlining, pre-allocation, unsafe pointer access in
+hot loops, struct layout, view-vs-owned types, lazy-initialized global caches,
+hash-keyed caching, `comptime` specialization, nibble-based SIMD byte scanning,
+prefiltering strategies, and fast-path dispatch.
+
 ## Examples
 
 Once these skills are installed, you can use them for many common tasks.
