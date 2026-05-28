@@ -10,12 +10,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Helper scripts for porting an LLM to MAX.
+"""Helper scripts for importing a model into MAX.
 
 This package exposes the individual scripts (``inspect_hf``, ``scaffold``,
 ``check_walls``, ``list_checkpoint_keys``, ``list_native_archs``,
 ``run_oss_gates``, ``compare_layers``) and a unified CLI dispatcher in
-``port_llm``. Each script still works as a standalone entry point
+``import_model``. Each script still works as a standalone entry point
 (``pixi run python /path/to/scaffold.py ...``); the package layout is
 additive.
 """

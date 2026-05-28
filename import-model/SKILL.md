@@ -1,8 +1,8 @@
 ---
-name: port-an-llm-to-max
+name: import-model
 description: >
-  Use when porting a new LLM architecture to MAX from a HuggingFace model ID.
-  Triggers on: "port an LLM to MAX", "add model to MAX", "bring up <HF model> in MAX".
+  Use when importing a new model architecture into MAX from a HuggingFace model ID.
+  Triggers on: "import a model into MAX", "add model to MAX", "bring up <HF model> in MAX".
   Workflow: inspect HuggingFace config and modeling code, scaffold from a similar
   MAX architecture, implement each graph layer to match HF, serve, then debug
   against the HuggingFace reference until outputs match.
@@ -11,7 +11,7 @@ metadata:
   argument-hint: "[HuggingFace model ID, e.g. 'Qwen/Qwen3-8B']"
 ---
 
-# Port an LLM to MAX
+# Import a model into MAX
 
 **Input:** a HuggingFace model ID (`$ARGUMENTS`).
 
@@ -58,13 +58,13 @@ All helpers are also reachable through a unified dispatcher with the same
 argument names and exit codes:
 
 ```bash
-pixi run python scripts/port_llm.py inspect <HF_MODEL_ID>
-pixi run python scripts/port_llm.py scaffold <HF_MODEL_ID> --start-from llama3 --output-dir ./
-pixi run python scripts/port_llm.py list-archs --match LlamaForCausalLM
-pixi run python scripts/port_llm.py check-walls <HF_MODEL_ID>
-pixi run python scripts/port_llm.py list-keys <HF_MODEL_ID> --summary
-pixi run python scripts/port_llm.py gates <HF_MODEL_ID> --port-dir <port_dir>/
-pixi run python scripts/port_llm.py compare <HF_MODEL_ID> --slug <slug> --port 8000
+pixi run python scripts/import_model.py inspect <HF_MODEL_ID>
+pixi run python scripts/import_model.py scaffold <HF_MODEL_ID> --start-from llama3 --output-dir ./
+pixi run python scripts/import_model.py list-archs --match LlamaForCausalLM
+pixi run python scripts/import_model.py check-walls <HF_MODEL_ID>
+pixi run python scripts/import_model.py list-keys <HF_MODEL_ID> --summary
+pixi run python scripts/import_model.py gates <HF_MODEL_ID> --port-dir <port_dir>/
+pixi run python scripts/import_model.py compare <HF_MODEL_ID> --slug <slug> --port 8000
 ```
 
 Port layout:

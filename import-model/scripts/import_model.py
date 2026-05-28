@@ -11,7 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===----------------------------------------------------------------------=== #
-"""Unified CLI dispatcher for the port-an-LLM-to-MAX helper scripts.
+"""Unified CLI dispatcher for the import-model helper scripts.
 
 Each subcommand maps 1:1 to one of the standalone scripts in this directory.
 Argument names, defaults, help text, and exit codes are inherited from the
@@ -33,7 +33,7 @@ Each subcommand also remains usable as a standalone script:
 
 is equivalent to:
 
-    pixi run python /path/to/scripts/port_llm.py scaffold <HF_ID> --start-from llama3 ...
+    pixi run python /path/to/scripts/import_model.py scaffold <HF_ID> --start-from llama3 ...
 """
 
 from __future__ import annotations
@@ -104,7 +104,7 @@ _SUBCOMMANDS = [
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="port_llm",
+        prog="import_model",
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
