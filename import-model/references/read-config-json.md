@@ -1,6 +1,6 @@
 # Reading `config.json`
 
-Every HuggingFace model ships a `config.json`. Reading it carefully is the
+Every Hugging Face model ships a `config.json`. Reading it carefully is the
 single highest-leverage thing you do in a port — every architectural delta
 shows up here first, before you ever touch the modeling code.
 

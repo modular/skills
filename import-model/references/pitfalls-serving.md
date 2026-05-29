@@ -75,7 +75,7 @@ ARCHITECTURES = [my_arch]
 
 ## Fake HF oracle (broken reference before you compare MAX)
 
-A port can look green against a HuggingFace reference that never loaded
+A port can look green against a Hugging Face reference that never loaded
 correctly. To avoid that:
 
 - Before doing layer-by-layer parity, run a coherence sanity-check on

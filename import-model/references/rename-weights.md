@@ -1,6 +1,6 @@
 # Renaming safetensor weights for MAX
 
-HuggingFace and MAX usually have different module names for the same
+Hugging Face and MAX usually have different module names for the same
 weights. `weight_adapters.py` is where you bridge them.
 
 ## Discover checkpoint keys first (metadata only)

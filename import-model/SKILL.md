@@ -1,25 +1,25 @@
 ---
 name: import-model
 description: >
-  Use when importing a new model architecture into MAX from a HuggingFace model ID.
+  Use when importing a new model architecture into MAX from a Hugging Face model ID.
   Triggers on: "import a model into MAX", "add model to MAX", "bring up <HF model> in MAX".
-  Workflow: inspect HuggingFace config and modeling code, scaffold from a similar
+  Workflow: inspect Hugging Face config and modeling code, scaffold from a similar
   MAX architecture, implement each graph layer to match HF, serve, then debug
-  against the HuggingFace reference until outputs match.
-compatibility: Requires pixi env with MAX installed, network access to HuggingFace Hub, and a GPU for serving/verification.
+  against the Hugging Face reference until outputs match.
+compatibility: Requires pixi env with MAX installed, network access to Hugging Face Hub, and a GPU for serving/verification.
 metadata:
-  argument-hint: "[HuggingFace model ID, e.g. 'Qwen/Qwen3-8B']"
+  argument-hint: "[Hugging Face model ID, e.g. 'Qwen/Qwen3-8B']"
 ---
 
 # Import a model into MAX
 
-**Input:** a HuggingFace model ID (`$ARGUMENTS`).
+**Input:** a Hugging Face model ID (`$ARGUMENTS`).
 
 Copy [references/template.md](references/template.md) to track this port as
 you work through the phases.
 
 Porting a model to MAX means writing a MAX graph that performs the same
-computation as the model's `modeling_<type>.py` in HuggingFace `transformers`,
+computation as the model's `modeling_<type>.py` in Hugging Face `transformers`,
 then loading the released weights into that graph and verifying the outputs
 match.
 
@@ -195,7 +195,7 @@ Open the chosen MAX arch's directory and read its top-level model file
 (usually `<slug>.py`). You're answering: which functions/classes need to
 change vs. stay the same when I port my model?
 
-Now read the corresponding HuggingFace modeling file:
+Now read the corresponding Hugging Face modeling file:
 
 ```bash
 pixi run python -c "from transformers.models.<model_type> import modeling_<model_type>; \
@@ -415,7 +415,7 @@ are aligned at that prompt. For block-local confirmation, use manual
 If you fix a layer and the divergence point doesn't move, you fixed the
 wrong thing. Revert and re-read the HF source for that layer.
 
-### Check against HuggingFace
+### Check against Hugging Face
 
 Run the model end-to-end with pretrained weights, then run HF on the same
 prompt with greedy sampling. On the MAX side, use the dtype that matches the

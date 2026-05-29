@@ -1,4 +1,4 @@
-# Reading HuggingFace modeling code
+# Reading Hugging Face modeling code
 
 The HF `modeling_<type>.py` file is the ground truth for what your MAX
 implementation must compute. You read it while building the delta list,
@@ -13,7 +13,7 @@ print(mod.__file__)
 ```
 
 For models with `trust_remote_code=True`, the modeling code lives in the
-HuggingFace cache under `~/.cache/huggingface/hub/<repo>/snapshots/...`.
+Hugging Face cache under `~/.cache/huggingface/hub/<repo>/snapshots/...`.
 
 ## What to read, in order
 

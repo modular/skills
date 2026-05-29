@@ -88,7 +88,7 @@ if has_bin and not has_st:
 "
 ```
 
-## Sanity-check the HF reference FIRST
+## Sanity-check the HF reference first
 
 ```bash
 pixi run python -c "

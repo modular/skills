@@ -2,7 +2,7 @@
 
 Scaffolding copies a donor architecture (`llama3`, `qwen3`, …). **That copy is
 not your model.** The donor graph computes the donor's math until you edit
-every sublayer that the delta list flagged as different from HuggingFace.
+every sublayer that the delta list flagged as different from Hugging Face.
 
 Do not run `pixi run max serve`, coherence checks, or logit verification until
 this phase's completion criteria pass. Serving an unmodified donor against a

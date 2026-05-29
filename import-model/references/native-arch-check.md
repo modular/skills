@@ -31,7 +31,7 @@ Common on gated vision-language repos when your account lacks allowlist access.
 
 ## Identify the architecture
 
-Every HuggingFace checkpoint ships a `config.json`. Two fields identify the
+Every Hugging Face checkpoint ships a `config.json`. Two fields identify the
 architecture:
 
 | Field              | Example            | Use in this guard                                                                                |
@@ -39,7 +39,7 @@ architecture:
 | `architectures[0]` | `Qwen3ForCausalLM` | **This** is what MAX registers — pass it to `--match`.                                           |
 | `model_type`       | `qwen3`            | Locates `modeling_<type>.py` in Transformers when comparing to a donor. Not used for this check. |
 
-MAX maintains a registry mapping each HuggingFace class name to an internal
+MAX maintains a registry mapping each Hugging Face class name to an internal
 slug (for example `LlamaForCausalLM` → `llama3`). If your model's
 `architectures[0]` is already in that registry, you serve Hub weights
 directly — no custom graph, no port.
