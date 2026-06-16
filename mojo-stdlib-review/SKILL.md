@@ -17,36 +17,40 @@ Red-team adversarial review of Mojo stdlib PRs: $ARGUMENTS
 
 ## Overview
 
-This skill performs adversarial (red-team) reviews of pull requests against the Mojo standard
-library. Unlike friendly reviews that skim for obvious issues, adversarial reviews actively try
-to prove every claim wrong by cross-referencing the actual stdlib source, the docstrings of
-sibling APIs, the trait definitions, the existing tests/benchmarks, and the rules in
+This skill performs adversarial (red-team) reviews of pull requests against the
+Mojo standard library. Unlike friendly reviews that skim for obvious issues,
+adversarial reviews actively try to prove every claim wrong by cross-referencing
+the actual stdlib source, the docstrings of sibling APIs, the trait definitions,
+the existing tests/benchmarks, and the rules in
 [`mojo-stdlib-contributing`](../mojo-stdlib-contributing/SKILL.md).
 
 The skill spawns one `general-purpose` agent per PR in parallel. Each agent:
 
 1. Reads the full PR diff
-2. Loads `mojo-stdlib-contributing` rules and the local stdlib source as ground truth
+2. Loads `mojo-stdlib-contributing` rules and the local stdlib source as ground
+   truth
 3. Extracts every verifiable claim and every removed line
 4. Verifies each claim against the source of truth
 5. Double-checks findings before reporting
-6. Writes findings to a local file for the author to auto-fix (default), or posts review
-   comments on the PR (opt-in via "in post mode")
+6. Writes findings to a local file for the author to auto-fix (default), or
+   posts review comments on the PR (opt-in via "in post mode")
 
 ## Output modes
 
-Default is **local mode**: write findings to `.specs/stdlib-review-<PR>.md` and return the path
-plus per-category counts to the caller. Do NOT post PR comments. This is the canonical
-"self-review gate" used by stdlib contributors before flipping a draft PR to ready-for-review.
-It runs on the local Claude Code subscription and avoids spamming the PR with comments that the
-author will resolve before any maintainer sees them.
+Default is **local mode**: write findings to `.specs/stdlib-review-<PR>.md` and
+return the path plus per-category counts to the caller. Do NOT post PR comments.
+This is the canonical "self-review gate" used by stdlib contributors before
+flipping a draft PR to ready-for-review. It runs on the local Claude Code
+subscription and avoids spamming the PR with comments that the author will
+resolve before any maintainer sees them.
 
-If `$ARGUMENTS` contains "post", "post mode", "post comments", "post to PR", or equivalent
-phrasing, switch to **post mode**: findings are posted on the PR via `gh pr review --comment`.
-Use this when reviewing someone else's PR rather than self-reviewing your own draft.
+If `$ARGUMENTS` contains "post", "post mode", "post comments", "post to PR", or
+equivalent phrasing, switch to **post mode**: findings are posted on the PR via
+`gh pr review --comment`. Use this when reviewing someone else's PR rather than
+self-reviewing your own draft.
 
-Phrases like "in local mode" / "local fix" / "no post" also explicitly request the default
-local mode and are accepted (no-op).
+Phrases like "in local mode" / "local fix" / "no post" also explicitly request
+the default local mode and are accepted (no-op).
 
 ## Phase 1: Parse Input
 
@@ -78,13 +82,15 @@ Present a summary table and ask for confirmation:
 
 ### Step 3: Scope guard
 
-This skill targets PRs that touch the Mojo stdlib. From the `files` list returned by
-`gh pr view`, verify at least one path matches `mojo/stdlib/std/**`, `mojo/stdlib/test/**`,
-`mojo/stdlib/benchmarks/**`, `mojo/stdlib/docs/**`, `mojo/docs/nightly-changelog.md`, or
-`mojo/docs/code/**`. If none match, warn the user and ask whether to proceed (a non-stdlib PR is
-better served by the general `adversarial-review` skill).
+This skill targets PRs that touch the Mojo stdlib. From the `files` list
+returned by `gh pr view`, verify at least one path matches `mojo/stdlib/std/**`,
+`mojo/stdlib/test/**`, `mojo/stdlib/benchmarks/**`, `mojo/stdlib/docs/**`,
+`mojo/docs/nightly-changelog.md`, or `mojo/docs/code/**`. If none match, warn
+the user and ask whether to proceed (a non-stdlib PR is better served by the
+general `adversarial-review` skill).
 
-Do NOT do any further "domain detection". This skill has a single domain: Mojo stdlib.
+Do NOT do any further "domain detection". This skill has a single domain: Mojo
+stdlib.
 
 ---
 
@@ -92,17 +98,20 @@ Do NOT do any further "domain detection". This skill has a single domain: Mojo s
 
 ### Step 4: Launch agents in parallel
 
-For each PR, spawn a `general-purpose` agent using the Agent tool with `run_in_background: true`.
+For each PR, spawn a `general-purpose` agent using the Agent tool with
+`run_in_background: true`.
 
 **All agents MUST be launched in a single message** to maximize parallelism.
 
-Use `stdlib-review-{pr_number}` as the agent `description` (e.g., `"stdlib-review-6276"`).
-Capture the returned agent ID from each Agent tool call.
+Use `stdlib-review-{pr_number}` as the agent `description` (e.g.,
+`"stdlib-review-6276"`). Capture the returned agent ID from each Agent tool
+call.
 
-Before spawning, choose **one** emit block (local mode default OR post mode) based on
-`$ARGUMENTS` and inline it as `{EMIT_SECTION}` so the agent receives a single unambiguous
-instruction. Default is local mode; switch to post mode only if `$ARGUMENTS` explicitly opts
-in via "post", "post mode", "post comments", "post to PR", or equivalent phrasing.
+Before spawning, choose **one** emit block (local mode default OR post mode)
+based on `$ARGUMENTS` and inline it as `{EMIT_SECTION}` so the agent receives a
+single unambiguous instruction. Default is local mode; switch to post mode only
+if `$ARGUMENTS` explicitly opts in via "post", "post mode", "post comments",
+"post to PR", or equivalent phrasing.
 
 ### Agent Prompt Template
 
@@ -430,9 +439,11 @@ All agents run in background. You will be notified as each completes.
 
 As each agent completes, record its results:
 
-- Number of issues by category (Critical / Factual / Completeness / Inconsistency / Question / Minor)
+- Number of issues by category (Critical / Factual / Completeness /
+  Inconsistency / Question / Minor)
 - Number of claims verified correct
-- Whether the review was written to `.specs/` (local mode, default) or posted (post mode)
+- Whether the review was written to `.specs/` (local mode, default) or posted
+  (post mode)
 
 Report each completion to the user with a brief summary.
 
@@ -463,8 +474,9 @@ If an agent fails (e.g. `gh` auth issue, missing file, hit token budget):
 - [Suggestions to fold new rules into `mojo-stdlib-contributing`]
 ```
 
-In **local mode** (default), end with the list of `.specs/stdlib-review-<PR>.md` paths.
-In **post mode**, end with: "All review comments have been posted on each PR."
+In **local mode** (default), end with the list of `.specs/stdlib-review-<PR>.md`
+paths. In **post mode**, end with: "All review comments have been posted on each
+PR."
 
 ### Step 8: Follow-up options
 
@@ -472,34 +484,41 @@ Ask the user via `AskUserQuestion`:
 
 **Next steps** (header: "Next steps"):
 
-- **Fix locally** (default for local-mode runs): Read each `.specs/stdlib-review-<PR>.md` and
-  apply fixes on the local branch. When the fix involves writing or rewriting a docstring or
-  inline comment, keep it concise: a one-line summary plus Args/Returns/Raises sections only when
-  non-obvious, and inline comments only when the WHY isn't self-evident from the code. Do not
-  restate the signature, narrate the implementation, or add multi-paragraph prose.
+- **Fix locally** (default for local-mode runs): Read each
+  `.specs/stdlib-review-<PR>.md` and apply fixes on the local branch. When the
+  fix involves writing or rewriting a docstring or inline comment, keep it
+  concise: a one-line summary plus Args/Returns/Raises sections only when
+  non-obvious, and inline comments only when the WHY isn't self-evident from the
+  code. Do not restate the signature, narrate the implementation, or add
+  multi-paragraph prose.
 - **Done**: Reviews are in place, nothing more needed.
-- **Re-review**: Run another pass on specific PRs (e.g. after the author pushes fixes).
-- **Update `mojo-stdlib-contributing`**: If a recurring pattern surfaced that isn't in the
-  contributing skill yet, propose an edit.
+- **Re-review**: Run another pass on specific PRs (e.g. after the author pushes
+  fixes).
+- **Update `mojo-stdlib-contributing`**: If a recurring pattern surfaced that
+  isn't in the contributing skill yet, propose an edit.
 
 ---
 
 ## Important Notes
 
-- **Single domain**: This skill is Mojo-stdlib-only. Use the general `adversarial-review` skill
-  for non-stdlib PRs.
-- **Agent type**: Always `general-purpose`. Stdlib expertise comes from the prompt (and from
-  reading `mojo-stdlib-contributing` as the agent's first move), not the agent type.
-- **Parallelism**: All agents MUST be launched in a single message for maximum parallelism.
-- **False-positive prevention**: Step 6 (double-check) is critical. A review that surfaces
-  wrong findings wastes the author's time and, in post mode, costs trust and review-bandwidth.
-  When in doubt, classify as Question.
-- **Scope**: This skill emits reviews; it does NOT modify code. The author (or caller) fixes
-  issues based on the findings file (local mode) or PR comments (post mode).
-- **Default is local mode**: re-running overwrites `.specs/stdlib-review-<PR>.md` (idempotent).
-  In post mode, re-running posts a fresh review comment each time -- warn the user before
-  re-reviewing a PR you already reviewed in post mode.
-- **Cost**: Each agent reads heavily (PR files + stdlib source + sibling APIs + the
-  contributing skill). For N PRs, expect proportional reads. Local mode (default) amortizes
-  this: run it once before flipping to ready-for-review and you avoid triggering the paid CI
-  reviewer on every push.
+- **Single domain**: This skill is Mojo-stdlib-only. Use the general
+  `adversarial-review` skill for non-stdlib PRs.
+- **Agent type**: Always `general-purpose`. Stdlib expertise comes from the
+  prompt (and from reading `mojo-stdlib-contributing` as the agent's first
+  move), not the agent type.
+- **Parallelism**: All agents MUST be launched in a single message for maximum
+  parallelism.
+- **False-positive prevention**: Step 6 (double-check) is critical. A review
+  that surfaces wrong findings wastes the author's time and, in post mode, costs
+  trust and review-bandwidth. When in doubt, classify as Question.
+- **Scope**: This skill emits reviews; it does NOT modify code. The author (or
+  caller) fixes issues based on the findings file (local mode) or PR comments
+  (post mode).
+- **Default is local mode**: re-running overwrites
+  `.specs/stdlib-review-<PR>.md` (idempotent). In post mode, re-running posts a
+  fresh review comment each time -- warn the user before re-reviewing a PR you
+  already reviewed in post mode.
+- **Cost**: Each agent reads heavily (PR files + stdlib source + sibling APIs +
+  the contributing skill). For N PRs, expect proportional reads. Local mode
+  (default) amortizes this: run it once before flipping to ready-for-review and
+  you avoid triggering the paid CI reviewer on every push.
