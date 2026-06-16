@@ -169,9 +169,12 @@ pixi run max serve --model-path <HF_MODEL_ID> \
 | Server loads without crash          |          |       |
 | Output is non-garbage at 16+ tokens |          |       |
 
-If garbage → divergence hunt (re-check deltas — block wiring often missed).
+If garbage → load [`debug-model`](../../debug-model/SKILL.md)
+(re-check deltas; block wiring often missed).
 
 ### Logit / layer debug
+
+**Quick probe** (then hand off to `debug-model` if diverged):
 
 **Symptom** (from [divergences.md](divergences.md)):
 
@@ -192,13 +195,14 @@ pixi run python run_oss_gates.py <HF_MODEL_ID> \
 
 **Root cause (when found):**
 
-**Manual `ops.output()` taps** (if used):
+**Per-layer tensor dumps** (from `debug-model`; sub-taps only after lead
+localizes):
 
 ### Greedy text match
 
 **Prompt:** `The capital of France is`
 **max_tokens:** 64
-**dtype:** `` `<encoding the model supports — usually bfloat16>` ``
+**dtype:** `` `<encoding the model supports, usually bfloat16>` ``
 
 | Side | Output |
 |------|--------|

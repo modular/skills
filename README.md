@@ -98,10 +98,29 @@ prefiltering strategies, and fast-path dispatch.
 new model architecture into MAX, starting from a Hugging Face model ID. It's
 triggered when you ask your agent to import a model into MAX, add a model to
 MAX, or bring up a Hugging Face model in MAX. The skill drives a three-phase
-workflow — decide and plan, implement, verify — that scaffolds from a similar
+workflow (decide and plan, implement, verify) that scaffolds from a similar
 registered MAX architecture, implements every divergent layer against the
 Hugging Face reference, and verifies outputs match before declaring the
 import done.
+
+When the server runs but generated text is wrong (gibberish, greedy token
+mismatch, or coherent-then-diverges), `import-model` hands off to
+`debug-model` for the divergence hunt.
+
+### `debug-model`
+
+[This skill](debug-model/SKILL.md) debugs silent corruption when a
+MAX model loads, compiles, serves, and generates tokens, but output disagrees
+with a reference implementation — during an architecture port, a quantization
+bring-up, a multi-GPU conversion, or after a MAX upgrade. Use it when parity
+debugging stalls on scalar taps or you see gibberish, greedy token mismatch,
+or coherent-then-diverges behavior. Not for crashes on load or pre-serve
+scaffolding.
+
+The protocol builds HF vs MAX tensor-dump comparators first, verifies fixes
+numerically before recompiling, and bisects serve vs pipeline when dumps match
+but text diverges. Pair with `import-model`: scaffold and implement there,
+invoke `debug-model` when verification fails on output quality.
 
 ## Examples
 
@@ -126,4 +145,4 @@ used.
 
 ## License
 
-Apache 2.0 — See [LICENSE](./LICENSE) file for details.
+Apache 2.0. See [LICENSE](./LICENSE) file for details.

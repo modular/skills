@@ -1,11 +1,17 @@
 # Reading the layer-by-layer debug output
 
+> **For parity/coherence failures** (server runs but output is wrong), load
+> the [`debug-model`](../../debug-model/SKILL.md) skill
+> first. That protocol mandates per-layer tensor-dump comparators and parallel
+> investigation agents. This reference covers the quick `compare_layers.py`
+> probe that `import-model` runs before handing off.
+
 The divergence hunt has two layers of debugging:
 
-1. **`compare_layers.py`** — automated logit probes (what the script actually
+1. **`compare_layers.py`**: automated logit probes (what the script actually
    runs).
-2. **Manual `ops.output()` taps** — true per-block tensor diffs (when logit
-   probes aren't enough).
+2. **Per-layer tensor dumps**: HF vs MAX comparators (see
+   `debug-model`; preferred over scalar `ops.output()` taps).
 
 ## Running `compare_layers.py`
 
@@ -101,19 +107,16 @@ See [divergences.md](divergences.md) for fixes.
 
 ---
 
-## Manual per-block taps (when logit probes aren't enough)
+## Per-layer tensor dumps (when logit probes aren't enough)
 
-When short and multi-position probes pass but output is still wrong — or you
-need to know *which sublayer* diverged — add temporary `ops.output(...)` taps
-in your port's `<slug>.py` at block boundaries:
+When short and multi-position probes pass but output is still wrong, or you need
+to know *which sublayer* diverged, follow
+[`debug-model`](../../debug-model/SKILL.md): build HF and MAX dumpers, run the
+comparator, and read
+[`comparator-output-patterns.md`](../../debug-model/references/comparator-output-patterns.md).
 
-- post-embed (layer 0 only)
-- post-attention
-- post-MLP
-- post-block residual
-
-Re-run serve, read the tapped tensors, and compare against HF
-`output_hidden_states` at the same point.
+Use `ops.output(...)` taps only as fine-grained sub-taps *after* the lead
+agent localizes the broken subsystem, not as the primary bisect loop.
 
 ### Interpreting tap diffs
 

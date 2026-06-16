@@ -4,8 +4,10 @@ description: >
   Use when importing a new model architecture into MAX from a Hugging Face model ID.
   Triggers on: "import a model into MAX", "add model to MAX", "bring up <HF model> in MAX".
   Workflow: inspect Hugging Face config and modeling code, scaffold from a similar
-  MAX architecture, implement each graph layer to match HF, serve, then debug
-  against the Hugging Face reference until outputs match.
+  MAX architecture, implement each graph layer to match HF, serve, then verify against
+  the Hugging Face reference. When the server runs but output is wrong (gibberish,
+  greedy mismatch, coherent-then-diverges), load debug-model for the
+  divergence hunt instead of scalar-tap iteration.
 compatibility: Requires pixi env with MAX installed, network access to Hugging Face Hub, and a GPU for serving/verification.
 metadata:
   argument-hint: "[Hugging Face model ID, e.g. 'Qwen/Qwen3-8B']"
@@ -342,47 +344,27 @@ Full HF-reference sanity check, encoder/embedding slug serve flow, and
 fix-test loop discipline:
 [serve-and-iterate.md](references/serve-and-iterate.md).
 
-### Layer-by-layer divergence hunt
+### Parity/coherence failure (invoke `debug-model`)
 
-This is the main loop. You're going to:
+When the server starts but output is wrong (gibberish, wrong greedy token
+at index K, high logit cosine with wrong argmax, or coherent for N tokens
+then diverges), **stop the scalar-tap loop** and load the
+[`debug-model`](../debug-model/SKILL.md) skill.
 
-1. Read the HF reference implementation to understand what *should* happen
-   at each layer.
-2. Dump intermediate tensors from both implementations and find the first
-   layer where they diverge.
-3. Fix that layer.
-4. Re-run the layer check.
-5. Repeat until all layers match.
+That skill is the authoritative workflow for silent corruption. It
+mandates:
 
-#### Read the reference implementation
+1. HF sanity-check on the same prompt + checkpoint
+2. Per-layer HF vs MAX tensor-dump comparators (not `ops.print` eyeballing)
+3. Parallel investigation agents with numerical verification before recompile
+4. Serve-vs-pipeline bisect when dumps match but generated text diverges
 
-Before diving into the HF source, **consult the symptom table at the top
-of [divergences.md](references/divergences.md)**. Match what you're
-observing (gibberish at token 0, divergence growing with length, output
-plausible but text drifts, etc.) to its candidate causes, and read every
-candidate listed — not just the first plausible one. Several causes
-produce the same symptom; the bug is the one you haven't checked yet.
+Use `import-model` for bring-up scaffolding and gates. Use
+`debug-model` for the divergence hunt itself.
 
-Then open the HF `modeling_<type>.py` as a debugger, not a reviewer. You're
-looking for the *specific* detail you missed. Common ones:
+#### Quick logit probe (first 5 minutes only)
 
-- A norm whose variant or position differs from the template
-- A scale factor applied somewhere (`hidden_states * scale`,
-  `attn_weights / sqrt(d)`, MuP multipliers)
-- A different activation function in the MLP
-- A different RoPE style (split-half vs. interleaved, partial vs. full)
-- A boundary condition that only fires at certain layers (sliding-window vs.
-  global attention, sink-token handling)
-
-Easter-egg warning: HF modeling code inherits aggressively. A class named
-`MyModelDecoderLayer(GraniteDecoderLayer)` may inherit critical behavior
-from a different family entirely. Always chase inheritance up at least one
-level before concluding "this is just Llama with renamed fields."
-
-The catalog of "this differs from Llama and here is how" is in
-[divergences.md](references/divergences.md). Indexed by symptom.
-
-#### Compare logits (and HF layer stats)
+Before building dumpers, a fast sanity check:
 
 ```bash
 pixi run python compare_layers.py <HF_MODEL_ID> \
@@ -391,29 +373,16 @@ pixi run python compare_layers.py <HF_MODEL_ID> \
 ```
 
 Requires ``pixi run max serve`` with ``--custom-architectures <port_dir>`` on
-the same port.
+the same port. This script prints HF-only layer stats and compares top-1
+logprob at the prompt. See
+[layer-by-layer-debugging.md](references/layer-by-layer-debugging.md) for
+flag details.
 
-MAX does not expose per-layer hidden states via the OpenAI API. This script:
-
-- Prints **HF-only** per-layer stats (embedding + each block output) as a
-  diagnostic snapshot while you read the modeling code.
-- Compares **top-1 logprob** at the prompt between HF and MAX via
-  ``/v1/completions?logprobs=…``.
-
-If logprobs diverge, use [divergences.md](references/divergences.md) and add
-``ops.output(...)`` taps in your ``<slug>.py`` for true tensor diffs inside each
-block — see
-[layer-by-layer-debugging.md](references/layer-by-layer-debugging.md).
-
-#### Fix the layer, then re-run
-
-Edit `<slug>.py` to fix the identified layer, restart `pixi run max serve`,
-re-run `compare_layers.py`. When top-1 logprob matches (rel_diff < 5%), logits
-are aligned at that prompt. For block-local confirmation, use manual
-``ops.output()`` taps.
-
-If you fix a layer and the divergence point doesn't move, you fixed the
-wrong thing. Revert and re-read the HF source for that layer.
+If logprobs diverge or output is garbage, **switch to
+`debug-model`**. Do not iterate with manual ``ops.output()``
+taps alone. The symptom catalog in
+[divergences.md](references/divergences.md) still applies once the
+comparator localizes the failing layer.
 
 ### Check against Hugging Face
 

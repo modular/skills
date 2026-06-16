@@ -281,12 +281,12 @@ For-in: `for item in col:` (immutable) / `for ref item in col:` (mutable).
 | `ArcPointer[T]`                 | Reference-counted shared ownership.                                    |
 
 `UnsafePointer` has an `origin` parameter that must be specified for struct
-fields. Use `MutExternalOrigin` for owned heap data (this is what stdlib
+fields. Use `MutUntrackedOrigin` for owned heap data (this is what stdlib
 `ArcPointer` uses):
 
 ```mojo
 # Struct field — specify origin explicitly
-var _ptr: UnsafePointer[Self.T, MutExternalOrigin]
+var _ptr: UnsafePointer[Self.T, MutUntrackedOrigin]
 
 # Allocate with alloc[]
 def __init__(out self, size: Int):
@@ -306,7 +306,7 @@ struct Span[mut: Bool, //, T: AnyType, origin: Origin[mut=mut]]: ...
 ```
 
 Key types: `Origin`, `MutOrigin`, `ImmutOrigin`, `MutAnyOrigin`,
-`ImmutAnyOrigin`, `MutExternalOrigin`, `ImmutExternalOrigin`,
+`ImmutAnyOrigin`, `MutUntrackedOrigin`, `ImmutUntrackedOrigin`,
 `StaticConstantOrigin`. Use `origin_of(value)` to get a value's origin.
 
 ## Testing
@@ -532,10 +532,10 @@ vectorize[simd_width](size, closure)              # runtime-arg overload
 
 ```text
 AnyType
-  ImplicitlyDestructible          — auto __del__; most types
-  Movable                         — __init__(out self, *, deinit take: Self)
+  ImplicitlyDeletable             — auto __del__; most types
+  Movable                         — __init__(out self, *, deinit move: Self)
     Copyable                      — __init__(out self, *, copy: Self)
-      ImplicitlyCopyable(Copyable, ImplicitlyDestructible)
+      ImplicitlyCopyable(Copyable, take)
     RegisterPassable(Movable)
-      TrivialRegisterPassable(ImplicitlyCopyable, ImplicitlyDestructible, Movable, RegisterPassable)
+      TrivialRegisterPassable(ImplicitlyCopyable, take, Movable, RegisterPassable)
 ```

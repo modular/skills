@@ -129,11 +129,14 @@ Same `--custom-architectures <port_dir>`; endpoint is `/v1/embeddings` with
 ## Three possible outcomes
 
 - **Crash on load** → config, imports, or weight adapter.
-- **Garbage tokens** → graph still implements donor math.
+- **Garbage tokens** → load [`debug-model`](../../debug-model/SKILL.md);
+  graph may still implement donor math or a latent delta.
 - **Plausible short output** → run `max_tokens=64+` before celebrating.
 
 ## Iterating the fix-test loop
 
-Cold compile is 5–25 minutes per iteration: one fix per serve, `pkill -9 max`
-between runs, use [layer-by-layer-debugging.md](layer-by-layer-debugging.md)
-when logits diverge.
+Cold compile is 5 to 25 minutes per iteration: one fix per serve, `pkill -9 max`
+between runs. When logits diverge or output is garbage, load
+[`debug-model`](../../debug-model/SKILL.md) instead of iterating scalar taps.
+Use [layer-by-layer-debugging.md](layer-by-layer-debugging.md) for the quick
+`compare_layers.py` probe only.
