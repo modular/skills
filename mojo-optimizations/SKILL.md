@@ -159,10 +159,10 @@ struct Tokenizer:
 Know what `__getitem__` actually costs — it differs by type. All three go
 through `normalize_index`, but with different assert modes:
 
-| Type                  | Default-release check                              | Extra per-access work |
-|-----------------------|----------------------------------------------------|-----------------------|
-| `List[T][i]`          | **None** (`assert_mode="none"`, compiled out)      | Negative-index normalization branch |
-| `Span[T][i]`          | **None** (`assert_mode="none"`, compiled out)      | Negative-index normalization branch |
+| Type                  | Default-release check                                 | Extra per-access work               |
+| --------------------- | ----------------------------------------------------- | ----------------------------------- |
+| `List[T][i]`          | **None** (`assert_mode="none"`, compiled out)         | Negative-index normalization branch |
+| `Span[T][i]`          | **None** (`assert_mode="none"`, compiled out)         | Negative-index normalization branch |
 | `StringSlice[byte=i]` | **Bounds check + UTF-8 start-byte assert** (`"safe"`) | Negative-index normalization branch |
 
 The global `ASSERT` mode defaults to `safe`. Under `-D ASSERT=all` or a
@@ -205,7 +205,7 @@ delete them.
 ## Pre-allocate collections; lazy-allocate when zero is common
 
 | Situation                             | Pattern                                    |
-|---------------------------------------|--------------------------------------------|
+| ------------------------------------- | ------------------------------------------ |
 | Known upper bound N                   | `List[T](capacity=N)`                      |
 | Known lower bound, growable           | `var xs = List[T](); xs.reserve(estimate)` |
 | Zero is the common case (`findall`)   | Lazy: don't allocate until first append    |
@@ -463,12 +463,12 @@ positions first. The expensive logic only runs where the prefilter says
 "maybe". This applies to parsers, validators, search engines, log scanners,
 packet decoders, etc.
 
-| Prefilter          | Scan primitive                | Example                                |
-|--------------------|-------------------------------|----------------------------------------|
-| Required literal   | `StringSlice.find`            | Scan for `"error"` before parsing line |
-| Last occurrence    | `String.rfind` (single pass)  | Find last `/` to extract filename      |
-| Lead-byte set      | SIMD equality sweep + bitmask | Scan for `{`, `[`, `"` to find JSON values |
-| Byte range/class   | Nibble SIMD scan              | Skip to first digit before number parse|
+| Prefilter        | Scan primitive                | Example                                    |
+| ---------------- | ----------------------------- | ------------------------------------------ |
+| Required literal | `StringSlice.find`            | Scan for `"error"` before parsing line     |
+| Last occurrence  | `String.rfind` (single pass)  | Find last `/` to extract filename          |
+| Lead-byte set    | SIMD equality sweep + bitmask | Scan for `{`, `[`, `"` to find JSON values |
+| Byte range/class | Nibble SIMD scan              | Skip to first digit before number parse    |
 
 **Critical anti-pattern**: using repeated forward `find` to locate the *last*
 occurrence is O(N x occurrences). Use `rfind` for a single reverse O(N) pass:
