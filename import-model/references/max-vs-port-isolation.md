@@ -21,7 +21,7 @@ If it tracks **attention shape, MoE routing, or RoPE wiring**, debug the port
 
 1. **Pick a small native arch** in the same family:
    - Dense decoder: ``Qwen/Qwen3-1.7B``
-   - MoE: ``Qwen/Qwen3-30B-A3B`` or ``mistralai/Mixtral-8x7B``
+   - MoE: ``Qwen/Qwen3-30B-A3B`` or ``mistralai/Mixtral-8x7B-v0.1``
    - MLA: ``deepseek-ai/DeepSeek-V2-Lite``
 2. **Serve with the same flags** as your port: ``--devices``,
    ``--max-batch-size``, ``--max-length``, ``--enable-echo``,
@@ -67,13 +67,13 @@ batched prefill, certain quantization formats).
 
 ## Known-good controls
 
-| Your port's class              | Control                                              |
-|--------------------------------|------------------------------------------------------|
-| Dense decoder, RoPE, RMSNorm   | ``Qwen/Qwen3-1.7B``                                  |
-| Sliding window                 | ``mistralai/Mistral-7B-v0.3``                        |
-| MoE, top-k routing             | ``Qwen/Qwen3-30B-A3B`` or ``mistralai/Mixtral-8x7B`` |
-| MLA + MoE                      | ``deepseek-ai/DeepSeek-V2-Lite``                     |
-| Multimodal wrapper (text-only) | ``google/gemma-3-12b-it``                            |
+| Your port's class              | Control                                                   |
+|--------------------------------|-----------------------------------------------------------|
+| Dense decoder, RoPE, RMSNorm   | ``Qwen/Qwen3-1.7B``                                       |
+| Sliding window                 | ``mistralai/Mistral-7B-v0.3``                             |
+| MoE, top-k routing             | ``Qwen/Qwen3-30B-A3B`` or ``mistralai/Mixtral-8x7B-v0.1`` |
+| MLA + MoE                      | ``deepseek-ai/DeepSeek-V2-Lite``                          |
+| Multimodal wrapper (text-only) | ``google/gemma-3-12b-it``                                 |
 
 Default to ``Qwen3-1.7B`` when unsure — fastest cold compile.
 
