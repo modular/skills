@@ -112,6 +112,21 @@ numerically before recompiling, and bisects serve vs pipeline when dumps match
 but text diverges. Pair with `import-model`: scaffold and implement there,
 invoke `debug-model` when verification fails on output quality.
 
+### `profile-model`
+
+[This skill](profile-model/SKILL.md) profiles a model running on MAX to find
+where it spends time and whether the GPU is saturated. It's triggered when you
+ask your agent to profile a model, find out where inference time goes, check
+whether the GPU is being utilized, or capture an `nsys`/`rocprofv3`/`ncu`
+trace. The skill works for any `pip`- or `pixi`-installed MAX setup (`max
+generate`, `max serve`, or a Python script) on NVIDIA or AMD GPUs, with no
+source checkout required.
+
+It works from the cheapest check toward the most invasive: a utilization
+snapshot to confirm the GPU is busy, a kernel breakdown to see where time goes,
+and a single-kernel deep dive to learn why one kernel is slow. Each result
+decides whether going deeper is worth it.
+
 ## Examples
 
 Once these skills are installed, you can use them for many common tasks.
