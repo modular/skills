@@ -82,6 +82,27 @@ triggered when Python types are used Mojo or a Python module needs to interact
 with Mojo code. Many capabilities of Mojo - Python interoperability are fairly
 new, and existing coding agents don't handle them correctly without guidance.
 
+### `mojo-stdlib-contributing`
+
+[This skill](mojo-stdlib-contributing/SKILL.md) captures patterns and pitfalls
+for contributing to the Mojo standard library, distilled from 30+ reviewed PRs.
+It covers process (GitHub issues before new APIs, draft PRs), assertion
+semantics (`assert_mode="safe"` is intentional), benchmark patterns, testing
+requirements, SIMD/memory safety, and common reviewer feedback. Use when
+modifying code under `mojo/stdlib/`.
+
+### `mojo-stdlib-review`
+
+[This skill](mojo-stdlib-review/SKILL.md) performs an adversarial (red-team)
+review of one or more Mojo stdlib PRs. It spawns parallel agents that
+fact-check every claim in the diff against the actual stdlib source and the
+rules in `mojo-stdlib-contributing`, classify findings (Critical / Factual /
+Completeness / Inconsistency / Question / Minor), and write a local findings
+file for the author to fix before flipping a draft PR to ready-for-review.
+Pass `"in post mode"` in the arguments to post review comments on the PR via
+`gh pr review` instead. Use when you want a thorough self-review pass on a
+stdlib contribution, or to fact-check someone else's stdlib PR.
+
 ### `import-model`
 
 [This skill](import-model/SKILL.md) walks an AI agent through importing a
