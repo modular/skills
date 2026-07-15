@@ -244,12 +244,12 @@ Both are registered with `.def_method[Type.method]("name")`.
 ### Kwargs support
 
 ```mojo
-from std.collections import OwnedKwargsDict
+from std.collections import StringDict
 
 # In a method:
 @staticmethod
 def config(
-    py_self: PythonObject, kwargs: OwnedKwargsDict[PythonObject]
+    py_self: PythonObject, kwargs: StringDict[PythonObject]
 ) raises -> PythonObject:
     for entry in kwargs.items():
         print(entry.key, "=", entry.value)
