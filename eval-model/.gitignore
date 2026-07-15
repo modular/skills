@@ -1,0 +1,10 @@
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+# evaluation outputs
+eval-results/
+
+# python
+__pycache__/
+*.py[cod]

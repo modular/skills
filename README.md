@@ -127,6 +127,21 @@ snapshot to confirm the GPU is busy, a kernel breakdown to see where time goes,
 and a single-kernel deep dive to learn why one kernel is slow. Each result
 decides whether going deeper is worth it.
 
+### `eval-model`
+
+[This skill](eval-model/SKILL.md) measures the task accuracy of a text
+model served by MAX on standard benchmarks such as GSM8K, MMLU,
+HellaSwag, ARC, AIME, GPQA, TruthfulQA, WinoGrande, and BABILong. It's triggered
+when you ask your agent to benchmark a served model, compare it against
+model-card or reference scores, verify that a new MAX model produces correct
+answers, or run repeatable dataset evaluations against a MAX OpenAI-compatible
+endpoint.
+
+The evaluator checks endpoint compatibility before each run, distinguishes
+serving failures from incorrect model answers, and writes reproducible
+per-task scores. Pair it with `import-model` and `debug-model` to confirm
+accuracy once a newly imported model serves correctly.
+
 ## Examples
 
 Once these skills are installed, you can use them for many common tasks.

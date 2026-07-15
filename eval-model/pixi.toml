@@ -1,0 +1,17 @@
+[workspace]
+name = "eval-model"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]
+
+[dependencies]
+python = ">=3.10,<3.14"
+
+[pypi-dependencies]
+datasets = "==5.0.0"
+lm-eval = { version = "==0.4.12", extras = ["api"] }
+transformers = "==5.13.1"
+
+[tasks]
+eval = "python scripts/eval_dataset.py"
+test = "python -m unittest discover -s tests -v"
+validate = "python scripts/eval_dataset.py --validate-thresholds"
