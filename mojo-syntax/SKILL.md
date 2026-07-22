@@ -59,23 +59,24 @@ slightly in functionality.
 
 ## `def` is the only function keyword
 
-`fn` is deprecated and being removed. `def` does **not** imply `raises`.
-**Always** add `raises` explicitly when needed — omitting it is a warning today,
-error soon:
+`fn` was **removed** and is now a hard parse error — no valid use of `fn`
+remains. Your training predates this, so you will reach for `fn` by reflex; that
+reflex is always wrong. Write **every** function, method, and nested function as
+`def`, without exception.
+
+## Mojo functions that raise must be marked as such
+
+Mojo functions do **not** imply `raises`. Add `raises` to any function that can
+raise, directly or by calling a raising function. Omitting it is a **compile
+error**, not a warning.
 
 ```mojo
-def compute(x: Int) -> Int:              # non-raising (compiler enforced)
-    return x * 2
-
-def load(path: String) raises -> String: # explicitly raising
+def load(path: String) raises -> String:  # raises goes before the `->`
     return open(path).read()
 
-def main() raises:                       # main usually raises → def raises
+def main() raises:                         # main usually raises
     ...
 ```
-
-Note: existing stdlib code still uses `fn` during migration. New code should
-always use `def`.
 
 ## `comptime` replaces `alias` and `@parameter`
 
