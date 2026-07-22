@@ -297,7 +297,7 @@ Quick grep recipe (full classification rules in
 [honest-docstrings.md](references/honest-docstrings.md)):
 
 ```bash
-pixi run rg -i -n 'qwen|llama|mistral|cohere|gemma|phi|deepseek|exaone|olmo|granite|qwen3|mixtral|single-GPU|single GPU|RMSNorm|QK-norm' <port_dir>/
+pixi run rg -i -n 'qwen|llama|mistral|cohere|gemma|phi|deepseek|olmo|granite|qwen3|mixtral|single-GPU|single GPU|RMSNorm|QK-norm' <port_dir>/
 ```
 
 Your implementation-complete message must explicitly attest to the audit

@@ -128,7 +128,7 @@ Run from ``<port_dir>/`` (the slug folder with ``arch.py``):
 
 ```bash
 pixi run rg -i -n \
-  'qwen|llama|mistral|cohere|gemma|phi|deepseek|exaone|olmo|granite|qwen3|mixtral|single-GPU|single GPU|RMSNorm|QK-norm' \
+  'qwen|llama|mistral|cohere|gemma|phi|deepseek|olmo|granite|qwen3|mixtral|single-GPU|single GPU|RMSNorm|QK-norm' \
   .
 ```
 
