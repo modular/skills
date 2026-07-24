@@ -39,7 +39,7 @@ slightly in functionality.
 | `owned`                                          | `var` (as argument convention)                                                   |
 | `inout self` in `__init__`                       | `out self`                                                                       |
 | `__copyinit__(inout self, existing: Self)`       | `__init__(out self, *, copy: Self)`                                              |
-| `__moveinit__(inout self, owned existing: Self)` | `__init__(out self, *, deinit take: Self)`                                       |
+| `__moveinit__(inout self, owned existing: Self)` | `__init__(out self, *, deinit move: Self)`                                       |
 | `@value` decorator                               | `@fieldwise_init` + explicit trait conformance                                   |
 | `@register_passable("trivial")`                  | `TrivialRegisterPassable` trait                                                  |
 | `@register_passable`                             | `RegisterPassable` trait                                                         |
@@ -131,9 +131,9 @@ def __init__(out self, x: Int):
 def __init__(out self, *, copy: Self):
     self.data = copy.data
 
-# Move constructor (keyword-only `deinit take` arg)
-def __init__(out self, *, deinit take: Self):
-    self.data = take.data^
+# Move constructor (keyword-only `deinit move` arg)
+def __init__(out self, *, deinit move: Self):
+    self.data = move.data^
 
 # Destructor
 def __del__(deinit self):
