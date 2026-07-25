@@ -53,7 +53,7 @@ slightly in functionality.
 | `s[0:10]`, `s[:5]`                               | No slice syntax on String — use `s.codepoint_slices()` or Python FFI             |
 | `constrained(cond, msg)`                         | `comptime assert cond, msg`                                                      |
 | `DynamicVector[T]`                               | `List[T]`                                                                        |
-| `InlinedFixedVector[T, N]`                       | `InlineArray[T, N]`                                                              |
+| `InlinedFixedVector[T, N]`                       | `Array[T, N]`                                                                    |
 | `Tensor[T]`                                      | Not in stdlib (use SIMD, List, UnsafePointer)                                    |
 | `escaping` closures                              | Unified closures (`def(...) -> T`, captures in `{}`); `capturing[_]` still valid |
 
