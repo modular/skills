@@ -34,7 +34,8 @@ slightly in functionality.
 | `@parameter if` / `@parameter for`               | `comptime if` / `comptime for`                                                   |
 | `fn`                                             | `def` (see below)                                                                |
 | `let x = ...`                                    | `var x = ...` (no `let` keyword)                                                 |
-| `borrowed`                                       | `read` (implicit default — rarely written)                                       |
+| `borrowed`                                       | `imm` (implicit default — rarely written)                                        |
+| `read` (convention / capture)                    | `imm` (deprecated synonym; the compiler warns with a fixit)                      |
 | `inout`                                          | `mut`                                                                            |
 | `owned`                                          | `var` (as argument convention)                                                   |
 | `inout self` in `__init__`                       | `out self`                                                                       |
@@ -104,7 +105,8 @@ struct MyStruct:
 
 ## Argument conventions
 
-Default is `read` (immutable borrow, never written explicitly). The others:
+Default is `imm` (immutable borrow, rarely written explicitly; `read` is a
+deprecated synonym — the compiler warns and suggests `imm`). The others:
 
 ```mojo
 def __init__(out self, var value: String):   # out = uninitialized output; var = owned
@@ -114,10 +116,11 @@ def view(ref self) -> ref[self] Self.T:       # ref = reference with origin
 def view2[origin: Origin, //](ref[origin] self) -> ...:           # ref[origin] = explicit origin
 ```
 
-`ref`, `mut`, `out`, `deinit`, `read`, `var` are reserved and **cannot be used
-as identifiers** — neither as parameter names (`def cmp(got: T, ref: T)` →
-`"error: expected argument name"`) nor as local `var` names
-(`var ref = ...` → `"unexpected token in expression"`). Rename
+`var` and `ref` are hard keywords and **cannot be used as identifiers** at all
+(`var ref = ...` → `"unexpected token in expression"`). The convention words
+`imm`, `read`, `mut`, `out`, `deinit` are soft keywords: fine as local variable
+or `[...]` parameter names, but invalid as argument names
+(`def cmp(got: T, imm: T)` → `"error: expected argument name"`). Rename
 (`expected`, `reference`, etc.).
 
 ## Lifecycle methods
@@ -519,13 +522,13 @@ closure-type params:
 comptime MyFn = def(Int) -> None                  # unified value type
 def runner[f: def(Int) capturing[_] -> None](): ...  # parametric form
 
-def closure(i: Int) {mut count, read ptr, var x}: # captures: mut/read/var
+def closure(i: Int) {mut count, imm ptr, var x}:  # captures: mut/imm/var
     count += ptr[i] + x^                          # `^` at use site, not in `{}`
 
 vectorize[simd_width](size, closure)              # runtime-arg overload
 ```
 
-`read` is default. `var x` is owned — transfer with `x^` at the use site.
+`imm` is default. `var x` is owned — transfer with `x^` at the use site.
 `@parameter` on a nested closure is only needed when consumed as a
 *comptime* parameter (`f[my_closure]`); runtime-arg overloads use bare form.
 
