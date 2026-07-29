@@ -157,6 +157,24 @@ Pair it with `import-model`: once you've ported an architecture, `serve-model`
 gets it running and helps pick the flags it needs (devices, quantization
 encoding, max length, task, and `trust-remote-code`).
 
+### `benchmark-model`
+
+[This skill](benchmark-model/SKILL.md) measures the performance of a model
+running on MAX with the `max benchmark` command, driving load against a live
+`max serve` endpoint to report throughput (tokens/sec) and latency (TTFT, TPOT,
+inter-token latency), plus GPU utilization. It's triggered when you ask your
+agent to benchmark or load-test a model, get tokens-per-second / TTFT / TPOT
+numbers, run a concurrency or request-rate sweep, compare latency versus
+throughput, or size a deployment.
+
+The skill matches the workload to the question you're asking, because a
+single-stream run and a concurrency sweep measure different things, and it
+covers the flags, datasets, and result fields you need to turn a run into a
+conclusion.
+
+Pair it with `serve-model` (start the endpoint first) and `profile-model` (once
+the numbers show a bottleneck, find which kernels cause it).
+
 ## Examples
 
 Once these skills are installed, you can use them for many common tasks.
