@@ -192,7 +192,7 @@ instead. For multi-device (distributed) tensors, `F.print(value, name)` from
 `PrintHook` prints to the console, so it suits quick triage, not repeatable
 diffing. For cosine comparison across a full run, use the saved-dump comparator
 above. For MAX's other built-in debugging options, see
-[the MAX debugging tools](https://docs.modular.com/max/develop/debugging/).
+[the MAX debugging tools](https://docs.modular.com/develop/debugging/).
 
 ## Artifact 3: Comparator
 

@@ -72,7 +72,7 @@ def find_arch_dir(slug: str) -> Path:
     if root is None:
         sys.exit(
             "MAX is not installed in this Python environment. "
-            "Install MAX with pixi (https://docs.modular.com/max/get-started), "
+            "Install MAX with pixi (https://docs.modular.com/get-started), "
             "not pip install modular."
         )
     candidate = root / slug
