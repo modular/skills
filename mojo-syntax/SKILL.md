@@ -253,7 +253,7 @@ struct MyType(Writable):
 - `Some[Writer]` — builtin existential type (not `Writer` directly)
 - Both methods have **default implementations** via reflection if all fields are
   `Writable` — simple structs need not implement them
-- Convert to `String` with `String.write(value)`, not `str(value)`
+- Convert to `String` with `String(value)`, not `str(value)`
 
 ## Iterator protocol
 
