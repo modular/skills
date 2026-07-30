@@ -366,7 +366,7 @@ non-copyable arm, indexing the variant copies it — use the typed-arm subscript
 
 ```mojo
 # WRONG — `values[i]` implicitly copies the Variant
-var x = values[i].take[T]()          # ERROR: cannot implicitly copy
+var x = values[i].unwrap[T]()    # ERROR: cannot implicitly copy
 
 # CORRECT — `values[i][T]` returns a ref to the inner value
 var x = values[i][T].copy()          # or `^` to transfer
