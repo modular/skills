@@ -58,6 +58,30 @@ slightly in functionality.
 | `Tensor[T]`                                      | Not in stdlib (use SIMD, List, UnsafePointer)                                    |
 | `escaping` closures                              | Unified closures (`def(...) -> T`, captures in `{}`); `capturing[_]` still valid |
 
+## `var` is required for every new declaration
+
+Declaring a variable with bare assignment (`x = 5` with no prior `var`) is
+**not valid** — it is a compile error. This applies only to introducing a new
+variable; reassigning an already-declared variable (`x = 6`) needs no `var`.
+
+This means a variable assigned only inside conditional branches must be
+predeclared with a type before the branch:
+
+```mojo
+# WRONG — no prior `var`, so this doesn't declare `x`
+if cond:
+    x = 1
+else:
+    x = 2
+
+# CORRECT — declare with a type first, then assign in each branch
+var x: Int
+if cond:
+    x = 1
+else:
+    x = 2
+```
+
 ## `def` is the only function keyword
 
 `fn` was **removed** and is now a hard parse error — no valid use of `fn`
