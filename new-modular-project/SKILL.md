@@ -1,31 +1,37 @@
 ---
 name: new-modular-project
-description: Creates a new Mojo or MAX project. Use when wanting to start a new Mojo or MAX project, initializing the Pixi or UV environment to use Mojo or MAX, or when the user wants to begin a new Mojo or MAX project from scratch.
+description: Creates a new Mojo or MAX project. Use when wanting to start a new Mojo or MAX project, initializing the `pixi` or `uv` environment to use Mojo or MAX, or when the user wants to begin a new Mojo or MAX project from scratch.
 ---
 
 When the user wants to create a new project, first infer as many options as
-possible from the user's request (e.g., "new Mojo project" means type=Mojo,
-"called foo" means name=foo). Then use a structured multiple-choice prompt (not
-plain text) to gather only the **remaining unspecified** options in a single
-interaction. Do NOT ask about options the user has already provided or implied.
-The options to determine are:
+possible from the user's request (for example, "new Mojo project" means
+type=Mojo, "called foo" means name=foo). Then use a structured multiple-choice
+prompt (not plain text) to gather only the **remaining unspecified** options in
+a single interaction. Do NOT ask about options the user has already provided or
+implied. The options to determine are:
 
-1. **Project name** — ask if not specified
-2. **Type of project** — Mojo or MAX (infer from context if the user said "Mojo
-   project" or "MAX project")
-3. **Environment manager** — Pixi (recommended) or uv
-4. **If uv**: **UV project type** — full uv project (`uv init` + `uv add`,
-   recommended) or quick uv environment (`uv venv` + `uv pip install`, lighter
-   weight)
-5. **Channel** — nightly (latest features, recommended) or stable (production)
+- **Project name**: ask if the user hasn't specified one.
+- **Type of project**: Mojo or MAX (infer from context if the user said "Mojo
+  project" or "MAX project").
+- **Environment manager**: `pixi` (recommended) or `uv`.
+- **uv project type** (only when the environment manager is `uv`): full uv
+  project (`uv init` + `uv add`, recommended) or quick uv environment
+  (`uv venv` + `uv pip install`, lighter weight).
+- **Channel**: nightly or stable. Default to nightly for MAX projects and
+  stable for Mojo projects, and ask only if the user hasn't implied one.
 
-Then follow the appropriate section below (Pixi or uv) to initialize the
-project and choose `max` or `mojo` as appropriate. For stable versions in the
-below examples, `mojo` will start with a 0. prefix (0.26.1.0.0.0) where `max`
-packages will not (26.1.0.0.0).
+Then follow the appropriate section below (`pixi` or `uv`) to initialize the
+project and choose `max` or `mojo` as appropriate. Don't pin a version: each
+channel already resolves to the right one.
 
-NOTE: Do not look for or use `magic` for Mojo or MAX projects, it is no longer
-supported. Pixi has fully replaced its capabilities.
+MAX and Mojo ship together but number their releases differently, so their
+version strings don't look alike. On the stable channel, `max` is `26.4.0`
+while `mojo` is `1.0.0b2`; on nightly they're `26.5.0.dev*` and `1.0.0b3.dev*`.
+That's expected, not a mismatch.
+
+> [!NOTE]
+> Don't look for or use `magic` for Mojo or MAX projects; it's no longer
+> supported. Pixi has fully replaced its capabilities.
 
 ---
 
@@ -33,31 +39,30 @@ supported. Pixi has fully replaced its capabilities.
 
 Mojo requires a C linker for compilation. Install one if not already present:
 
-| OS            | Command                                                  |
-|---------------|----------------------------------------------------------|
-| Ubuntu/Debian | `sudo apt install gcc`                                   |
-| Fedora/RHEL   | `sudo dnf install gcc`                                   |
-| macOS         | `xcode-select --install`                                 |
-| Windows       | Install WSL2 first (see below), then install gcc in WSL  |
+| OS            | Command                                                    |
+|---------------|------------------------------------------------------------|
+| Ubuntu/Debian | `sudo apt install gcc`                                     |
+| Fedora/RHEL   | `sudo dnf install gcc`                                     |
+| macOS         | `xcode-select --install`                                   |
+| Windows       | Install WSL2 first (see Windows users), then install `gcc` |
 
-**Windows users:** Mojo does not run natively on Windows.
+**Windows users**: Mojo doesn't run natively on Windows.
 Install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
 (`wsl --install` in PowerShell), then follow the Linux instructions
 inside your WSL environment.
 
 ---
 
-## Pixi (Recommended)
+## Pixi (recommended)
 
 Pixi manages Python, Mojo, and other dependencies in a reproducible
 manner inside a controlled environment.
 
-First, determine if `pixi` is installed. If it is not available for use at the
-command line, install it using the latest instructions found on
-<https://pixi.prefix.dev/latest/#installation>
+First, determine whether `pixi` is installed. If it isn't available at the
+command line, install it using the latest instructions at
+<https://pixi.prefix.dev/latest/#installation>.
 
-You may need to place the `pixi` tool in the local shell environment after
-installation if it had not already been installed.
+After installing `pixi`, you may need to add it to the local shell environment.
 
 ### Nightly
 
@@ -75,18 +80,18 @@ pixi shell
 pixi add [max / mojo]
 ```
 
-### Stable (v26.1.0.0.0)
+### Stable
 
 ```bash
 # New project
 pixi init [PROJECT] \
   -c https://conda.modular.com/max/ -c conda-forge \
   && cd [PROJECT]
-pixi add "[max / mojo]==0.26.1.0.0.0"
+pixi add [max / mojo]
 pixi shell
 
 # Existing project
-pixi add "[max / mojo]==0.26.1.0.0.0"
+pixi add [max / mojo]
 ```
 
 ### Python-using projects
@@ -103,7 +108,7 @@ pixi add --pypi some-pkg    # PyPI-only packages
 
 ## uv
 
-uv is a fast and very popular package manager, familiar to developers coming
+`uv` is a fast and very popular package manager, familiar to developers coming
 from a Python background. It also works well with Mojo projects.
 
 ### Nightly (project)
@@ -119,9 +124,20 @@ uv add [max / mojo] \
 
 ```bash
 uv init [PROJECT] && cd [PROJECT]
-uv add [max / mojo] \
-  --extra-index-url https://modular.gateway.scarf.sh/simple/
+uv add modular \
+  --index https://modular.gateway.scarf.sh/simple/ \
+  --prerelease allow
 ```
+
+This command has two requirements:
+
+- The stable index publishes one `modular` package that installs both MAX and
+  Mojo. There are no separate `max` and `mojo` packages there, so ask for
+  `modular` even when the project only needs one of them.
+- `--prerelease allow` is required. Current `modular` depends on
+  `mojo==1.0.0b2`, and `pip` and `uv` treat that as a pre-release. Without the
+  flag the resolver silently falls back to an old `modular` release instead of
+  reporting an error.
 
 ### Nightly (quick environment)
 
@@ -138,8 +154,9 @@ uv pip install [max / mojo] \
 ```bash
 mkdir [PROJECT] && cd [PROJECT]
 uv venv
-uv pip install [max / mojo] \
-  --extra-index-url https://modular.gateway.scarf.sh/simple/
+uv pip install modular \
+  --extra-index-url https://modular.gateway.scarf.sh/simple/ \
+  --prerelease allow
 ```
 
 When using `uv`, you can use `max` or `mojo` directly by working within the
@@ -160,22 +177,29 @@ Standard Python package manager.
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install --pre [max / mojo] \
-  --index https://whl.modular.com/nightly/simple/
+  --extra-index-url https://whl.modular.com/nightly/simple/
 ```
+
+Use `--extra-index-url`, not `--index-url`. The latter replaces PyPI, and the
+nightly index doesn't carry third-party dependencies like `numpy`, so `pip`
+backtracks through every `max` version instead of reporting a clear error.
 
 ### Stable
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install [max / mojo] \
+pip install --pre modular \
   --extra-index-url https://modular.gateway.scarf.sh/simple/
 ```
+
+As with `uv`, the stable index carries only the `modular` package, and
+`--pre` is required because it depends on the `mojo` beta.
 
 ---
 
 ## Conda
 
-For conda/mamba users.
+For `conda` and `mamba` users.
 
 ### Nightly
 
@@ -184,27 +208,30 @@ conda install -c conda-forge \
   -c https://conda.modular.com/max-nightly/ [max / mojo]
 ```
 
-### Stable (v26.1.0.0.0)
+### Stable
 
 ```bash
 conda install -c conda-forge \
-  -c https://conda.modular.com/max/ "[max / mojo]==0.26.1.0.0.0"
+  -c https://conda.modular.com/max/ [max / mojo]
 ```
 
 ---
 
-## Version Alignment with MAX
+## Version alignment with MAX
 
-If using MAX with custom Mojo kernels, versions must match:
+If using MAX with custom Mojo kernels, both must come from the same channel.
+Don't compare their version numbers: MAX and Mojo number releases
+differently, so a matching pair looks mismatched (stable is `max` `26.4.0`
+with `mojo` `1.0.0b2`).
 
 ```bash
-# Check alignment
-uv pip show mojo | grep Version   # e.g., 0.26.2
-pixi run mojo --version           # Must match major.minor (e.g., 0.26.2)
+# Check that both came from the same channel
+pixi list | grep -E "^(max|mojo|modular)\b"
 ```
 
-Mismatched versions cause kernel compilation failures. Always use the same
-channel (stable or nightly) for both.
+Installing the `modular` package instead of `max` and `mojo` separately keeps
+them aligned, and is the only option on the stable `uv` index. Mixing channels
+causes kernel compilation failures.
 
 ---
 
