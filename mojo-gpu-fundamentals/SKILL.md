@@ -49,7 +49,7 @@ from std.gpu.sync import barrier                                  # also valid
 from std.gpu.primitives import warp                               # sum/max/min/broadcast/shuffle_*/reduce
 from std.gpu.memory import AddressSpace                           # for shared memory
 from std.gpu.memory import async_copy_wait_all                    # async copy sync
-from std.gpu.host import DeviceContext, DeviceBuffer              # host-side API
+from max.gpu.host import DeviceContext, DeviceBuffer              # host-side API
 from std.atomic import Atomic                                  # atomics
 
 # Layout system — NOT in std, separate package
@@ -409,7 +409,7 @@ comptime layout = row_major[SIZE]()
 from std.math import ceildiv
 from std.sys import has_accelerator
 from std.gpu import global_idx
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from layout import TileTensor, row_major
 
 comptime dtype = DType.float32
@@ -457,7 +457,7 @@ def main() raises:
 from std.math import ceildiv
 from std.sys import has_accelerator
 from std.gpu.sync import barrier
-from std.gpu.host import DeviceContext
+from max.gpu.host import DeviceContext
 from std.gpu import thread_idx, block_idx
 from std.gpu.memory import AddressSpace
 from layout import TileTensor, TensorLayout, row_major, stack_allocation
