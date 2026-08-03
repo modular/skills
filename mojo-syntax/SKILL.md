@@ -560,7 +560,7 @@ vectorize[simd_width](size, closure)              # runtime-arg overload
 
 ```text
 AnyType
-  ImplicitlyDeletable             — auto __del__; most types
+  Deinitable                      — auto __del__; most types
   Movable                         — __init__(out self, *, deinit move: Self)
     Copyable                      — __init__(out self, *, copy: Self)
       ImplicitlyCopyable(Copyable, take)
