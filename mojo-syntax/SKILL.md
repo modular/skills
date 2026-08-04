@@ -57,6 +57,7 @@ slightly in functionality.
 | `InlinedFixedVector[T, N]`                       | `Array[T, N]`                                                                    |
 | `Tensor[T]`                                      | Not in stdlib (use SIMD, List, UnsafePointer)                                    |
 | `escaping` closures                              | Unified closures (`def(...) -> T`, captures in `{}`); `capturing[_]` still valid |
+| `__del__(deinit self)`                           | `__deinit__(deinit self)`                                                        |
 
 ## `var` is required for every new declaration
 
@@ -163,7 +164,7 @@ def __init__(out self, *, deinit move: Self):
     self.data = move.data^
 
 # Destructor
-def __del__(deinit self):
+def __deinit__(deinit self):
     self.ptr.free()
 ```
 
@@ -560,7 +561,7 @@ vectorize[simd_width](size, closure)              # runtime-arg overload
 
 ```text
 AnyType
-  Deinitable                      — auto __del__; most types
+  Deinitable                      — auto __deinit__; most types
   Movable                         — __init__(out self, *, deinit move: Self)
     Copyable                      — __init__(out self, *, copy: Self)
       ImplicitlyCopyable(Copyable, take)
