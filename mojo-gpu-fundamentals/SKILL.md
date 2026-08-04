@@ -45,7 +45,7 @@ Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`,
 from std.gpu import global_idx                                    # simple indexing
 from std.gpu import block_dim, block_idx, thread_idx              # manual indexing
 from std.gpu import barrier, lane_id, WARP_SIZE                   # sync & warp info
-from std.gpu.sync import barrier                                  # also valid
+from max.gpu.sync import barrier                                  # also valid
 from std.gpu.primitives import warp                               # sum/max/min/broadcast/shuffle_*/reduce
 from std.gpu.memory import AddressSpace                           # for shared memory
 from std.gpu.memory import async_copy_wait_all                    # async copy sync
@@ -456,7 +456,7 @@ def main() raises:
 ```mojo
 from std.math import ceildiv
 from std.sys import has_accelerator
-from std.gpu.sync import barrier
+from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
 from std.gpu import thread_idx, block_idx
 from std.gpu.memory import AddressSpace
