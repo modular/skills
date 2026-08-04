@@ -1,0 +1,58 @@
+{
+  "name": "modular",
+  "owner": {
+    "name": "Modular",
+    "email": "hello@modular.com"
+  },
+  "metadata": {
+    "description": "Official Modular agent skills for MAX and Mojo",
+    "version": "26.5"
+  },
+  "plugins": [
+    {
+      "name": "skills",
+      "description": "All official Modular skills for MAX and Mojo",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./new-modular-project",
+        "./mojo-syntax",
+        "./mojo-gpu-fundamentals",
+        "./mojo-python-interop",
+        "./import-model",
+        "./debug-model",
+        "./serve-model",
+        "./benchmark-model",
+        "./profile-model",
+        "./eval-model"
+      ]
+    },
+    {
+      "name": "max-skills",
+      "description": "Modular skills for importing, serving, and measuring models on MAX",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./new-modular-project",
+        "./import-model",
+        "./debug-model",
+        "./serve-model",
+        "./benchmark-model",
+        "./profile-model",
+        "./eval-model"
+      ]
+    },
+    {
+      "name": "mojo-skills",
+      "description": "Modular skills for writing Mojo, including GPU and Python interop",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./new-modular-project",
+        "./mojo-syntax",
+        "./mojo-gpu-fundamentals",
+        "./mojo-python-interop"
+      ]
+    }
+  ]
+}

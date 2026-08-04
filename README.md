@@ -1,189 +1,111 @@
-# Modular Skills
+[![skills.sh](https://skills.sh/b/modular/skills)](https://skills.sh/modular/skills)
+
+# Modular skills
 
 These are the official AI agent skills from [Modular](https://www.modular.com/)
-that encapsulate modern best-practices for working with the Modular Platform,
-including MAX🧑‍🚀 and Mojo🔥. They allow any AI coding agent to become fluent in
-developing new Mojo projects and more.
+for working with the Modular Platform, including MAX and Mojo. They follow the
+[Agent Skills Standard](https://agentskills.io/specification). Any AI coding
+agent can use them to write Mojo, or to import, serve, and measure models on
+MAX.
 
-The skills are structured to follow the
-[Agent Skills Standard](https://agentskills.io/specification).
+## Install
 
-## Installation
+Pick the instructions for your agent:
 
-### Installing via `npx`
+### Claude Code
 
-With [node.js installed](https://nodejs.org/en/download), you can install all
-skills using a single command:
+```text
+/plugin marketplace add modular/skills
+/plugin install skills@modular
+```
+
+For a subset, install `max-skills@modular` to work with models on MAX, or
+`mojo-skills@modular` to write Mojo.
+
+### Codex and other agents
+
+With [Node.js installed](https://nodejs.org/en/download):
 
 ```bash
 npx skills add modular/skills
 ```
 
-Individual skills can also be installed in isolation:
+This installs the skills into the right location for your agent.
 
-```bash
-npx skills add modular/skills --skill new-modular-project
-```
-
-This will install the latest version of the Modular skills into the appropriate
-location for your AI coding agent. These skills will be updated to the latest
-version on a global skill update:
+Update them later:
 
 ```bash
 npx skills update
 ```
 
-### Manual installation
-
-Clone this repository:
+Install one skill at a time:
 
 ```bash
-git clone https://github.com/modular/skills.git
+npx skills add modular/skills --skill mojo-syntax
 ```
 
-and then copy or symbolically link the individual skills into the relevant
-location in your AI coding agent's configuration directory. For Claude Code,
-that would be `~/.claude/skills/`. Refer to your specific agent's documentation
-for where this lives.
+To install by hand, clone
+[the repository](https://github.com/modular/skills) and copy or symlink the
+individual skill directories into your agent's skills directory (for Claude
+Code, `~/.claude/skills/`).
 
-## Skills
+## Mojo and project skills
 
-### `new-modular-project`
+Skills that cover writing Mojo and setting up a project:
 
-[This skill](new-modular-project/SKILL.md) provides a wizard-like experience
-for creating a new MAX or Mojo project, letting your AI agent install the right
-tools and modules you need to get started. This is triggered on asking your
-agent to help you begin a new Mojo or MAX project. You can either provide all
-the needed details upfront for such a project (working against nightly or
-stable, what package manager to use, etc.) or your agent will prompt you for
-any missing information.
+- [`/new-modular-project`](new-modular-project/SKILL.md): Creates a new Mojo or
+  MAX project, setting up the `pixi` or `uv` environment for you.
+- [`/mojo-syntax`](mojo-syntax/SKILL.md): Corrects pretrained assumptions so
+  your agent writes modern Mojo. Use it whenever an agent writes Mojo.
+- [`/mojo-gpu-fundamentals`](mojo-gpu-fundamentals/SKILL.md): Adds the patterns
+  for programming NVIDIA, AMD, and Apple silicon GPUs in Mojo. Pairs with
+  `/mojo-syntax`.
+- [`/mojo-python-interop`](mojo-python-interop/SKILL.md): Handles Mojo calling
+  Python and Python calling Mojo, including building Python extension modules.
+  Pairs with `/mojo-syntax`.
 
-### `mojo-syntax`
+## Model lifecycle
 
-[This skill](mojo-syntax/SKILL.md) adjusts the pretrained behavior of many
-coding models around generating Mojo code to overcome incorrect assumptions and
-allow them to generate correct modern Mojo syntax. This skill should be hooked
-in whenever an agent is writing Mojo code.
+Skills that take a model from a Hugging Face checkpoint to a deployment you've
+verified and measured. They hand off to each other, and each one names the state
+it expects the model to be in:
 
-### `mojo-gpu-fundamentals`
-
-[This skill](mojo-gpu-fundamentals/SKILL.md) builds upon the fundamentals in
-`mojo-syntax` and makes sure that the correct modern patterns for programming
-GPUs using Mojo are followed. It is activated when Mojo code targeting an
-accelerator is being generated. This skill does not go into
-architecture-specific optimizations, but covers general patterns of how GPUs
-are programmed using Mojo.
-
-### `mojo-python-interop`
-
-[This skill](mojo-python-interop/SKILL.md) pairs with `mojo-syntax` to handle
-cases where either Mojo works with Python or Python calls into Mojo. It is
-triggered when Python types are used Mojo or a Python module needs to interact
-with Mojo code. Many capabilities of Mojo - Python interoperability are fairly
-new, and existing coding agents don't handle them correctly without guidance.
-
-### `import-model`
-
-[This skill](import-model/SKILL.md) walks an AI agent through importing a
-new model architecture into MAX, starting from a Hugging Face model ID. It's
-triggered when you ask your agent to import a model into MAX, add a model to
-MAX, or bring up a Hugging Face model in MAX. The skill drives a three-phase
-workflow (decide and plan, implement, verify) that scaffolds from a similar
-registered MAX architecture, implements every divergent layer against the
-Hugging Face reference, and verifies outputs match before declaring the
-import done.
-
-When the server runs but generated text is wrong (gibberish, greedy token
-mismatch, or coherent-then-diverges), `import-model` hands off to
-`debug-model` for the divergence hunt.
-
-### `debug-model`
-
-[This skill](debug-model/SKILL.md) debugs silent corruption when a
-MAX model loads, compiles, serves, and generates tokens, but output disagrees
-with a reference implementation — during an architecture port, a quantization
-bring-up, a multi-GPU conversion, or after a MAX upgrade. Use it when parity
-debugging stalls on scalar taps or you see gibberish, greedy token mismatch,
-or coherent-then-diverges behavior. Not for crashes on load or pre-serve
-scaffolding.
-
-The protocol builds HF vs MAX tensor-dump comparators first, verifies fixes
-numerically before recompiling, and bisects serve vs pipeline when dumps match
-but text diverges. Pair with `import-model`: scaffold and implement there,
-invoke `debug-model` when verification fails on output quality.
-
-### `profile-model`
-
-[This skill](profile-model/SKILL.md) profiles a model running on MAX to find
-where it spends time and whether the GPU is saturated. It's triggered when you
-ask your agent to profile a model, find out where inference time goes, check
-whether the GPU is being utilized, or capture an `nsys`/`rocprofv3`/`ncu`
-trace. The skill works for any `pip`- or `pixi`-installed MAX setup (`max
-generate`, `max serve`, or a Python script) on NVIDIA or AMD GPUs, with no
-source checkout required.
-
-It works from the cheapest check toward the most invasive: a utilization
-snapshot to confirm the GPU is busy, a kernel breakdown to see where time goes,
-and a single-kernel deep dive to learn why one kernel is slow. Each result
-decides whether going deeper is worth it.
-
-### `eval-model`
-
-[This skill](eval-model/SKILL.md) measures the task accuracy of a text
-model served by MAX on standard benchmarks such as GSM8K, MMLU,
-HellaSwag, ARC, AIME, GPQA, TruthfulQA, WinoGrande, and BABILong. It's triggered
-when you ask your agent to benchmark a served model, compare it against
-model-card or reference scores, verify that a new MAX model produces correct
-answers, or run repeatable dataset evaluations against a MAX OpenAI-compatible
-endpoint.
-
-The evaluator checks endpoint compatibility before each run, distinguishes
-serving failures from incorrect model answers, and writes reproducible
-per-task scores. Pair it with `import-model` and `debug-model` to confirm
-accuracy once a newly imported model serves correctly.
-
-### `serve-model`
-
-[This skill](serve-model/SKILL.md) takes you from no environment to a running,
-OpenAI-compatible endpoint with MAX's `max serve` command. It sets up the
-environment (pixi or uv with the nightly channel), points the server at a
-Hugging Face repo or local checkpoint, targets a custom architecture with
-`--custom-architectures`, and chooses the serve flags that fit the model rather
-than guessing. It's triggered when you ask your agent to run, launch, or host a
-model on MAX, bring up an OpenAI-compatible endpoint, serve a custom or ported
-architecture, or debug a `max serve` startup failure.
-
-Pair it with `import-model`: once you've ported an architecture, `serve-model`
-gets it running and helps pick the flags it needs (devices, quantization
-encoding, max length, task, and `trust-remote-code`).
-
-### `benchmark-model`
-
-[This skill](benchmark-model/SKILL.md) measures the performance of a model
-running on MAX with the `max benchmark` command, driving load against a live
-`max serve` endpoint to report throughput (tokens/sec) and latency (TTFT, TPOT,
-inter-token latency), plus GPU utilization. It's triggered when you ask your
-agent to benchmark or load-test a model, get tokens-per-second / TTFT / TPOT
-numbers, run a concurrency or request-rate sweep, compare latency versus
-throughput, or size a deployment.
-
-The skill matches the workload to the question you're asking, because a
-single-stream run and a concurrency sweep measure different things, and it
-covers the flags, datasets, and result fields you need to turn a run into a
-conclusion.
-
-Pair it with `serve-model` (start the endpoint first) and `profile-model` (once
-the numbers show a bottleneck, find which kernels cause it).
+- [`/import-model`](import-model/SKILL.md): Imports a new model architecture
+  into MAX from a Hugging Face model ID, scaffolding from a similar registered
+  architecture and verifying outputs match. Hands off to `/debug-model` when
+  the server runs but the text is wrong.
+- [`/serve-model`](serve-model/SKILL.md): Takes you from no environment to a
+  running OpenAI-compatible endpoint with `max serve`, choosing the flags a
+  model needs rather than guessing: `--devices`, `--quantization-encoding`,
+  `--max-length`, `--task`, and `--trust-remote-code`. Use
+  `--custom-architectures` for an architecture you ported with
+  `/import-model`.
+- [`/debug-model`](debug-model/SKILL.md): Takes over once a model loads and
+  generates tokens but the output is wrong. Builds tensor-dump comparators and
+  bisects serve versus pipeline. For crashes on load, use `/import-model`.
+- [`/benchmark-model`](benchmark-model/SKILL.md): Drives load against an
+  endpoint you started with `/serve-model` and reports throughput and latency
+  (TTFT, TPOT, inter-token latency), plus GPU utilization when it runs on the
+  same NVIDIA host as the server. Hand off to `/profile-model` when the numbers
+  show a bottleneck.
+- [`/profile-model`](profile-model/SKILL.md): Finds where inference time goes
+  and whether the GPU is saturated, working cheapest-first: a utilization
+  snapshot, a kernel breakdown with `nsys` or `rocprofv3`, then an `ncu` deep
+  dive on a single kernel when one dominates.
+- [`/eval-model`](eval-model/SKILL.md): Measures task accuracy on standard
+  benchmarks: GSM8K, MMLU, HellaSwag, ARC, AIME, GPQA, TruthfulQA, WinoGrande,
+  and BABILong. Distinguishes serving failures from wrong model answers. Ask
+  for it by name; it won't trigger on its own.
 
 ## Examples
 
-Once these skills are installed, you can use them for many common tasks.
+Once you install these skills, you can use them for many common tasks.
 Examples include:
 
 ### Starting a new Mojo project
 
 ```text
-I'd like to create a new Mojo project named "my-cool-library".
+I'd like to create a new Mojo project named "nvfp4-for-metal".
 ```
 
 ### Translating CUDA C++ code to Mojo
@@ -193,9 +115,9 @@ A CUDA kernel is present in `../example`, please create a new Mojo project that 
 ```
 
 For several of these skills, your AI agent may prompt you for more information
-to clarify your objectives and to make sure the right tools and patterns are
-used.
+to clarify your objectives and to make sure it uses the right tools and
+patterns.
 
 ## License
 
-Apache 2.0. See [LICENSE](./LICENSE) file for details.
+Apache 2.0. See the [LICENSE](./LICENSE) file for details.
