@@ -73,7 +73,7 @@ def find_arch_dir(slug: str) -> Path:
         sys.exit(
             "MAX is not installed in this Python environment. "
             "Install MAX with pixi (https://docs.modular.com/get-started), "
-            "not pip install modular."
+            "not pip."
         )
     candidate = root / slug
     if candidate.is_dir():

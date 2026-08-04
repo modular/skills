@@ -124,8 +124,7 @@ uv add [max / mojo] \
 
 ```bash
 uv init [PROJECT] && cd [PROJECT]
-uv add modular \
-  --index https://modular.gateway.scarf.sh/simple/ \
+uv add "max[all]" \
   --prerelease allow
 ```
 
@@ -154,8 +153,7 @@ uv pip install [max / mojo] \
 ```bash
 mkdir [PROJECT] && cd [PROJECT]
 uv venv
-uv pip install modular \
-  --extra-index-url https://modular.gateway.scarf.sh/simple/ \
+uv pip install "max[all]"
   --prerelease allow
 ```
 
@@ -188,11 +186,10 @@ backtracks through every `max` version instead of reporting a clear error.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install --pre modular \
-  --extra-index-url https://modular.gateway.scarf.sh/simple/
+pip install --pre "max[all]"
 ```
 
-As with `uv`, the stable index carries only the `modular` package, and
+As with `uv`, the stable index carries only the `max` package, and
 `--pre` is required because it depends on the `mojo` beta.
 
 ---
@@ -226,17 +223,27 @@ with `mojo` `1.0.0b2`).
 
 ```bash
 # Check that both came from the same channel
-pixi list | grep -E "^(max|mojo|modular)\b"
+pixi list | grep -E "^(max|mojo)\b"
 ```
 
-Installing the `modular` package instead of `max` and `mojo` separately keeps
-them aligned, and is the only option on the stable `uv` index. Mixing channels
-causes kernel compilation failures.
+Or, instead install `max[all]` (with pip/uv) or `max-all` (with conda/pixi):
+
+```bash
+uv add "max[all]"
+```
+
+```bash
+pixi add max-all
+```
+
+Installing `max` with "all" optional dependencies instead of installing `max`
+and `mojo` separately will ensure that the `max` and `mojo` versions always
+match. Mixing versions between the two causes kernel compilation failures.
 
 ---
 
 ## References
 
-- [Mojo Installation Guide](https://docs.modular.com/mojo/manual/install)
-- [Mojo Stable Docs](https://docs.modular.com/stable/mojo/)
-- [Mojo Nightly Docs](https://docs.modular.com/mojo/)
+- [Mojo Installation Guide](https://mojolang.org/install)
+- [Mojo Stable Docs](https://mojolang.org/docs/)
+- [Mojo Nightly Docs](https://mojolang.org/nightly/docs/)

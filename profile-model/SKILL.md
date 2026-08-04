@@ -144,32 +144,33 @@ preserving. Whichever capture you run, follow it:
 ## Nightly vs stable
 
 Profiling features land in nightly before stable, so this skill targets the
-nightly `modular` build. Install it with pixi:
+nightly `max-serve` build. Install it with pixi:
 
 ```bash
 pixi init quickstart -c https://conda.modular.com/max-nightly/ -c conda-forge
-cd quickstart && pixi add modular
+cd quickstart && pixi add max-serve
 pixi run max --version          # expect a *.dev build
 ```
 
 The utilization API (`GPUDiagContext`, `BackgroundRecorder`) ships in the
-**conda** `modular` package, so install via pixi or conda rather than a plain
-`pip install modular` wheel, which may not expose `max.profiler.gpu`. If a
+**conda** `max` package, so install via pixi or conda rather than a plain
+`pip install max` wheel, which may not expose `max.profiler.gpu`. If a
 command below 404s or an import fails, confirm you're on a recent nightly
 build.
 
 ## Install notes
 
-- MAX itself: a project with the nightly `modular` package installed via pixi
+- MAX itself: a project with the nightly `max-serve` package installed via pixi
   (see [Nightly vs stable](#nightly-vs-stable) above). All
   `max` CLI commands below assume you can run `pixi run max ...` in that
-  project.
+  project. The `max-serve` package includes extra dependencies required to
+  serve a model with MAX, which aren't included with the main `max` package.
 - `nsys` and `ncu` ship with the CUDA Toolkit. If `which nsys` fails but CUDA is
   present, `export PATH=/usr/local/cuda/bin:$PATH`. Otherwise install Nsight
   Systems / Nsight Compute from NVIDIA, or
   `sudo apt-get install nsight-systems`.
 - `rocprofv3` ships with ROCm (`/opt/rocm/bin`). Add it to PATH if needed.
-- The utilization API needs no extra tooling beyond `modular` — it talks to
+- The utilization API needs no extra tooling beyond `max` — it talks to
   NVML / ROCm SMI directly through `max.profiler.gpu`.
 
 ## Fast paths

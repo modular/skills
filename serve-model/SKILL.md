@@ -27,22 +27,22 @@ add flags only when the model or the hardware forces you to**. MAX auto-detects
 most things (dtype, sequence length, device defaults). Over-specifying flags is
 the most common way people turn a working serve into a broken one.
 
-**Use this skill when** you want to run, launch, or host a model on MAX: bring up
-an OpenAI-compatible endpoint, serve a built-in or a custom/ported architecture,
-or debug a `max serve` startup failure.
+**Use this skill when** you want to run, launch, or host a model on MAX: bring
+up an OpenAI-compatible endpoint, serve a built-in or a custom/ported
+architecture, or debug a `max serve` startup failure.
 
-**Do not use this skill when** the model isn't implemented in MAX yet (no working
-`arch.py`, graph, and weights). That's a bring-up task: use `import-model` to
-port the architecture, and `debug-model` if it serves but the output is wrong.
-This skill runs an existing model; it doesn't author one.
+**Do not use this skill when** the model isn't implemented in MAX yet (no
+working `arch.py`, graph, and weights). That's a bring-up task: use
+`import-model` to port the architecture, and `debug-model` if it serves but the
+output is wrong. This skill runs an existing model; it doesn't author one.
 
 ## References
 
-| File | Read when |
-|------|-----------|
-| [references/custom-arch.md](references/custom-arch.md) | Serving a custom architecture: the `arch.py`-to-flags mapping, encoding and device, and serve-time gotchas |
-| [references/flags.md](references/flags.md) | Choosing any serve flag beyond `--model`, `--devices`, `--quantization-encoding`, and `--max-length` |
-| [references/troubleshooting.md](references/troubleshooting.md) | A `max serve` startup failure or a cryptic error |
+| File                                                           | Read when                                                                                                  |
+|----------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|
+| [references/custom-arch.md](references/custom-arch.md)         | Serving a custom architecture: the `arch.py`-to-flags mapping, encoding and device, and serve-time gotchas |
+| [references/flags.md](references/flags.md)                     | Choosing any serve flag beyond `--model`, `--devices`, `--quantization-encoding`, and `--max-length`       |
+| [references/troubleshooting.md](references/troubleshooting.md) | A `max serve` startup failure or a cryptic error                                                           |
 
 Read the reference for what you're doing, not all of them upfront.
 
@@ -77,29 +77,30 @@ curl -s http://localhost:8000/v1/chat/completions -H "Content-Type: application/
 `default_encoding` that disagrees with the checkpoint, a `name` colliding with a
 built-in, GPU-only encodings, MoE). If the command works and the output is
 coherent, you're done. Only drop into the detailed steps below when a note or a
-failure tells you to. The rest of this doc is the "why" behind what the inspector
-does and what to do when it isn't enough.
+failure tells you to. The rest of this doc is the "why" behind what the
+inspector does and what to do when it isn't enough.
 
 ## 1. Make sure MAX is installed
 
 The user needs a `max` binary from the **nightly** build. Check first, and don't
-reinstall if it's already there:
+reinstall if it's already there (the `max serve` command works only if the
+project includes the `max[serve]` or `max-serve` extra dependencies):
 
 ```bash
-max --version            # already in a MAX env?
-pixi run max --version   # or inside a pixi project
+max serve --help           # already in a MAX env?
+pixi run max serve --help   # or inside a pixi project
 ```
 
-If MAX isn't available, set up an environment. **pixi** is the default; the key
-detail is the conda channel `https://conda.modular.com/max-nightly/` plus
-`conda-forge`.
+If the `max serve` command isn't available, set up an environment. **pixi** is
+the default; the key detail is the conda channel
+`https://conda.modular.com/max-nightly/` plus `conda-forge`:
 
 ```bash
 # pixi (conda channels)
 curl -fsSL https://pixi.sh/install.sh | sh
 pixi init my-max-project \
   -c https://conda.modular.com/max-nightly/ -c conda-forge && cd my-max-project
-pixi add modular
+pixi add max-serve
 ```
 
 If a `pixi.toml` already exists, the channels line must read exactly:
@@ -117,7 +118,7 @@ conda:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv init my-max-project && cd my-max-project
 uv venv && source .venv/bin/activate
-uv add modular --index https://whl.modular.com/nightly/simple/ --prerelease allow
+uv add "max[serve]" --index https://whl.modular.com/nightly/simple/ --prerelease allow
 ```
 
 After a pixi setup, prefix commands with `pixi run` (or enter `pixi shell`).
@@ -208,11 +209,11 @@ command is the whole job.
 
 Add flags only for a concrete reason. The three you'll reach for most:
 
-| Flag | Add it when | Example |
-|---|---|---|
-| `--devices` | You must pin specific GPUs, shard across GPUs, or force CPU (GPU is already the default). | `--devices gpu:0` · `--devices gpu:0,1,2,3` · `--devices gpu:all` · `--devices cpu` |
-| `--quantization-encoding` | The repo has multiple formats, or auto-detect picks the wrong one. | `--quantization-encoding bfloat16` |
-| `--max-length` | You want a shorter context than the model's max (saves KV memory) or need to cap it to fit. | `--max-length 4096` |
+| Flag                      | Add it when                                                                                 | Example                                                                             |
+|---------------------------|---------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| `--devices`               | You must pin specific GPUs, shard across GPUs, or force CPU (GPU is already the default).   | `--devices gpu:0` · `--devices gpu:0,1,2,3` · `--devices gpu:all` · `--devices cpu` |
+| `--quantization-encoding` | The repo has multiple formats, or auto-detect picks the wrong one.                          | `--quantization-encoding bfloat16`                                                  |
+| `--max-length`            | You want a shorter context than the model's max (saves KV memory) or need to cap it to fit. | `--max-length 4096`                                                                 |
 
 For everything else (device memory, batch size, task selection, sliding window,
 trust-remote-code, multi-GPU parallelism, speculative decoding) see
@@ -224,8 +225,8 @@ it explains what each one does and when *not* to set it.
 1. **Default first**. Try the minimal command. Auto-detection is usually right
    for built-ins, and GPU is the default device.
 2. **For a custom arch, read the package**. `arch.py`'s `default_encoding` is
-   your `--quantization-encoding`. That encoding constrains the device: fp8, fp4,
-   and gptq are GPU-only, and GPU is already the default, so you don't add
+   your `--quantization-encoding`. That encoding constrains the device: fp8,
+   fp4, and gptq are GPU-only, and GPU is already the default, so you don't add
    `--devices` for them (see `references/custom-arch.md`). Cap `--max-length` at
    `config.json::max_position_embeddings`. Add `--trust-remote-code` if the
    checkpoint ships custom modeling files, and `--chat-template` if the package

@@ -15,7 +15,7 @@
 
 The GPU utilization check of the profile-model skill. Uses max.profiler.gpu
 (NVML on NVIDIA, ROCm SMI on AMD) so it needs no profiler install beyond the
-`modular` package.
+`max` package.
 
 Two modes:
   * --run "<cmd>"   : launch the command, record for its lifetime, summarize.
@@ -116,8 +116,8 @@ def main() -> int:
         from max.profiler.gpu import BackgroundRecorder
     except ImportError:
         print(
-            "ERROR: could not import max.profiler.gpu. Install the `modular` "
-            "package (pixi add modular / pip install modular) and run inside "
+            "ERROR: could not import max.profiler.gpu. Install the `max` "
+            "package (pixi add max / pip install max) and run inside "
             "that environment.",
             file=sys.stderr,
         )
