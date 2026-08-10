@@ -29,7 +29,7 @@ Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`,
 | `cudaMalloc(&ptr, size)`                | `ctx.enqueue_create_buffer[dtype](count)`                                            |
 | `cudaMemcpy(dst, src, ...)`             | `ctx.enqueue_copy(dst_buf, src_buf)` or `ctx.enqueue_copy(dst_buf=..., src_buf=...)` |
 | `cudaDeviceSynchronize()`               | `ctx.synchronize()`                                                                  |
-| `__syncthreads()`                       | `barrier()` from `std.gpu` or `std.gpu.sync`                                         |
+| `__syncthreads()`                       | `barrier()` from `max.gpu` or `max.gpu.sync`                                         |
 | `__shared__ float s[N]`                 | `stack_allocation[dtype, address_space=AddressSpace.SHARED](layout)`                 |
 | `threadIdx.x`                           | `thread_idx.x`                                                                       |
 | `blockIdx.x * blockDim.x + threadIdx.x` | `global_idx.x` (convenience, returns `Int`)                                          |
@@ -44,13 +44,13 @@ Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`,
 # Core GPU — pick what you need
 from std.gpu import global_idx                                    # simple indexing
 from std.gpu import block_dim, block_idx, thread_idx              # manual indexing
-from std.gpu import barrier, lane_id, WARP_SIZE                   # sync & warp info
-from max.gpu.sync import barrier                                  # also valid
+from std.gpu import lane_id, WARP_SIZE                            # warp info
+from max.gpu.sync import barrier                                  # block-level sync
 from std.gpu.primitives import warp                               # sum/max/min/broadcast/shuffle_*/reduce
-from std.gpu.memory import AddressSpace                           # for shared memory
-from std.gpu.memory import async_copy_wait_all                    # async copy sync
+from max.gpu.memory import AddressSpace                           # for shared memory
+from max.gpu.memory import async_copy_wait_all                    # async copy sync
 from max.gpu.host import DeviceContext, DeviceBuffer              # host-side API
-from std.atomic import Atomic                                  # atomics
+from std.atomic import Atomic                                     # atomics
 
 # Layout system — NOT in std, separate package
 from layout import TileTensor, TensorLayout, Idx, row_major, stack_allocation
@@ -267,7 +267,7 @@ Allocate shared memory inside a kernel using `stack_allocation` from the
 
 ```mojo
 from layout import stack_allocation   # TileTensor-based shared alloc
-from std.gpu.memory import AddressSpace
+from max.gpu.memory import AddressSpace
 
 var tile_shared = stack_allocation[DType.float32,
     address_space=AddressSpace.SHARED](row_major[TILE_M, TILE_K]())
@@ -311,7 +311,7 @@ All return `Int` — no casting needed for bounds checks.
 ## Synchronization and warp operations
 
 ```mojo
-from std.gpu import barrier
+from max.gpu.sync import barrier
 from std.gpu.primitives import warp
 from std.atomic import Atomic
 
@@ -325,11 +325,12 @@ warp.reduce[warp.shuffle_down, reduce_fn](val)  # custom reduction (broadcasts)
 
 # Shuffles — per-lane shift/swap, NOT broadcast
 warp.shuffle_down(val, offset)               # offset: UInt32
-warp.shuffle_xor(val, mask)                  # mask: UInt32 (butterfly)
+warp.shuffle_xor(val, offset)                # offset: UInt32, XOR'd with lane id (butterfly)
+warp.shuffle_xor(mask, val, offset)          # explicit membership mask (rarely needed)
 
-# `offset`/`mask` are `UInt32` — plain `Int` is a type-mismatch error:
-var m: UInt32 = 16
-var v = warp.shuffle_xor(val, m)
+# `offset` is `UInt32` — plain `Int` is a type-mismatch error:
+var off: UInt32 = 16
+var v = warp.shuffle_xor(val, off)
 ```
 
 ## GPU availability check
@@ -345,10 +346,11 @@ def main() raises:
         # ... GPU code
 ```
 
-Or as a compile-time assert:
+Or as a compile-time assert — which must sit inside a function body:
 
 ```mojo
-comptime assert has_accelerator(), "Requires a GPU"
+def main() raises:
+    comptime assert has_accelerator(), "Requires a GPU"
 ```
 
 ## Architecture detection — `is_` vs `has_`
@@ -459,7 +461,7 @@ from std.sys import has_accelerator
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
 from std.gpu import thread_idx, block_idx
-from std.gpu.memory import AddressSpace
+from max.gpu.memory import AddressSpace
 from layout import TileTensor, TensorLayout, row_major, stack_allocation
 
 comptime dtype = DType.float32
@@ -522,8 +524,8 @@ def main() raises:
 ## SIMD loads in kernels
 
 ```mojo
-# Vectorized load from raw pointer
-var val = ptr.load[width=8](idx)          # SIMD[dtype, 8]
+# Vectorized load from raw pointer — `.load()` is deprecated
+var val = ptr.unsafe_load[width=8](idx)   # SIMD[dtype, 8]
 var sum = val.reduce_add()                 # scalar reduction
 
 # TileTensor vectorized access
@@ -532,28 +534,38 @@ var vec_tensor = tensor.vectorize[1, 4]()  # group elements into SIMD[4]
 
 ## Reduction pattern
 
+Pointer indexing is `ptr[unsafe_offset=i]` — bare `ptr[i]` is deprecated. Use
+`MutPointer`, not the deprecated `UnsafePointer`.
+
 ```mojo
+from std.bit import log2_floor
+
+comptime TPB = 512          # `comptime for` needs a static bound, so the
+                            # block size must be comptime, not `block_dim.x`
+
 def block_reduce(
-    output: UnsafePointer[Int32, MutAnyOrigin],
-    input: UnsafePointer[Int32, MutAnyOrigin],
+    output: MutPointer[Int32, MutAnyOrigin],
+    input: MutPointer[Int32, MutAnyOrigin],
 ):
-    var sums = stack_allocation[512, Scalar[DType.int32],
+    var sums = stack_allocation[TPB, Scalar[DType.int32],
         address_space=AddressSpace.SHARED]()
     var tid = thread_idx.x
-    sums[tid] = input[block_idx.x * block_dim.x + tid]
+    sums[unsafe_offset=tid] = input[
+        unsafe_offset=block_idx.x * block_dim.x + tid
+    ]
     barrier()
 
     # Tree reduction in shared memory
-    var active = block_dim.x
-    comptime for _ in range(log2_steps):
+    var active = TPB
+    comptime for _ in range(log2_floor(TPB)):
         active >>= 1
         if tid < active:
-            sums[tid] += sums[tid + active]
+            sums[unsafe_offset=tid] += sums[unsafe_offset=tid + active]
         barrier()
 
     # Final warp reduction + atomic accumulate
     if tid < WARP_SIZE:
-        var v = warp.sum(sums[tid][0])
+        var v = warp.sum(sums[unsafe_offset=tid][0])
         if tid == 0:
             _ = Atomic.fetch_add(output, v)
 ```
@@ -569,14 +581,17 @@ var buf = DeviceBuffer[dtype](ctx, raw_ptr, count, owning=False)
 
 ```mojo
 from std.benchmark import Bench, BenchConfig, Bencher, BenchId, BenchMetric, ThroughputMeasure
+from max.benchmark import bencher_iter_custom   # GPU form: a free function
 
-@parameter                                # outer: consumed as comptime param below
+@parameter
 @always_inline
-def bench_fn(mut b: Bencher) raises:
-    @always_inline                         # inner: unified closure, passed by value
+def bench_fn(mut b: Bencher) capturing raises:
+    @parameter
+    @always_inline
     def launch(ctx: DeviceContext) raises:
         ctx.enqueue_function[kernel](args, grid_dim=G, block_dim=B)
-    b.iter_custom(launch, ctx)             # value-taking overload — NOT `[launch]`
+    var ctx = DeviceContext()
+    bencher_iter_custom[launch](b, ctx)         # NOT `b.iter_custom(...)`
 
 var bench = Bench(BenchConfig(max_iters=50000))
 bench.bench_function[bench_fn](
@@ -585,11 +600,10 @@ bench.bench_function[bench_fn](
 )
 ```
 
-`escaping` is removed; unified closures omit `capturing` too. The parametric
-form `b.iter_custom[kernel_launch](ctx)` (still `capturing[_]`) also works —
-prefer the value-taking overload above when the inner closure captures
-benchmark-local state. `bench_fn` keeps `@parameter` because
-`bench_function[bench_fn]` takes it as a comptime parameter.
+`Bencher.iter_custom` takes no `DeviceContext` — that form lives in
+`max.benchmark`. `escaping` is removed, but `capturing` is not: `bench_function`
+takes `def(mut Bencher) raises capturing[_]`. Both functions need `@parameter`
+because each is consumed as a comptime parameter.
 
 ## Hardware details
 
