@@ -583,10 +583,10 @@ var buf = DeviceBuffer[dtype](ctx, raw_ptr, count, owning=False)
 from std.benchmark import Bench, BenchConfig, Bencher, BenchId, BenchMetric, ThroughputMeasure
 from max.benchmark import bencher_iter_custom   # GPU form: a free function
 
-@parameter
+@__parameter
 @always_inline
 def bench_fn(mut b: Bencher) capturing raises:
-    @parameter
+    @__parameter
     @always_inline
     def launch(ctx: DeviceContext) raises:
         ctx.enqueue_function[kernel](args, grid_dim=G, block_dim=B)
@@ -602,7 +602,7 @@ bench.bench_function[bench_fn](
 
 `Bencher.iter_custom` takes no `DeviceContext` — that form lives in
 `max.benchmark`. `escaping` is removed, but `capturing` is not: `bench_function`
-takes `def(mut Bencher) raises capturing[_]`. Both functions need `@parameter`
+takes `def(mut Bencher) raises capturing[_]`. Both functions need `@__parameter`
 because each is consumed as a comptime parameter.
 
 ## Hardware details

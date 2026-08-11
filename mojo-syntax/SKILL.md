@@ -104,7 +104,7 @@ def main() raises:                         # main usually raises
     ...
 ```
 
-## `comptime` replaces `alias` and `@parameter`
+## `comptime` replaces `alias` and `@parameter if`/`for`
 
 ```mojo
 comptime N = 1024                            # compile-time constant
@@ -554,7 +554,7 @@ vectorize[simd_width](size, closure)              # runtime-arg overload
 ```
 
 `imm` is default. `var x` is owned — transfer with `x^` at the use site.
-`@parameter` on a nested closure is only needed when consumed as a
+`@__parameter` on a nested closure is only needed when consumed as a
 *comptime* parameter (`f[my_closure]`); runtime-arg overloads use bare form.
 
 ## Type hierarchy
