@@ -534,8 +534,8 @@ except err:                               # err is Int
     print("error code:", err)
 ```
 
-No `match` statement. No `async`/`await` — use `Coroutine`/`Task` from
-`std.runtime`.
+No `match` statement. `async def` and `await` parse, but async support is
+unfinished and its types are private — do not write async Mojo yet.
 
 ## Function types and closures
 
