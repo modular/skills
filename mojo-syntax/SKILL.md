@@ -554,8 +554,14 @@ vectorize[simd_width](size, closure)              # runtime-arg overload
 ```
 
 `imm` is default. `var x` is owned — transfer with `x^` at the use site.
-`@__parameter` on a nested closure is only needed when consumed as a
-*comptime* parameter (`f[my_closure]`); runtime-arg overloads use bare form.
+Prefer unified closures with a capture list. Do **not** under any circumstance
+use `@__parameter` / `@parameter` on nested closures — that legacy form is
+**forbidden** in new and migrated code (not a temporary bridge, not an
+imm-borrow helper, not a still-capturing API workaround). Pass closures as
+runtime arguments (`f(my_closure)`) rather than comptime parameters when
+possible. If an API still requires a comptime `capturing[_]` function, use
+`def … capturing` without `@__parameter`, or migrate that API — never put
+`@__parameter` on the caller.
 
 ## Type hierarchy
 

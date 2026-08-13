@@ -19,6 +19,7 @@
         "./mojo-syntax",
         "./mojo-gpu-fundamentals",
         "./mojo-python-interop",
+        "./closure_migration",
         "./import-model",
         "./debug-model",
         "./serve-model",
@@ -51,7 +52,8 @@
         "./new-modular-project",
         "./mojo-syntax",
         "./mojo-gpu-fundamentals",
-        "./mojo-python-interop"
+        "./mojo-python-interop",
+        "./closure_migration"
       ]
     }
   ]

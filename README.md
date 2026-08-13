@@ -63,6 +63,8 @@ Skills that cover writing Mojo and setting up a project:
 - [`/mojo-python-interop`](mojo-python-interop/SKILL.md): Handles Mojo calling
   Python and Python calling Mojo, including building Python extension modules.
   Pairs with `/mojo-syntax`.
+- [`/closure_migration`](closure_migration/SKILL.md): Migrates Mojo off legacy
+  parametric / `@__parameter` closures onto value-taking unified closures.
 
 ## Model lifecycle
 
