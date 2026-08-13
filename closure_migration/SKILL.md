@@ -118,13 +118,17 @@ order:
    non-capturing) that takes `buf: DeviceBuffer[…]` as an imm parameter, and
    form the launch there. `enqueue_memset` takes an imm `DeviceBuffer`, so
    memset alone does not require `{mut buf, …}`.
-2. **Pass the mutable origin as a closure argument** (`mut buf: …` in the
+2. **Explicitly mark the mutated/backing buffer in the closure capture list**:
+   When a closure captures a helper/lambda that mutates a buffer (`origin_of(buf)`),
+   a default `{imm}` would create an aliasing immutable capture of `buf`. Adding
+   `mut buf` (e.g. `{mut buf, imm}`) unifies the capture convention to mutable.
+3. **Pass the mutable origin as a closure argument** (`mut buf: …` in the
    parameter list) so it is not a captured field. When the value-taking API's
    `FuncType` is fixed, use a thin `{mut buf, imm}` adapter that only forwards
    `buf` into the all-imm body. Prefer widening the API when practical.
-3. Do **not** “fix” aliasing with `.as_unsafe_any_origin()` (or similar). That
+4. Do **not** “fix” aliasing with `.as_unsafe_any_origin()` (or similar). That
    erases the lifetime tracker and is highly discouraged.
-4. Do **not** “fix” anything with `@__parameter`.
+5. Do **not** “fix” anything with `@__parameter`.
 
 ## Safety rules
 
