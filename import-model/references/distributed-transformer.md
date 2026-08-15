@@ -86,15 +86,29 @@ rewriting. The work is mechanical but non-trivial:
 ### Per-block forward
 
 ```python
-def __call__(self, layer_idx, xs, kv_collections, freqs_cis,
-             input_row_offsets, signal_buffers):
+def __call__(
+    self,
+    layer_idx,
+    xs,
+    kv_collections,
+    freqs_cis,
+    input_row_offsets,
+    signal_buffers,
+):
     # 1. Norm each device's hidden state in parallel.
     norm_xs = forward_sharded_layers(self.input_layernorm_shards, xs)
 
     # 2. Attention on each device's shard of heads.
-    attn_outs = [shard(layer_idx, norm_xs[i], kv_collections[i],
-                       freqs_cis[i], input_row_offsets[i])
-                 for i, shard in enumerate(self.self_attn_shards)]
+    attn_outs = [
+        shard(
+            layer_idx,
+            norm_xs[i],
+            kv_collections[i],
+            freqs_cis[i],
+            input_row_offsets[i],
+        )
+        for i, shard in enumerate(self.self_attn_shards)
+    ]
 
     # 3. TP mode: allreduce across attention shards.
     if not self.use_dp and len(self.devices) > 1:
@@ -154,8 +168,7 @@ Common failure modes on multi-GPU MoE ports:
    ```python
    qc = config.quant_config
    attn_quant_config = (
-       qc if qc is not None and layer_idx in qc.attn_quantized_layers
-       else None
+       qc if qc is not None and layer_idx in qc.attn_quantized_layers else None
    )
    ```
 

@@ -42,8 +42,10 @@ from max.profiler.gpu import GPUDiagContext
 with GPUDiagContext() as ctx:
     for gpu_id, s in ctx.get_stats().items():
         # used_bytes / 1e9 is approximate GB (decimal); use / 2**30 for GiB.
-        print(f"{gpu_id}: {s.utilization.gpu_usage_percent}% compute, "
-              f"{s.memory.used_bytes / 1e9:.1f} GB used")
+        print(
+            f"{gpu_id}: {s.utilization.gpu_usage_percent}% compute, "
+            f"{s.memory.used_bytes / 1e9:.1f} GB used"
+        )
 ```
 
 This prints one line per GPU, for example `nv0: 87% compute, 14.2 GB used`.
@@ -58,7 +60,7 @@ Wrap the workload (for example an `InferenceSession` generate loop, or a
 from max.profiler.gpu import BackgroundRecorder
 
 with BackgroundRecorder(interval=0.5) as rec:
-    run_my_inference()          # or sleep while `max benchmark` runs elsewhere
+    run_my_inference()  # or sleep while `max benchmark` runs elsewhere
 
 # rec.stats is a list of {gpu_id: GPUStats} snapshots, one per interval.
 ```

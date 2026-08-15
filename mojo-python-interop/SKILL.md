@@ -262,8 +262,8 @@ Use `mojo.importer` — it auto-compiles `.mojo` files and caches results in
 `__mojocache__/`:
 
 ```python
-import mojo.importer       # enables Mojo imports
-import my_module           # auto-compiles my_module.mojo
+import mojo.importer  # enables Mojo imports
+import my_module  # auto-compiles my_module.mojo
 
 print(my_module.add(1, 2))
 ```

@@ -69,13 +69,14 @@ reshaping, repacking), use torch as the DLPack bridge:
 ```python
 import torch
 from max.graph import Shape
+
 t = torch.from_dlpack(weight_data.data)
 t_sliced = t[:vocab_size].contiguous()
 new_wd = WeightData(
     data=t_sliced,
     name=name,
     dtype=weight_data.dtype,
-    shape=Shape((vocab_size, hidden_size)),   # MUST be Shape, not tuple
+    shape=Shape((vocab_size, hidden_size)),  # MUST be Shape, not tuple
     quantization_encoding=weight_data.quantization_encoding,
 )
 ```

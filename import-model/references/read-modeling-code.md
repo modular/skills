@@ -8,7 +8,10 @@ while implementing the graph, and again during the divergence hunt.
 
 ```python
 import importlib
-mod = importlib.import_module("transformers.models.<model_type>.modeling_<model_type>")
+
+mod = importlib.import_module(
+    "transformers.models.<model_type>.modeling_<model_type>"
+)
 print(mod.__file__)
 ```
 

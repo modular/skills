@@ -28,22 +28,26 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 tok = AutoTokenizer.from_pretrained(REPO)
 model = AutoModelForCausalLM.from_pretrained(
-    REPO, torch_dtype=torch.bfloat16, device_map="auto",
+    REPO,
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
     low_cpu_mem_usage=True,
 )
 model.eval()
 
-backbone = model.model   # adjust for non-decoder-only architectures
+backbone = model.model  # adjust for non-decoder-only architectures
 # Confirm this is the decoder stack, not a multimodal/encoder wrapper —
 # hooks on the wrong module produce dumps that compare against nothing.
 print("backbone:", type(backbone).__name__)
 
+
 def save(name):
     def hook(_m, _inp, out):
         h = out[0] if isinstance(out, tuple) else out
-        np.save(f"{OUT_DIR}/{name}.npy",
-                h[0].detach().float().cpu().numpy())
+        np.save(f"{OUT_DIR}/{name}.npy", h[0].detach().float().cpu().numpy())
+
     return hook
+
 
 backbone.embed_tokens.register_forward_hook(save("post_embed"))
 for i, layer in enumerate(backbone.layers):
@@ -51,7 +55,8 @@ for i, layer in enumerate(backbone.layers):
 backbone.norm.register_forward_hook(save("post_final_norm"))
 
 text = tok.apply_chat_template(
-    [{"role": "user", "content": "Hello!"}], tokenize=False,
+    [{"role": "user", "content": "Hello!"}],
+    tokenize=False,
     add_generation_prompt=True,
 )
 inputs = tok(text, return_tensors="pt").to(model.device)
@@ -85,17 +90,19 @@ from max.graph import ops, TensorValue
 _DUMP = os.environ.get("PORT_DUMP") == "1"
 dump_tensors: list[TensorValue] = []
 
+
 def _tap(t: TensorValue) -> None:
     if _DUMP:
         dump_tensors.append(ops.cast(t, DType.float32))
 
+
 h = self.embed_tokens(tokens)
-_tap(h)                      # post-embed
-for layer in self.layers:    # or your port's layer-stacking helper
+_tap(h)  # post-embed
+for layer in self.layers:  # or your port's layer-stacking helper
     h = layer(h, ...)
-    _tap(h)                  # layer_00, layer_01, ...
+    _tap(h)  # layer_00, layer_01, ...
 h = self.norm(h)
-_tap(h)                      # post-final-norm
+_tap(h)  # post-final-norm
 
 return (last_logits, *dump_tensors) if _DUMP else (last_logits,)
 ```
@@ -141,7 +148,9 @@ ctx = TextContext(
 replica_batches = [[ctx]]
 
 with pipeline._kv_manager.reserve(replica_batches, num_steps=1):
-    kv_inputs = pipeline._kv_manager.runtime_inputs(replica_batches, num_steps=1)
+    kv_inputs = pipeline._kv_manager.runtime_inputs(
+        replica_batches, num_steps=1
+    )
     model_inputs = pipeline_model.prepare_initial_token_inputs(
         replica_batches=replica_batches,
         kv_cache_inputs=kv_inputs,
@@ -151,12 +160,19 @@ with pipeline._kv_manager.reserve(replica_batches, num_steps=1):
     # everything but logits. inner_model.execute is read-only; don't patch it.
     outs = inner_model.execute(*model_inputs.buffers)
 
-NAMES = ["last_logits", "post_embed"] + [f"layer_{i:02d}" for i in range(n_layers)] + ["post_final_norm"]
+NAMES = (
+    ["last_logits", "post_embed"]
+    + [f"layer_{i:02d}" for i in range(n_layers)]
+    + ["post_final_norm"]
+)
 out_dir = os.environ.get("MAX_DUMP_DIR", "./parity_dumps/max_layers")
 os.makedirs(out_dir, exist_ok=True)
 for name, o in zip(NAMES, outs):
-    arr = np.asarray(o.to_numpy()).copy() if hasattr(o, "to_numpy") \
-          else np.from_dlpack(o).copy()
+    arr = (
+        np.asarray(o.to_numpy()).copy()
+        if hasattr(o, "to_numpy")
+        else np.from_dlpack(o).copy()
+    )
     np.save(f"{out_dir}/{name}.npy", arr)
 print("done", out_dir)
 ```
@@ -176,7 +192,7 @@ prints every layer's inputs and outputs as the model runs:
 from max.nn.hooks import PrintHook
 
 hook = PrintHook()
-hook.name_layers(model)   # name layers by attribute path; V2 and V3
+hook.name_layers(model)  # name layers by attribute path; V2 and V3
 # build and execute the graph
 hook.remove()
 ```
@@ -202,15 +218,21 @@ import numpy as np, os, glob
 HF = os.environ.get("HF_DUMP_DIR", "./parity_dumps/hf_layers")
 MX = os.environ.get("MAX_DUMP_DIR", "./parity_dumps/max_layers")
 
+
 def cos(a, b):
     a = a.flatten().astype(np.float64)
     b = b.flatten().astype(np.float64)
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-20))
 
-names = sorted({os.path.basename(p)[:-4] for p in glob.glob(f"{HF}/*.npy")}
-               & {os.path.basename(p)[:-4] for p in glob.glob(f"{MX}/*.npy")})
 
-print(f"{'checkpoint':25s} {'cos_sim':>9s} {'mean_diff':>10s} {'max_diff':>10s}  spike_position")
+names = sorted(
+    {os.path.basename(p)[:-4] for p in glob.glob(f"{HF}/*.npy")}
+    & {os.path.basename(p)[:-4] for p in glob.glob(f"{MX}/*.npy")}
+)
+
+print(
+    f"{'checkpoint':25s} {'cos_sim':>9s} {'mean_diff':>10s} {'max_diff':>10s}  spike_position"
+)
 for n in names:
     h = np.load(f"{HF}/{n}.npy")
     m = np.load(f"{MX}/{n}.npy")
@@ -220,7 +242,9 @@ for n in names:
     diff = np.abs(h - m)
     idx = np.unravel_index(np.argmax(diff), diff.shape)
     spike = f"(t={idx[0]},d={idx[1]}) HF={h[idx]:+.2f} MAX={m[idx]:+.2f}"
-    print(f"{n:25s} {cos(h,m):9.4f} {diff.mean():10.4f} {diff.max():10.4f}  {spike}")
+    print(
+        f"{n:25s} {cos(h, m):9.4f} {diff.mean():10.4f} {diff.max():10.4f}  {spike}"
+    )
 ```
 
 **Column meanings:**
@@ -243,8 +267,9 @@ Add per-token and per-dim slices when the default output shows divergence:
 def per_token_cos(h, m):
     return [cos(h[t], m[t]) for t in range(h.shape[0])]
 
+
 def per_dim_cos(h, m):
-    return [cos(h[:, d], m[:,d]) for d in range(h.shape[1])]
+    return [cos(h[:, d], m[:, d]) for d in range(h.shape[1])]
 ```
 
 ## Decode-step dumps (greedy failure at index K)
@@ -313,10 +338,18 @@ after logits alone.
 ## Comparator CLI extensions
 
 ```python
-parser.add_argument("--token-index", type=int, default=-1,
-                    help="Compare only row t (last row if -1)")
-parser.add_argument("--skip", nargs="*", default=["last_logits"],
-                    help="Skip logits when shapes differ by vocab axis")
+parser.add_argument(
+    "--token-index",
+    type=int,
+    default=-1,
+    help="Compare only row t (last row if -1)",
+)
+parser.add_argument(
+    "--skip",
+    nargs="*",
+    default=["last_logits"],
+    help="Skip logits when shapes differ by vocab axis",
+)
 ```
 
 When comparing logits tensors, skip token slicing (1D vocab vectors).

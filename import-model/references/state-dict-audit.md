@@ -57,7 +57,12 @@ def _audit_state_dict_coverage(
     num_routed_experts: int = 0,
     num_shared_experts: int = 0,
     # Attention projections (override if your arch uses non-standard names)
-    attn_projections: tuple[str, ...] = ("q_proj", "k_proj", "v_proj", "o_proj"),
+    attn_projections: tuple[str, ...] = (
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+    ),
     mlp_projections: tuple[str, ...] = ("gate_proj", "up_proj", "down_proj"),
     has_router: bool = True,
 ) -> None:
@@ -190,7 +195,9 @@ When the audit passes, log it explicitly so the user sees it:
 logger.info(
     "State-dict audit: all %d layers × %d routed experts (+ %d shared) "
     "projection paths present.",
-    num_hidden_layers, num_routed_experts, num_shared_experts,
+    num_hidden_layers,
+    num_routed_experts,
+    num_shared_experts,
 )
 ```
 

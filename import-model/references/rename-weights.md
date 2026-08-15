@@ -45,6 +45,7 @@ expects:
 ```python
 # In a Python REPL with your scaffold importable:
 from your_package import YourModel
+
 # Instantiate without loading weights:
 m = YourModel(...)  # use the same args as your pipeline model
 print(sorted(m.state_dict().keys()))
@@ -62,8 +63,12 @@ Or, if you already have a local cache, open shards with `safe_open`:
 
 ```python
 from safetensors import safe_open
+
 keys = []
-for shard in ["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"]:
+for shard in [
+    "model-00001-of-00002.safetensors",
+    "model-00002-of-00002.safetensors",
+]:
     with safe_open(f"<checkpoint_path>/{shard}", framework="pt") as f:
         keys.extend(f.keys())
 print(sorted(keys))
@@ -173,8 +178,8 @@ qkv = state["transformer.h.0.attention.query_key_value.weight"]
 # Layout 1: [Q, K, V] concatenated along the output dim
 arr = qkv.to_buffer().to_numpy()
 q = arr[:hidden]
-k = arr[hidden:2 * hidden]
-v = arr[2 * hidden:]
+k = arr[hidden : 2 * hidden]
+v = arr[2 * hidden :]
 # Layout 2 (head-interleaved): every head is [Q_head, K_head, V_head]
 # — check the modeling code for which layout the model uses.
 ```
@@ -213,6 +218,7 @@ quick sanity check on a small layer:
 
 ```python
 import numpy as np
+
 # Compare against expected absmax of a real weight
 print(np.abs(model.layers[0].self_attn.q_proj.weight.to_numpy()).max())
 # Should be O(0.1) for a trained model; if it's O(0.01) or O(1.0), suspect.

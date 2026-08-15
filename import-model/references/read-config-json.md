@@ -8,6 +8,7 @@ Load it and print every field:
 
 ```python
 from transformers import AutoConfig
+
 config = AutoConfig.from_pretrained("<HF_MODEL_ID>", trust_remote_code=True)
 print(config)
 ```

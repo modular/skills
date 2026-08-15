@@ -18,15 +18,16 @@ without recompiling.
 import pytest
 from max.graph import Graph
 
+
 @pytest.fixture(scope="module")
 def model(session):
     with Graph(...) as g:
         ...
     return session.compile(g)
 
+
 @pytest.mark.parametrize("input_shape", [...])
-def test_forward(input_shape, model):
-    ...  # exercise the already-compiled model
+def test_forward(input_shape, model): ...  # exercise the already-compiled model
 ```
 
 A module-scoped fixture lives for the lifetime of the test file's
@@ -39,7 +40,7 @@ When a single file must compile different graphs — different dtypes,
 kernel variants, or distribution shapes — don't split the file manually.
 Use Bazel test sharding to spread the work across parallel CI workers:
 
-```python
+```bzl
 modular_py_test(
     name = "test_attention",
     srcs = ["test_attention.py"],

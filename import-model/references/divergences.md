@@ -171,8 +171,9 @@ Newer Gemma 2, Helium, and some other configs put `rope_theta` inside a
 which is wrong.
 
 ```python
-theta = getattr(config, "rope_theta", None) or \
-    config.rope_parameters.get("rope_theta", 10000.0)
+theta = getattr(config, "rope_theta", None) or config.rope_parameters.get(
+    "rope_theta", 10000.0
+)
 ```
 
 **Symptom:** outputs look plausible at short lengths but degrade as
@@ -195,8 +196,8 @@ adapter must split:
 ```python
 arr = checkpoint["...query_key_value.weight"].to_buffer().to_numpy()
 q = arr[:hidden_size]
-k = arr[hidden_size:2 * hidden_size]
-v = arr[2 * hidden_size:]
+k = arr[hidden_size : 2 * hidden_size]
+v = arr[2 * hidden_size :]
 ```
 
 For models where the fused layout interleaves heads

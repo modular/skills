@@ -99,7 +99,7 @@ Compute per-token and per-dim cosine slices when global cos looks ambiguous:
 
 ```python
 cos_per_token = [cos(h[t], m[t]) for t in range(h.shape[0])]
-cos_per_dim   = [cos(h[:,d], m[:,d]) for d in range(h.shape[1])]
+cos_per_dim = [cos(h[:, d], m[:, d]) for d in range(h.shape[1])]
 ```
 
 High `max_diff` where HF spikes and MAX is flat usually means HF formed an
