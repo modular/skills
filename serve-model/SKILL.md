@@ -93,11 +93,12 @@ pixi run max serve --help   # or inside a pixi project
 
 If the `max serve` command isn't available, set up an environment. **pixi** is
 the default; the key detail is the conda channel
-`https://conda.modular.com/max-nightly/` plus `conda-forge`:
+`https://conda.modular.com/max-nightly/` plus `conda-forge`. If `pixi` isn't
+already installed, install it using the latest instructions at
+<https://pixi.prefix.dev/latest/#installation>, then:
 
 ```bash
 # pixi (conda channels)
-curl -fsSL https://pixi.sh/install.sh | sh
 pixi init my-max-project \
   -c https://conda.modular.com/max-nightly/ -c conda-forge && cd my-max-project
 pixi add max-serve
@@ -111,11 +112,12 @@ channels = ["https://conda.modular.com/max-nightly/", "conda-forge"]
 ```
 
 Some users prefer **uv**, which pulls MAX from Modular's wheel index instead of
-conda:
+conda. If `uv` isn't already installed, install it using the latest
+instructions at <https://docs.astral.sh/uv/getting-started/installation/>,
+then:
 
 ```bash
 # uv (pip wheels)
-curl -LsSf https://astral.sh/uv/install.sh | sh
 uv init my-max-project && cd my-max-project
 uv venv && source .venv/bin/activate
 uv add "max[serve]" --index https://whl.modular.com/nightly/simple/ --prerelease allow

@@ -63,7 +63,11 @@ sse-starlette = "*"
 starlette = "*"
 
 [pypi-dependencies]
-transformers = ">=4.45,<6"
+# Floor is 5.5.0, not 4.45: this skill loads checkpoints with
+# `trust_remote_code=True`, and versions below 5.5.0 are exposed to
+# CVE-2026-1839, CVE-2026-4372, and CVE-2026-5241 (RCE via `torch.load`,
+# a malicious `config.json`, and a `trust_remote_code` bypass).
+transformers = ">=5.5.0,<6"
 # `device_map="cuda"` requires `accelerate` for HF reference workflows.
 accelerate = ">=0.30"
 

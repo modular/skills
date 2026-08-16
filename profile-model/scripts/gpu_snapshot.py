@@ -30,6 +30,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import shlex
 import subprocess
 import sys
 import time
@@ -125,7 +126,7 @@ def main() -> int:
 
     proc = None
     if args.run:
-        proc = subprocess.Popen(args.run, shell=True)
+        proc = subprocess.Popen(shlex.split(args.run))
 
     with BackgroundRecorder(interval=args.interval) as rec:
         deadline = time.monotonic() + args.duration
