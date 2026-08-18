@@ -27,7 +27,7 @@ unnecessarily. Match what the model ships in.
 
 ## Memory estimator reads HF `torch_dtype`, not the adapter's post-cast dtype
 
-MAX's `MemoryEstimator.estimate_memory_footprint` sizes the model from the HF
+MAX's `MemoryEstimator.plan_from_sizes` sizes the model from the HF
 config's `torch_dtype`, *before* `weight_adapters.convert_safetensor_state_dict`
 runs. If the released checkpoint ships FP32 tensors but your adapter casts them
 to BF16 at load time, the estimator still thinks the model is FP32-sized — a 25
