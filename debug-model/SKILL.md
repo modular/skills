@@ -45,7 +45,7 @@ regression after a MAX upgrade — anywhere a trusted reference exists.
 
 For MAX's built-in runtime debugging options (NaN checks, source tracebacks,
 op logging), see
-[the MAX debugging tools](https://docs.modular.com/develop/debugging/).
+[the MAX debugging tools](https://max.modular.com/develop/debugging/).
 `max.nn.hooks.PrintHook` (covered in comparator-build.md) prints layer
 inputs and outputs for quick triage.
 

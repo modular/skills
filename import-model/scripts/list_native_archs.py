@@ -39,7 +39,7 @@ except ImportError:
 MAX_NOT_INSTALLED_MSG = """\
 MAX is not installed in this Python environment (or no architectures could be discovered).
 Install MAX with pixi — not pip:
-  https://docs.modular.com/get-started
+  https://max.modular.com/get-started
 Then rerun inside that environment, for example:
   pixi run python list_native_archs.py --match <ArchitecturesClassFromConfig>
 """
