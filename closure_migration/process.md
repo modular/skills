@@ -281,8 +281,10 @@ the migrated API. Point examples at value-taking + capture lists
 
 One completed instance of this process was migrating
 `bencher_iter_custom[fn](b, ctx)` → `bencher_iter_custom(b, fn, ctx)` in
-`max/mojo/max/benchmark/bencher.mojo` and its callers across benchmarks and GPU tests. Useful references after
-that change:
+`max/mojo/max/benchmark/bencher.mojo` and its callers across benchmarks and GPU tests.
+The parametric `capturing[_]` overloads (and unused
+`bencher_iter_custom_multicontext`) have been removed; only the value-taking
+forms remain. Useful references after that change:
 
 | Role | Path |
 |------|------|
