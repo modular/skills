@@ -321,7 +321,6 @@ class TaskEvaluator(ABC):
     @abstractmethod
     def evaluate_item(self, item: dict, is_seed: bool) -> tuple[bool, dict]:
         """Evaluate one item. Returns (correct, details_dict)."""
-        pass
 
     def _post(self, endpoint: str, payload: dict, timeout: int = 120) -> dict:
         url = f"{self.base_url}{endpoint}"
@@ -653,7 +652,6 @@ class LoglikelihoodEvaluator(TaskEvaluator):
     @abstractmethod
     def _get_choices(self, item: dict) -> list[str]:
         """Extract choice strings from dataset item."""
-        pass
 
 
 class HellaSwagEvaluator(LoglikelihoodEvaluator):
