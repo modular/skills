@@ -28,14 +28,14 @@ Map the `config.json` findings to a starting arch:
 | `Qwen2ForCausalLM`                             | `qwen2`                                               |
 | `Qwen3ForCausalLM` (with `use_qk_norm`)        | `qwen3`                                               |
 | `MistralForCausalLM` with `sliding_window`     | `mistral`                                             |
-| `Gemma2ForCausalLM` / `Gemma3ForCausalLM`      | `gemma2` / `gemma3`                                   |
+| `Gemma3ForCausalLM`                            | `gemma3`                                              |
 | `Phi3ForCausalLM` with `partial_rotary_factor` | `phi3`                                                |
 | `GraniteForCausalLM` (MuP scalars)             | `granite`                                             |
-| Any `*MoEForCausalLM` with dense expert MLPs   | `mixtral` or `qwen3_moe`                              |
+| Any `*MoEForCausalLM` with dense expert MLPs   | `qwen3` (registers `Qwen3MoeForCausalLM`)             |
 | `DeepseekV3ForCausalLM`, MLA + MoE             | `deepseekV3`                                          |
 | Encoder-decoder audio                          | `whisper`                                             |
 | `*ForSequenceClassification` text encoder      | none stock — start from any decoder, drop the LM head |
-| Vision-language (image + text)                 | `qwen2_5_vl` or `internvl`                            |
+| Vision-language (image + text)                 | `qwen2_5vl` or `internvl`                             |
 
 ## When nothing fits
 

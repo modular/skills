@@ -61,15 +61,17 @@ QUANT_METHOD_TO_ENCODING = {
     "fp8": "float8_e4m3fn",
     "fbgemm_fp8": "float8_e4m3fn",
 }
-# Common built-in arch names; colliding with one can trigger the MAX
-# "Refusing to override existing architecture" registration bug.
+# Common built-in arch names. On current nightly a custom arch that reuses
+# one of these names silently overrides the built-in registration; on MAX
+# 26.5 and earlier the registration is refused outright.
 LIKELY_BUILTINS = {
+    "Gemma3ForCausalLM",
     "LlamaForCausalLM",
-    "Qwen2ForCausalLM",
     "MistralForCausalLM",
     "Phi3ForCausalLM",
-    "GemmaForCausalLM",
-    "Gemma2ForCausalLM",
+    "Qwen2ForCausalLM",
+    "Qwen3ForCausalLM",
+    "Qwen3MoeForCausalLM",
 }
 
 
@@ -261,10 +263,13 @@ def main() -> int:
             )
     if arch["name"] in LIKELY_BUILTINS:
         notes.append(
-            f"name '{arch['name']}' matches a likely MAX built-in; if serve fails "
-            f'with "Refusing to override existing architecture", rename the arch '
-            f"(e.g. '{arch['name'].replace('For', 'CustomFor')}') and set the "
-            f"checkpoint's config.json architectures[0] to match."
+            f"name '{arch['name']}' matches a MAX built-in. On current "
+            "nightly your custom arch overrides the built-in registration; "
+            'on MAX 26.5 and earlier serve fails with "Refusing to override '
+            'existing architecture". Rename the arch (e.g. '
+            f"'{arch['name'].replace('For', 'CustomFor')}') and set the "
+            "checkpoint's config.json architectures[0] to match unless the "
+            "override is deliberate."
         )
 
     trust = bool(cfg and cfg.get("auto_map"))

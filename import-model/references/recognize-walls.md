@@ -124,7 +124,7 @@ decoder stack).
 ## Multimodal mixture-of-experts with non-shared routing
 
 Standard MoE (each MoE block has its own router) is well-supported in
-MAX (`mixtral`, `qwen3_moe`, `deepseekV3`). Variants where the router is
+MAX (`qwen3` MoE, `deepseekV3`). Variants where the router is
 shared across multiple layers, or where experts are themselves
 attention layers, are not.
 

@@ -48,10 +48,10 @@ attention/MLP shape matches.
 
 | Your shape                  | Donor                                              | Framework base                                                             | When to use                                                                             |
 |-----------------------------|----------------------------------------------------|----------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
-| Single-GPU dense            | ``llama3``, ``mistral``, ``cohere`` (Command-R v1) | ``Transformer``                                                            | ≤30B BF16 typically; one GPU                                                            |
-| Single-GPU MoE              | ``qwen3`` (dense + MoE auto-detect), ``mixtral``   | ``Transformer`` (some variants use distributed base even at single device) | MoE that fits on one GPU                                                                |
+| Single-GPU dense            | ``llama3``, ``mistral``                            | ``Transformer``                                                            | ≤30B BF16 typically; one GPU                                                            |
+| Single-GPU MoE              | ``qwen3`` (dense + MoE auto-detect)                | ``Transformer`` (some variants use distributed base even at single device) | MoE that fits on one GPU                                                                |
 | Multi-GPU TP (dense)        | ``llama3`` with sharding wired, or ``qwen3``       | ``DistributedLogitsPostprocessMixin + Module``                             | 70B–200B dense across 2–8 GPUs                                                          |
-| Multi-GPU TP (MoE)          | ``qwen3``, ``mixtral`` (distributed mode)          | ``DistributedLogitsPostprocessMixin + Module``                             | MoE where attention TP + uniform expert sharding works                                  |
+| Multi-GPU TP (MoE)          | ``qwen3`` (distributed mode)                       | ``DistributedLogitsPostprocessMixin + Module``                             | MoE where attention TP + uniform expert sharding works                                  |
 | Multi-GPU **DP + EP** (MoE) | ``qwen3`` (Qwen3-30B-A3B path), ``deepseekV3``     | ``DistributedLogitsPostprocessMixin + Module`` + ``EPBatchManager``        | Large MoE where data-parallel attention + expert-parallel MoE is the right partitioning |
 | MLA + MoE                   | ``deepseekV3`` only                                | Same base as above                                                         | MLA latent-KV families                                                                  |
 
@@ -185,7 +185,7 @@ Common failure modes on multi-GPU MoE ports:
 4. **HF wraps multimodal configs.** Vision or conditional-generation
    config types nest the text backbone
    under ``.text_config``. Framework methods (``calculate_max_seq_len``,
-   ``get_kv_params``, ``parse_quant_config``) walk the *parent* config
+   ``get_kv_params``) walk the *parent* config
    by default. Override on the model class to unwrap before delegating.
 
 5. **Quantization config ignore-list prefix mismatch.** Compressed-

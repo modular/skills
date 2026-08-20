@@ -183,15 +183,15 @@ pixi run python list_native_archs.py
 Heuristic HF-signal → donor slug hints are in
 [map-to-max.md](references/map-to-max.md). Quick version:
 
-| Your model                                          | Start from               |
-|-----------------------------------------------------|--------------------------|
-| Llama 3-ish (GQA, RoPE, SwiGLU MLP)                 | `llama3`                 |
-| Gemma-ish (RMSNorm scale, logit softcap, dual norm) | `gemma2` or `gemma3`     |
-| Qwen-ish (GQA, RoPE, may have QK-norm)              | `qwen2` / `qwen3`        |
-| Mistral-ish (sliding window)                        | `mistral`                |
-| Phi-ish (partial RoPE)                              | `phi3`                   |
-| MoE (sparse experts, top-k routing)                 | `mixtral` or `qwen3_moe` |
-| MLA (latent KV)                                     | `deepseekV3`             |
+| Your model                                          | Start from        |
+|-----------------------------------------------------|-------------------|
+| Llama 3-ish (GQA, RoPE, SwiGLU MLP)                 | `llama3`          |
+| Gemma-ish (RMSNorm scale, logit softcap, dual norm) | `gemma3`          |
+| Qwen-ish (GQA, RoPE, may have QK-norm)              | `qwen2` / `qwen3` |
+| Mistral-ish (sliding window)                        | `mistral`         |
+| Phi-ish (partial RoPE)                              | `phi3`            |
+| MoE (sparse experts, top-k routing)                 | `qwen3`           |
+| MLA (latent KV)                                     | `deepseekV3`      |
 
 Open the chosen MAX arch's directory and read its top-level model file
 (usually `<slug>.py`). You're answering: which functions/classes need to
@@ -263,7 +263,7 @@ Full checklist, work order, anti-patterns, and completion criteria:
 In order:
 
 1. **`model_config.py`** — wire every `config.json` key from Phase 1 /
-   `inspect_hf.py`. Set `get_kv_params()` head counts and head_dim to match HF.
+   `inspect_hf.py`. Set `construct_kv_params()` head counts and head_dim to match HF.
 2. **`weight_adapters.py`** — map your checkpoint's safetensor keys to the MAX
    module names you will use. Run `list_checkpoint_keys.py` first; see
    [rename-weights.md](references/rename-weights.md). After load, wire the

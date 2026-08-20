@@ -25,8 +25,8 @@ project and choose `max` or `mojo` as appropriate. Don't pin a version: each
 channel already resolves to the right one.
 
 MAX and Mojo ship together but number their releases differently, so their
-version strings don't look alike. On the stable channel, `max` is `26.4.0`
-while `mojo` is `1.0.0b2`; on nightly they're `26.5.0.dev*` and `1.0.0b3.dev*`.
+version strings don't look alike. On the stable channel, `max` is `26.5`
+while `mojo` is `1.0.0`; on nightly they're `26.6.0.dev*` and `1.1.0.dev*`.
 That's expected, not a mismatch.
 
 > [!NOTE]
@@ -124,19 +124,11 @@ uv add [max / mojo] \
 
 ```bash
 uv init [PROJECT] && cd [PROJECT]
-uv add "max[all]" \
-  --prerelease allow
+uv add "max[all]"
 ```
 
-This command has two requirements:
-
-- The stable index publishes one `modular` package that installs both MAX and
-  Mojo. There are no separate `max` and `mojo` packages there, so ask for
-  `modular` even when the project only needs one of them.
-- `--prerelease allow` is required. Current `modular` depends on
-  `mojo==1.0.0b2`, and `pip` and `uv` treat that as a pre-release. Without the
-  flag the resolver silently falls back to an old `modular` release instead of
-  reporting an error.
+This resolves from PyPI. The `all` extra pulls in `mojo` and the rest of the
+MAX stack, so the MAX and Mojo versions always match.
 
 ### Nightly (quick environment)
 
@@ -154,7 +146,6 @@ uv pip install [max / mojo] \
 mkdir [PROJECT] && cd [PROJECT]
 uv venv
 uv pip install "max[all]"
-  --prerelease allow
 ```
 
 When using `uv`, you can use `max` or `mojo` directly by working within the
@@ -186,11 +177,11 @@ backtracks through every `max` version instead of reporting a clear error.
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install --pre "max[all]"
+pip install "max[all]"
 ```
 
-As with `uv`, the stable index carries only the `max` package, and
-`--pre` is required because it depends on the `mojo` beta.
+As with `uv`, the `all` extra installs `mojo` as well, so the MAX and Mojo
+versions always match.
 
 ---
 
@@ -218,8 +209,8 @@ conda install -c conda-forge \
 
 If using MAX with custom Mojo kernels, both must come from the same channel.
 Don't compare their version numbers: MAX and Mojo number releases
-differently, so a matching pair looks mismatched (stable is `max` `26.4.0`
-with `mojo` `1.0.0b2`).
+differently, so a matching pair looks mismatched (stable is `max` `26.5`
+with `mojo` `1.0.0`).
 
 ```bash
 # Check that both came from the same channel

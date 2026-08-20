@@ -53,7 +53,7 @@ MAX matches HF for that component (not when it "compiles").
 
 | Component          | HF reference                           | MAX file / class                  | Done when                                                                                          |
 |--------------------|----------------------------------------|-----------------------------------|----------------------------------------------------------------------------------------------------|
-| Config / KV params | `*Config`                              | `model_config.py`                 | Every Hub key read in `initialize()`; `get_kv_params()` head counts match HF                       |
+| Config / KV params | `*Config`                              | `model_config.py`                 | Every Hub key read in `initialize()`; `construct_kv_params()` head counts match HF                 |
 | Weight map         | checkpoint keys                        | `weight_adapters.py`              | Loads without silent drops; required tensors bound                                                 |
 | Embedding          | `embed_tokens`                         | `<slug>.py`                       | Shape + dtype match; tie with LM head if config says so                                            |
 | Attention          | `*Attention.forward`                   | attention class in `<slug>.py`    | Q/K/V layout, RoPE, mask, GQA repeat, softcap match HF                                             |

@@ -66,7 +66,7 @@ Common mistakes after older MAX examples or blog posts:
 
 | Wrong                                                   | Right                                                                                                |
 |---------------------------------------------------------|------------------------------------------------------------------------------------------------------|
-| `from max.pipelines.core import PipelineTask`           | `from max.interfaces import PipelineTask` or `from max.pipelines.modeling.types import PipelineTask` |
+| `from max.pipelines.core import PipelineTask`           | `from max.pipelines.modeling.types import PipelineTask`                                              |
 | `from max.driver import Tensor`                         | `Buffer`, `Device` from `max.driver`                                                                 |
 | `pipeline_config.model_config`                          | `pipeline_config.model`                                                                              |
 | `pipeline_config.max_length`                            | `pipeline_config.model.max_length`                                                                   |

@@ -136,6 +136,69 @@ def introspect_donor(donor_dir: Path, donor_slug: str) -> DonorClasses:
     return DonorClasses(graph=graph, model=model, config=config)  # type: ignore[arg-type]
 
 
+def find_donor_adapter(
+    donor_dir: Path, donor_slug: str
+) -> tuple[str, str] | None:
+    """Resolve the donor arch's safetensors adapter to (module, function).
+
+    Parses the donor's ``arch.py``: finds the ``WeightsFormat.safetensors``
+    entry in the ``SupportedArchitecture(weight_adapters={...})`` call and
+    follows the import that brought the referenced name into scope.
+    """
+    arch_py = donor_dir / "arch.py"
+    if not arch_py.is_file():
+        return None
+    tree = ast.parse(arch_py.read_text(encoding="utf-8", errors="replace"))
+    base = f"max.pipelines.architectures.{donor_slug}"
+
+    # Map every imported name to its absolute module.
+    imports: dict[str, str] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.level == 0:
+            module = node.module or ""
+        else:
+            package = base.split(".")[
+                0 : len(base.split(".")) - (node.level - 1)
+            ]
+            prefix = ".".join(package)
+            module = f"{prefix}.{node.module}" if node.module else prefix
+        for alias in node.names:
+            imports[alias.asname or alias.name] = module
+
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "SupportedArchitecture"
+        ):
+            continue
+        for kw in node.keywords:
+            if kw.arg != "weight_adapters" or not isinstance(
+                kw.value, ast.Dict
+            ):
+                continue
+            for key, value in zip(kw.value.keys, kw.value.values, strict=True):
+                if not (
+                    isinstance(key, ast.Attribute) and key.attr == "safetensors"
+                ):
+                    continue
+                if isinstance(value, ast.Attribute) and isinstance(
+                    value.value, ast.Name
+                ):
+                    # e.g. weight_adapters.convert_safetensor_state_dict
+                    module = imports.get(value.value.id)
+                    if module:
+                        return f"{module}.{value.value.id}", value.attr
+                elif isinstance(value, ast.Name):
+                    # e.g. convert_safetensor_state_dict imported directly
+                    module = imports.get(value.id)
+                    if module:
+                        return module, value.id
+    return None
+
+
 # --- Subclass-skeleton templates -------------------------------------------------
 
 
@@ -159,9 +222,9 @@ def render_arch(*, slug: str, arch_name: str, short: str, hf_id: str) -> str:
     return f'''{_GENERATED_HEADER}"""Registration for ``{arch_name}`` — subclasses {short}Model / {short}Config."""
 
 from max.graph.weights import WeightsFormat
-from max.interfaces import PipelineTask
 from max.pipelines.context import TextContext
 from max.pipelines.lib import SupportedArchitecture, TextTokenizer
+from max.pipelines.modeling.types import PipelineTask
 
 from . import weight_adapters
 from .model import {short}Model
@@ -205,7 +268,9 @@ from max.pipelines.architectures.{donor_slug}.model_config import {donor_classes
 @dataclass(kw_only=True)
 class {short}Config({donor_classes.config}):
     @classmethod
-    def initialize_from_config(cls, pipeline_config, huggingface_config, model_config):
+    def initialize_from_config(
+        cls, pipeline_config, huggingface_config, model_config=None
+    ):
         cfg = super().initialize_from_config(
             pipeline_config, huggingface_config, model_config
         )
@@ -268,11 +333,21 @@ class {short}({donor_classes.graph}):
 '''
 
 
-def render_weight_adapter() -> str:
-    return f'''{_GENERATED_HEADER}"""Weight adapter. Default is a pass-through.
+def render_weight_adapter(
+    *, donor_slug: str, donor_adapter: tuple[str, str] | None
+) -> str:
+    if donor_adapter is None:
+        print(
+            f"WARNING: could not find a safetensors adapter in the "
+            f"{donor_slug} donor's arch.py; generating a pass-through that "
+            f"likely leaves weights unbound. Check the donor's weight_adapters "
+            f"and wire it in manually."
+        )
+        return f'''{_GENERATED_HEADER}"""Weight adapter. Default is a pass-through.
 
-If HF keys differ from the MAX-canonical names the donor expects, add
-rewrites here (see references/rename-weights.md).
+WARNING: no donor adapter was found at scaffold time. A pass-through leaves
+HF-prefixed keys (``model.…``) unbound and the model generates garbage.
+Find the donor's adapter and delegate to it (or copy its mapping here).
 """
 
 from __future__ import annotations
@@ -291,6 +366,40 @@ def convert_safetensor_state_dict(
     """Pass-through. Edit if HF keys do not match the donor's parameter names."""
     # TODO: strip a common prefix or remap fused/unfused QKV here if needed.
     return {{k: v.data() for k, v in state_dict.items()}}
+'''
+
+    module, fn = donor_adapter
+    import_line = f"from {module} import {fn} as _donor_convert"
+    if len(import_line) > 80:
+        import_line = f"from {module} import (\n    {fn} as _donor_convert,\n)"
+    return f'''{_GENERATED_HEADER}"""Weight adapter. Delegates to the {donor_slug} donor's adapter.
+
+The donor adapter strips HF key prefixes and casts to the serving encoding;
+a pass-through would leave those weights unbound and the model would
+generate garbage. Copy the donor's mapping into this file and edit it only
+when your checkpoint's keys diverge from the donor's (see
+references/rename-weights.md).
+"""
+
+from __future__ import annotations
+
+from max.graph.weights import WeightData, Weights
+{import_line}
+from max.pipelines.lib import PipelineConfig
+from transformers import AutoConfig
+
+
+def convert_safetensor_state_dict(
+    state_dict: dict[str, Weights],
+    huggingface_config: AutoConfig,
+    pipeline_config: PipelineConfig,
+    **unused_kwargs,
+) -> dict[str, WeightData]:
+    # TODO: if HF keys diverge from the donor's, copy the donor's mapping
+    # here and rewrite instead of delegating.
+    return _donor_convert(
+        state_dict, huggingface_config, pipeline_config, **unused_kwargs
+    )
 '''
 
 
@@ -400,6 +509,7 @@ def main(args: argparse.Namespace) -> int:
         )
     else:
         donor_classes = introspect_donor(src, args.start_from)
+        donor_adapter = find_donor_adapter(src, args.start_from)
         short = short_name(arch_name)
         files = {
             "__init__.py": render_init(slug),
@@ -422,7 +532,10 @@ def main(args: argparse.Namespace) -> int:
                 donor_classes=donor_classes,
                 short=short,
             ),
-            "weight_adapters.py": render_weight_adapter(),
+            "weight_adapters.py": render_weight_adapter(
+                donor_slug=args.start_from,
+                donor_adapter=donor_adapter,
+            ),
         }
         print(f"Scaffolding subclass skeleton at {dst}")
         print(
