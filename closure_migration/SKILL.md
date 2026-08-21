@@ -27,7 +27,7 @@ Not as a migration bridge, not to satisfy a still-capturing API, not to
 | `@__parameter` / `@parameter` on nested defs | Unified `def … {imm}:` / `{mut x, imm}:` / named captures |
 | `@__parameter` body + `*_value` forwarder | Make the body unified; pass it as a value |
 | `@__parameter` “imm borrow” helper | File-scope / normal function with an imm parameter |
-| `@__copy_capture(x)` on a nested closure | Named `{var x}` (copy into storage). Other names stay `{imm}` / `{mut y, imm}` |
+| `@__copy_capture(x, y)` dropped for `{imm}` | `{var x, var y, imm}` (copy each listed name). `{var}` capture-all only if every capture was copy-captured. `{var^}` / `{var^ x}` is a **move**, not a copy |
 | Keep `@__parameter` because an API is still `capturing[_]` / comptime `fn` | Migrate or widen that API to value-taking; do not paper over it |
 | Wrap a `MutUntrackedOrigin` / `MutAnyOrigin` ptr in a new `DeviceBuffer` so memset or a launch “doesn’t alias” | Pass the original `DeviceBuffer` as an imm argument (`enqueue_memset` takes imm) |
 | Hoist `comptime if` arm buffers / `TileTensor`s to function scope (size-1 placeholders on other arms) | Keep them in the arm; define the unified closure next to those locals |
@@ -38,13 +38,39 @@ use a nested `def … capturing -> T` **without** `@__parameter` when that is
 what the type requires, or **change that API** (or leave the call site
 unmigrated). Never put `@__parameter` on the caller.
 
-`@__copy_capture(x)` becomes `{var x}` on unified closures. That does **not**
-convert to a `capturing thin` callee such as `elementwise_compute_lambda_type`,
-and a capture list is not parsed on a `capturing` def. Until that API is
-migrated off `capturing`, form the `LayoutTensor` on the host from an imm
-`residual_buf` parameter and keep `@__copy_capture(residual_lt)` on
-`def … capturing` (no `@__parameter`). Never call `DeviceBuffer` methods
-inside the GPU epilogue.
+`@__copy_capture` copies into closure storage. Transfer it; do not drop it
+for `{imm}`:
+
+```mojo
+# WRONG — copy-capture became an imm borrow
+@__copy_capture(gamma, epsilon, input_fn)
+def bench_fn(mut b: Bencher) raises:
+    ...
+# became
+def bench_fn(mut b: Bencher) raises {imm}:
+
+# CORRECT — each listed name is a named copy; trailing imm for the rest
+def bench_fn(mut b: Bencher) raises {var gamma, var epsilon, var input_fn, imm}:
+```
+
+| Decorator / intent | Capture |
+|--------------------|---------|
+| `@__copy_capture(x, y)` | `{var x, var y, …}` (copy) |
+| Every capture was copy-captured | `{var}` capture-all is OK |
+| Move into storage (consume) | `{var^ x}` / `{var^}` — **not** the copy-capture mapping |
+| Comptime parameter in the old list | Omit it (`value X is a parameter and does not need a capture convention`) |
+
+Put the `{var …}` list on the **same def** that had `@__copy_capture`. Nested
+children that already used `{imm}` then borrow those copies. If you hoist
+`kernel_launch` out of `bench_fn`, the `{var …}` list moves with the names
+onto the launch — do not hoist and leave `{imm}` on either def.
+
+`{var x}` does **not** convert to a `capturing thin` callee such as
+`elementwise_compute_lambda_type`, and a capture list is not parsed on a
+`capturing` def. Until that API is migrated off `capturing`, form the
+`LayoutTensor` on the host from an imm `residual_buf` parameter and keep
+`@__copy_capture(residual_lt)` on `def … capturing` (no `@__parameter`).
+Never call `DeviceBuffer` methods inside the GPU epilogue.
 
 ## Target shapes
 
@@ -64,7 +90,10 @@ closure is declared (and never re-add `@__parameter`).
 2. Rewrite calls: `api[fn](a, b)` → `api(a, fn, b)`
 3. On every nested closure in scope: drop `@__parameter` / `@parameter` /
    `@__copy_capture`; add a capture list. Each `@__copy_capture(x)` name
-   becomes `{var x}` — do not imm-capture that local instead.
+   **must** become `{var x}` (or `{var}` capture-all if that was every
+   capture). Do not replace the decorator with `{imm}`. Skip comptime
+   params. Self-check the pre-image: every runtime name in
+   `@__copy_capture(...)` appears as `var name` in the new list.
 4. If a callee still needs a comptime capturing param → migrate that API first
    (or leave the call site unmigrated); **do not** keep `@__parameter` on the
    caller
@@ -86,7 +115,7 @@ closure is declared (and never re-add `@__parameter`).
 | Read-only use of outer state | `{imm}` (capture-all) — **not** if the body calls `offset_ptr` or builds a mut `TileTensor` (see freeze note below) |
 | Mutates some outer state; also reads `Int` / other register-passable values | `{mut buf, imm}` — **not** capture-all `{mut}` |
 | Mutates several outer names | `{mut a, mut b, imm}` |
-| Needs ownership / move, or replacing `@__copy_capture(x)` | `{var x}` (named copy). `{var}` capture-all only when every capture should be owned |
+| Replacing `@__copy_capture(x, y)` | `{var x, var y, imm}` (copy). `{var}` only if every capture should be a copy. `{var^}` is a move — not this mapping. **Never** `{imm}` |
 | Named precision only | `{mut count}`, `{imm buf, imm shape}` |
 | No free runtime captures | `{}` |
 | `Could not infer capture convention` | Add `{imm}` / `{mut name, imm}` / named list |
@@ -94,7 +123,7 @@ closure is declared (and never re-add `@__parameter`).
 | `register passible value … can not be captured by 'mut'` | Capture-all `{mut}` pulled in an `Int` (etc.) — use `{mut buf, imm}` |
 | `.mut … is 'False' but … is 'True'` on `.unsafe_ptr()` / `TileTensor` | Buffer captured `{imm}` — `{mut out_buf, imm}`; do **not** paper over with `unsafe_mut_cast` |
 | `'lit.call' op callee expected call argument #0` on `offset_ptr` / similar | `{imm}` froze the buffer used as `self` — `{mut cb_a, mut cb_b, …, imm}` |
-| `cannot bind an RValue to a reference` on `bench_func` | `kernel_launch` nested inside `bench_func` with `@__copy_capture` — define `kernel_launch` at outer function scope and remove `@__copy_capture` from `bench_func` |
+| `cannot bind an RValue to a reference` on `bench_func` | `kernel_launch` nested inside `bench_func` with `@__copy_capture` — hoist `kernel_launch` to outer scope and put `{var x, var y, …}` on it for every copy-captured name. Do not hoist and write `{imm}` |
 | `expected ':' in function definition` at `raises {…}` | Capture list on an `@__parameter` def — strip `@__parameter` and keep the list |
 | `aliasing values passed immutably…mutably` / note names `origin_of(buf)` | Closure struct would hold fields that alias the same origin, one mut and one imm — see **Aliasing** below |
 | `aliasing … origin_of(n)` on an `Int` (or other register-passable) local | `@__copy_capture(n)` became an imm ref to `var n`. Use `{var n}` (copy). Do not delete `n` and rewire to another `Int` unless that is smaller |

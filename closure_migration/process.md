@@ -71,8 +71,11 @@ owned by this migration):
 2. Keep other decorators (`@always_inline`, …)
 3. Add a capture list:
    - `{var x}` — each name that was `@__copy_capture(x)` (copies into
-     storage). Required for `Int` / other register-passable locals; `{imm}`
-     of `var n = …` aliases (`origin_of(n)`)
+     storage). **Never** replace `@__copy_capture(...)` with `{imm}`.
+     `{var}` capture-all only if every capture should be a copy.
+     `{var^}` / `{var^ x}` is a move, not a copy-capture mapping.
+     Required for `Int` / other register-passable locals; `{imm}` of
+     `var n = …` aliases (`origin_of(n)`). Skip comptime parameters.
    - `{imm}` — read-only outer state. **Not** the default if the body calls
      `offset_ptr` or builds a mut `TileTensor` / kernel output — those freeze
      under `{imm}` (see Step 4)
@@ -104,7 +107,7 @@ mojo build --emit llvm path/to/file.mojo -o /tmp/chk.ll 2>&1 | grep ': error:'
 | `register passible value … can not be captured by 'mut'` | Capture-all `{mut}` included an `Int` (etc.) | `{mut buf, imm}` — bare `imm` is the default for the rest |
 | `.mut … is 'False' but … is 'True'` on `.unsafe_ptr()` / `TileTensor` | Buffer captured `{imm}` | `{mut out_device, imm}` — not `unsafe_mut_cast`, not `@__parameter` |
 | `'lit.call' op callee expected call argument #0` on `offset_ptr` (or similar) | `{imm}` froze `CacheBustingBuffer` / `DeviceBuffer` used as `self`; `offset_ptr` does `unsafe_ptr()` + `unsafe_mut_cast[True]()` internally | `{mut cb_a, mut cb_b, mut cb_c, …, imm}` for every buffer passed to `offset_ptr` or used as kernel output |
-| `cannot bind an RValue to a reference` on `bench_func` | `kernel_launch` nested inside `bench_func` with `@__copy_capture` | Define `kernel_launch` at outer function scope; drop `@__copy_capture` on `bench_func` |
+| `cannot bind an RValue to a reference` on `bench_func` | `kernel_launch` nested inside `bench_func` with `@__copy_capture` | Hoist `kernel_launch` to outer function scope; each copy-captured name becomes `{var x}` on the launch. Do not hoist and write `{imm}` |
 | `expected ':' in function definition` at `raises {…}` | Capture list left on a still-`@__parameter` def | Strip `@__parameter`; keep the list |
 | `aliasing values passed immutably…mutably` / note `origin_of(buf)` | Closure would capture mut+imm fields that alias the same origin | **Aliasing** below: (1) capture as read, (2) disassemble, (3) pass mut as an argument. Do **not** use `.as_unsafe_any_origin()` or `@__parameter` |
 | `aliasing … origin_of(n)` on an `Int` local | `@__copy_capture(n)` became an imm ref to `var n` | `{var n}` (copy). Do not delete `n` / rewire to another `Int` unless that is smaller |
