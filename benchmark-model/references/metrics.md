@@ -22,9 +22,11 @@ Each run reports the following metrics:
   first. `1 / TPOT` approximates per-stream decode tok/s.
 - ITL (inter-token latency): the time between consecutive tokens or chunks. It
   tracks close to TPOT, and its p99 exposes stalls and jitter in streaming.
-- GPU utilization and peak GPU memory: reported with `--collect-gpu-stats`. Low
-  utilization at high concurrency means something other than compute bottlenecks
-  the run, such as batching, tokenization, or host work.
+- GPU utilization and peak GPU memory: reported with `--collect-gpu-stats`.
+  The console prints them in the same percentile table as latency and
+  throughput; the JSON `gpu_stats` group keeps the per-GPU lists. Low
+  utilization at high concurrency means something other than compute
+  bottlenecks the run, such as batching, tokenization, or host work.
 
 Multiturn workloads add a per-turn cached token rate and per-turn KV cache
 retention, which show prefix-cache effectiveness across turns.
