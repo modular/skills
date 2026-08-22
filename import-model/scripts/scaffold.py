@@ -269,10 +269,10 @@ from max.pipelines.architectures.{donor_slug}.model_config import {donor_classes
 class {short}Config({donor_classes.config}):
     @classmethod
     def initialize_from_config(
-        cls, pipeline_config, huggingface_config, model_config=None
+        cls, pipeline_config, huggingface_config, model_config=None, *, max_seq_len
     ):
         cfg = super().initialize_from_config(
-            pipeline_config, huggingface_config, model_config
+            pipeline_config, huggingface_config, model_config, max_seq_len=max_seq_len
         )
         # TODO: read novel HF config fields and set them on `cfg`. Examples:
         #   cfg.embedding_multiplier = huggingface_config.scale_emb       # MuP
