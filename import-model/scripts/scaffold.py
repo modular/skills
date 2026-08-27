@@ -32,6 +32,7 @@ import argparse
 import ast
 import re
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -136,22 +137,9 @@ def introspect_donor(donor_dir: Path, donor_slug: str) -> DonorClasses:
     return DonorClasses(graph=graph, model=model, config=config)  # type: ignore[arg-type]
 
 
-def find_donor_adapter(
-    donor_dir: Path, donor_slug: str
-) -> tuple[str, str] | None:
-    """Resolve the donor arch's safetensors adapter to (module, function).
-
-    Parses the donor's ``arch.py``: finds the ``WeightsFormat.safetensors``
-    entry in the ``SupportedArchitecture(weight_adapters={...})`` call and
-    follows the import that brought the referenced name into scope.
-    """
-    arch_py = donor_dir / "arch.py"
-    if not arch_py.is_file():
-        return None
-    tree = ast.parse(arch_py.read_text(encoding="utf-8", errors="replace"))
+def _arch_py_imports(tree: ast.Module, donor_slug: str) -> dict[str, str]:
+    """Map every name imported by the donor's arch.py to its absolute module."""
     base = f"max.pipelines.architectures.{donor_slug}"
-
-    # Map every imported name to its absolute module.
     imports: dict[str, str] = {}
     for node in tree.body:
         if not isinstance(node, ast.ImportFrom):
@@ -166,14 +154,36 @@ def find_donor_adapter(
             module = f"{prefix}.{node.module}" if node.module else prefix
         for alias in node.names:
             imports[alias.asname or alias.name] = module
+    return imports
 
+
+def _supported_architecture_calls(tree: ast.Module) -> Iterator[ast.Call]:
+    """Yield every ``SupportedArchitecture(...)`` call in the donor's arch.py."""
     for node in ast.walk(tree):
-        if not (
+        if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "SupportedArchitecture"
         ):
-            continue
+            yield node
+
+
+def find_donor_adapter(
+    donor_dir: Path, donor_slug: str
+) -> tuple[str, str] | None:
+    """Resolve the donor arch's safetensors adapter to (module, function).
+
+    Parses the donor's ``arch.py``: finds the ``WeightsFormat.safetensors``
+    entry in the ``SupportedArchitecture(weight_adapters={...})`` call and
+    follows the import that brought the referenced name into scope.
+    """
+    arch_py = donor_dir / "arch.py"
+    if not arch_py.is_file():
+        return None
+    tree = ast.parse(arch_py.read_text(encoding="utf-8", errors="replace"))
+    imports = _arch_py_imports(tree, donor_slug)
+
+    for node in _supported_architecture_calls(tree):
         for kw in node.keywords:
             if kw.arg != "weight_adapters" or not isinstance(
                 kw.value, ast.Dict
@@ -199,6 +209,93 @@ def find_donor_adapter(
     return None
 
 
+def _root_name(node: ast.expr) -> ast.Name | None:
+    """Return the leftmost ``Name`` of a dotted/called expression, if any.
+
+    ``PagedMemoryPlanner`` -> ``PagedMemoryPlanner``;
+    ``memory_planner.PagedMemoryPlanner`` -> ``memory_planner``;
+    ``PagedMemoryPlanner.with_activation_reservation(...)`` ->
+    ``PagedMemoryPlanner``. That leftmost name is the one an import brought
+    into scope, so it is the only name the port needs to import.
+    """
+    while True:
+        if isinstance(node, ast.Name):
+            return node
+        if isinstance(node, ast.Attribute):
+            node = node.value
+        elif isinstance(node, ast.Call):
+            node = node.func
+        else:
+            return None
+
+
+@dataclass(frozen=True)
+class DonorPlanner:
+    """How the donor's ``arch.py`` declares ``memory_planner``.
+
+    ``status`` is one of:
+
+    ``resolved``
+        The donor declares a planner and the import was followed; render
+        ``expr`` verbatim and import ``root_name`` from ``module``.
+    ``absent``
+        The donor declares no planner at all. Correct for architectures that
+        do their own memory estimation (diffusion, embedding), so the port
+        should omit the field rather than invent one.
+    ``unresolved``
+        The donor declares a planner but the import could not be followed
+        (e.g. plain ``import x.y`` rather than ``from x import y``). Needs a
+        human; guessing a default would silently change memory estimation.
+    """
+
+    status: str
+    root_name: str = ""
+    module: str = ""
+    expr: str = ""
+
+
+def find_donor_memory_planner(donor_dir: Path, donor_slug: str) -> DonorPlanner:
+    """Resolve how the donor's ``arch.py`` declares ``memory_planner``.
+
+    Parses the donor's ``arch.py`` for the ``memory_planner`` keyword in the
+    ``SupportedArchitecture(...)`` call and follows the import that brought
+    the referenced name into scope. The keyword's source text is preserved
+    verbatim, so configured planners such as
+    ``PagedMemoryPlanner.with_activation_reservation(0)`` carry their
+    arguments across to the port instead of decaying to the bare class.
+    """
+    arch_py = donor_dir / "arch.py"
+    if not arch_py.is_file():
+        return DonorPlanner(status="absent")
+    source = arch_py.read_text(encoding="utf-8", errors="replace")
+    tree = ast.parse(source)
+    imports = _arch_py_imports(tree, donor_slug)
+
+    declared = False
+    for node in _supported_architecture_calls(tree):
+        for kw in node.keywords:
+            if kw.arg != "memory_planner":
+                continue
+            declared = True
+            root = _root_name(kw.value)
+            expr = ast.get_source_segment(source, kw.value)
+            if root is None or expr is None:
+                continue
+            module = imports.get(root.id)
+            if not module:
+                continue
+            # Multi-line values keep the donor's indentation verbatim: the
+            # donor's keyword sits at the same depth inside its own
+            # SupportedArchitecture call, so the text transfers as-is.
+            return DonorPlanner(
+                status="resolved",
+                root_name=root.id,
+                module=module,
+                expr=expr,
+            )
+    return DonorPlanner(status="unresolved" if declared else "absent")
+
+
 # --- Subclass-skeleton templates -------------------------------------------------
 
 
@@ -218,13 +315,72 @@ ARCHITECTURES = [{slug}_arch]
 '''
 
 
-def render_arch(*, slug: str, arch_name: str, short: str, hf_id: str) -> str:
+def _render_imports(extra: tuple[str, str] | None) -> str:
+    """Render the ``max`` import block, isort-ordered, with ``extra`` merged.
+
+    ``extra`` is an optional ``(module, name)`` pair. Sorting the whole block
+    matters because a donor's planner can live anywhere (for example
+    ``max.pipelines.architectures.deepseekV3.memory_planner``), and splicing
+    it at a fixed position leaves the generated file failing ruff's I001.
+    """
+    modules = [
+        ("max.graph.weights", "WeightsFormat"),
+        ("max.pipelines.context", "TextContext"),
+        ("max.pipelines.lib", "SupportedArchitecture, TextTokenizer"),
+        ("max.pipelines.modeling.types", "PipelineTask"),
+    ]
+    if extra is not None:
+        modules.append(extra)
+    lines = []
+    for module, names in sorted(modules, key=lambda pair: pair[0].lower()):
+        line = f"from {module} import {names}"
+        if len(line) > 80:
+            line = f"from {module} import (\n    {names},\n)"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def render_arch(
+    *,
+    slug: str,
+    arch_name: str,
+    short: str,
+    hf_id: str,
+    donor_planner: DonorPlanner,
+) -> str:
+    if donor_planner.status == "resolved":
+        planner_import = (donor_planner.module, donor_planner.root_name)
+        planner_field = f"""    # KV-cache models need a planner; without one MAX budgets no activation
+    # memory. Inherited from the donor; override if the port diverges.
+    memory_planner={donor_planner.expr},
+"""
+    else:
+        planner_import = None
+        if donor_planner.status == "unresolved":
+            print(
+                "WARNING: the donor's arch.py sets memory_planner, but "
+                "scaffold.py could not follow the import that defines it. "
+                "Copy the donor's memory_planner= line into arch.py by hand: "
+                "leaving it unset makes MAX budget no activation memory and "
+                "skip max_batch_size inference.",
+                file=sys.stderr,
+            )
+            todo = (
+                "# TODO(port): the donor sets memory_planner but scaffold.py\n"
+                "    # could not resolve it. Copy the donor's memory_planner=\n"
+                "    # line here; without it MAX budgets no activation memory."
+            )
+        else:
+            todo = (
+                "# TODO(port): the donor sets no memory_planner, which is\n"
+                "    # correct only for architectures that do their own memory\n"
+                "    # estimation (diffusion, embedding). If this port uses a\n"
+                "    # KV cache, add memory_planner=PagedMemoryPlanner."
+            )
+        planner_field = f"    {todo}\n"
     return f'''{_GENERATED_HEADER}"""Registration for ``{arch_name}`` — subclasses {short}Model / {short}Config."""
 
-from max.graph.weights import WeightsFormat
-from max.pipelines.context import TextContext
-from max.pipelines.lib import SupportedArchitecture, TextTokenizer
-from max.pipelines.modeling.types import PipelineTask
+{_render_imports(planner_import)}
 
 from . import weight_adapters
 from .model import {short}Model
@@ -244,7 +400,7 @@ from .model_config import {short}Config
     }},
     task=PipelineTask.TEXT_GENERATION,
     config={short}Config,
-)
+{planner_field})
 '''
 
 
@@ -510,11 +666,16 @@ def main(args: argparse.Namespace) -> int:
     else:
         donor_classes = introspect_donor(src, args.start_from)
         donor_adapter = find_donor_adapter(src, args.start_from)
+        donor_planner = find_donor_memory_planner(src, args.start_from)
         short = short_name(arch_name)
         files = {
             "__init__.py": render_init(slug),
             "arch.py": render_arch(
-                slug=slug, arch_name=arch_name, short=short, hf_id=args.hf_id
+                slug=slug,
+                arch_name=arch_name,
+                short=short,
+                hf_id=args.hf_id,
+                donor_planner=donor_planner,
             ),
             "model_config.py": render_config(
                 donor_slug=args.start_from,

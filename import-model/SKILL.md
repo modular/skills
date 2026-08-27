@@ -232,9 +232,14 @@ This reads ``architectures[0]`` from the Hub ``config.json`` for
 ``arch.py::name``, then copies the chosen native MAX architecture into
 ``<output_dir>/<slug>/`` as five files:
 
-- `arch.py` — registration shell (verify `name=` and encoding)
+- `arch.py` — registration shell carrying the donor's `memory_planner=`
+  verbatim, including a configured planner such as
+  `PagedMemoryPlanner.with_activation_reservation(...)` (verify `name=`,
+  encoding, and `memory_planner=`). When the donor declares no planner, the
+  field is left out with a TODO instead of being defaulted
 - `model_config.py` — donor config (must be rewired during implementation)
-- `model.py` — pipeline model shell
+- `model.py` — pipeline model shell (inherits the donor's batch processor,
+  so input preparation keeps working without a `batch_processor.py`)
 - `weight_adapters.py` — donor renames (must be rewritten for your checkpoint)
 - `<slug>.py` — **donor graph** (must be edited to match HF during
   implementation)
@@ -277,7 +282,15 @@ In order:
      with Llama)
    - Final norm and LM head (tie, logit scale, softcap)
 4. **`arch.py`** — confirm `name=` matches `architectures[0]`;
-   `default_encoding` matches Hub `torch_dtype`.
+   `default_encoding` matches Hub `torch_dtype`. Keep the scaffolded
+   `memory_planner=` (copied from the donor); without it MAX budgets no
+   activation memory for the KV cache and skips `max_batch_size` inference.
+   If scaffold left a `memory_planner` TODO, the donor had none — resolve it
+   before serving: KV-cache ports need `memory_planner=PagedMemoryPlanner`,
+   and only architectures doing their own memory estimation (diffusion,
+   embedding) should leave it unset. Add `batching=` only if the port's
+   batching diverges from the donor's — the model shell inherits the donor's
+   batch processor.
 5. **`model.py`** — only if HF wraps the backbone differently (VL, multi-modal).
 
 Read HF `modeling_<type>.py` **while editing**, not after verification fails.
