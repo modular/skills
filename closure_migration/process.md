@@ -12,10 +12,19 @@ timers, callbacks, higher-order kernels, etc.
 or paper over a legacy closure — not as a bridge, not to satisfy a
 still-capturing API, not for an “imm borrow”. Forbidden.
 
-If a callee still only accepts a comptime `capturing[_]` function parameter,
-prefer migrating that API. Until then, a nested `def … capturing` **without**
-`@__parameter` is allowed when the type requires it. Do not put
-`@__parameter` on the caller.
+**Hard ban — do not under any circumstance** add a new caller of a
+**capturing** parametric endpoint (`func: def(...) capturing [_] -> None`
+or `capturing` without `thin`), or restore a deleted capturing overload,
+to paper over a typecheck or bind failure. Look at the callee parameter
+type: `thin` is a function pointer and is fine (`add_function[vec_add]`,
+`compile_function[kernel]()`). `capturing` and not `thin` is the legacy
+closure. Do not route a unified-closure site back through `capturing[_]`.
+
+If a callee still only accepts a comptime `capturing[_]` function parameter
+**and that overload is not being deleted in this change**, a nested
+`def … capturing` **without** `@__parameter` is allowed when the type
+requires it. Prefer migrating that API. Do not put `@__parameter` on the
+caller, and do not add new capturing `api[fn]` call sites.
 
 ## Why a call rewrite is not enough
 
@@ -88,9 +97,11 @@ owned by this migration):
    - **Never** capture-all `{mut}` if the closure also reads `Int` / indices /
      lengths — those are register-passable and cannot be `mut`-captured
 
-If the nearest use is still a **comptime** `something[NAME](` and that API has
-not been migrated yet, **stop and migrate that API** (or leave the whole call
-site for a follow-up). Do not keep `@__parameter` on `NAME`.
+If the nearest use is still a **comptime** `something[NAME](` and that API
+is capturing (not `thin`) and is not being deleted in this change, **stop
+and migrate that API**, or leave that existing site for a follow-up. Do
+not keep `@__parameter` on `NAME`. Do not add a new capturing `api[fn]`
+caller. `thin` function-pointer parameters are fine.
 
 ## Step 4 — Fix by error class
 
@@ -116,6 +127,7 @@ mojo build --emit llvm path/to/file.mojo -o /tmp/chk.ll 2>&1 | grep ': error:'
 | `cannot capture … not copyable` / not a parameter reference | Capture-all over a bad type | `{imm}` / `{var}` / named; never `@__parameter` |
 | Counters / mut locals broken after bulk `{imm}` | Capture list overwritten | Restore `{mut name}` |
 | Memset / launch aliases with a wrapper whose ptr is already `MutUntrackedOrigin` | Second `DeviceBuffer` over `EPLocalSyncCounters.ptr` / `offset_ptr` (origin already erased) | Pass the original `DeviceBuffer` as an imm argument. `enqueue_memset` takes imm. Do **not** wrap the untracked ptr |
+| `compile_offload` / `func is not fully bound` on `DeviceFunction[F.__call__, …]` | Offload identity is `_PtrWrapper::__call__[AnyType, …]`, not the kernel symbol | For a thin kernel, use `add_function[kernel](*args)` / `compile_function[kernel]()`. `add_function` is thin-only; capturing kernels use `enqueue_function` / `recording_context()`. File-scope wrappers that bind leftover kernel comptime params help that identity. They do **not** bind `F.__call__`. Do not add a capturing `api[fn]` |
 
 `{imm}` freezes captured buffers. A launch that only *looks* read-only still
 needs `{mut buf, imm}` when it builds a mut `TileTensor` or calls

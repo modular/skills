@@ -6,7 +6,10 @@ description: >-
   closures (`api(args, fn)` with `{imm}` / `{mut}` / `{var}` / named capture
   lists). Use when removing parametric overloads, fixing "capturing thin"
   conversion errors, rewriting nested launch/callback closures, or migrating
-  any API that took a comptime function parameter.
+  any API that took a comptime function parameter. Also use when CI SIGSEGVs
+  while compiling a Mojo object with `compile_offload_closure func must be
+  fully bound` — that is host elaboration; verify with `kgen -elaborate`,
+  not remote GPU execution.
 ---
 
 # Closure migration
@@ -22,6 +25,14 @@ to a nested closure to persist, introduce, or paper over a legacy closure.
 Not as a migration bridge, not to satisfy a still-capturing API, not to
 “borrow imm”, not behind a thin `*_value` wrapper. That is forbidden.
 
+**Hard ban — do not under any circumstance** add a new caller of a
+**capturing** parametric endpoint (`func: def(...) capturing [_] -> None`
+or `capturing` without `thin`), or restore a deleted capturing overload,
+to paper over a typecheck or bind failure. Look at the callee parameter
+type: `thin` is a function pointer and is fine (`add_function[vec_add]`,
+`compile_function[kernel]()`). `capturing` and not `thin` is the legacy
+closure. Do not route a unified-closure site back through `capturing[_]`.
+
 | Do not | Do instead |
 |--------|------------|
 | `@__parameter` / `@parameter` on nested defs | Unified `def … {imm}:` / `{mut x, imm}:` / named captures |
@@ -32,11 +43,14 @@ Not as a migration bridge, not to satisfy a still-capturing API, not to
 | Wrap a `MutUntrackedOrigin` / `MutAnyOrigin` ptr in a new `DeviceBuffer` so memset or a launch “doesn’t alias” | Pass the original `DeviceBuffer` as an imm argument (`enqueue_memset` takes imm) |
 | Hoist `comptime if` arm buffers / `TileTensor`s to function scope (size-1 placeholders on other arms) | Keep them in the arm; define the unified closure next to those locals |
 | Rebuild `a_shape` / layouts inside the timed `call_fn` | Build once in the helper body; `{imm}`-capture |
+| New `api[fn](args)` where the callee param is `capturing` and not `thin` | Keep value-taking unified closures. `thin` function-pointer `api[fn]` is OK |
 
-If a callee still only accepts a comptime `capturing[_]` function parameter,
-use a nested `def … capturing -> T` **without** `@__parameter` when that is
-what the type requires, or **change that API** (or leave the call site
-unmigrated). Never put `@__parameter` on the caller.
+If a callee still only accepts a comptime `capturing[_]` function parameter
+**and that overload is not being deleted in this change**, use a nested
+`def … capturing -> T` **without** `@__parameter` when that is what the type
+requires, or migrate that API. Leave an *existing* capturing `api[fn]` site
+you have not rewritten; do not add new capturing ones. `thin` function-pointer
+parameters are not that case. Never put `@__parameter` on the caller.
 
 `@__copy_capture` copies into closure storage. Transfer it; do not drop it
 for `{imm}`:
@@ -94,19 +108,74 @@ closure is declared (and never re-add `@__parameter`).
    capture). Do not replace the decorator with `{imm}`. Skip comptime
    params. Self-check the pre-image: every runtime name in
    `@__copy_capture(...)` appears as `var name` in the new list.
-4. If a callee still needs a comptime capturing param → migrate that API first
-   (or leave the call site unmigrated); **do not** keep `@__parameter` on the
-   caller
+4. If a callee still needs a comptime **capturing** param **and that overload
+   is not being deleted** → migrate that API first, or leave an existing
+   capturing `api[fn]` site you have not rewritten. **Do not** add new
+   capturing `api[fn]` callers or keep `@__parameter` on the caller. `thin`
+   function-pointer parameters (`add_function[vec_add]`,
+   `compile_function[kernel]()`) are not that case.
 5. Delete parametric overloads only after callers typecheck
 6. Update skills/docs that still teach the legacy path
 7. Typecheck: `mojo build --emit llvm <file> -o /tmp/x.ll` (filters Metal noise)
-8. Self-check: `rg '@__parameter|@parameter' --glob '<touched>.mojo'` → zero on
+8. Offload bind: if the change passes a kernel into `DeviceFunction` /
+   `add_function` / `compile_info`, run `kgen -elaborate` (below). Do not
+   `bt-b200` a compile-time bind assert.
+9. Self-check: `rg '@__parameter|@parameter' --glob '<touched>.mojo'` → zero on
    nested closures you own
-9. NFC self-check: allocation sites, comptime vs `Coord(IndexList)` layouts, and
-   timed `call_fn` bodies match the pre-migration code except capture lists and
-   `api[fn](…)` → `api(…, fn, …)`. No new `.as_unsafe_any_origin()` /
-   `unsafe_origin_cast` / `DeviceBuffer(…, some.ptr, owning=False)` used to
-   dodge aliasing
+10. NFC self-check: allocation sites, comptime vs `Coord(IndexList)` layouts, and
+    timed `call_fn` bodies match the pre-migration code except capture lists and
+    `api[fn](…)` → `api(…, fn, …)`. No new `.as_unsafe_any_origin()` /
+    `unsafe_origin_cast` / `DeviceBuffer(…, some.ptr, owning=False)` used to
+    dodge aliasing
+
+## Verify compile_offload bind without a GPU
+
+`compile_offload_closure func must be fully bound` is an elaborator assert
+in `KGEN/lib/Elaborator/IREvaluatorContext.cpp` (`evaluateCompileOffloadClosureAttr`).
+It fires while folding `#kgen.compile_offload_closure` on
+`CompiledFunctionInfo.populate` — the comptime field `DeviceFunction` and
+`compile_info` instantiate. Offload codegen has not started. A CI SIGSEGV
+during `compiling mojo object` with that message is a host bind failure, not
+a GPU or PTX failure.
+
+Do not `bt-b200` / `bt-mi355` it. Elaboration is host-only.
+
+```bash
+source ./utils/start-modular.sh
+# Matching compiler: bazel-run kgen, not a stale PATH kgen vs std.mojoc
+./bazelw run //KGEN/tools/kgen -- -elaborate path/to/file.mojo -o /dev/null
+```
+
+In-tree precedent: `kgen -elaborate` in
+`KGEN/test/mojo-integration/compile_offload/internal/compile_different_emissionoptions_same_gpu.mojo`.
+
+If PATH `kgen` errors with `Mojo precompiled file is incompatible with the
+current version of the Mojo compiler`, the binary is stale relative to
+`.derived` packages. Use bazel-run (or `./bazelw run //:install`), not a GPU
+box.
+
+NVIDIA offload on a Metal/CPU host: pin `target=` on `compile_info` /
+`DeviceFunction` (`A100.target()`, `B200`, …), or `mojo build
+--target-accelerator=nvidia:sm_100a` (see
+`compile_offload_gpu_cross_compilation.mojo`). `kgen` has no
+`--target-accelerator`; that flag is `mojo build`.
+
+Elaborate the crashing file, or a reduced file that instantiates the same
+`DeviceFunction[F.__call__, …]` / `CompiledFunctionInfo` type. A bound
+non-generic kernel (`Kernels.vec_add`) is not a substitute for the
+specialization that failed.
+
+A file-scope `@no_inline` wrapper that binds leftover **kernel** comptime
+parameters fixes `DeviceFunction[func, declared_arg_types]` when `func` is
+that wrapper (`compile_function[kernel]()` / `add_function[kernel]`).
+It does **not** bind `DeviceFunction[F.__call__, TypeList.of[T0,…]()]`.
+`F.__call__` is `_PtrWrapper::__call__[AnyType, …]` even when the runtime
+value is already a fully specialized thin kernel. For a thin kernel, use
+the thin endpoint (`add_function[kernel](*args)` /
+`compile_function[kernel]()`). `DeviceGraphBuilder.add_function` is
+thin-only; capturing kernels use `enqueue_function` /
+`recording_context()`. Do not paper a capturing site over with
+`capturing[_]` / `@__parameter`.
 
 ## Capture choice
 
