@@ -106,8 +106,6 @@ multi-GPU serving:
 - `--ep-size`: expert-parallelism size for MoE (1, or total GPU count).
 - `--pipeline-role {prefill_and_decode|prefill_only|decode_only}`:
   disaggregated prefill/decode across processes.
-- `--allow-kv-head-replication`: allow TP wider than the KV head count by
-  replicating KV heads; only for architectures whose attention supports it.
 
 ## Sliding window / RoPE
 
