@@ -20,6 +20,10 @@ type: `thin` is a function pointer and is fine (`add_function[vec_add]`,
 `compile_function[kernel]()`). `capturing` and not `thin` is the legacy
 closure. Do not route a unified-closure site back through `capturing[_]`.
 
+**Hard ban — do not write an empty capture list `{}`.** No free runtime
+captures means omit the list (`def foo() -> Int:`). `{imm}` is
+capture-all, not an empty list.
+
 If a callee still only accepts a comptime `capturing[_]` function parameter
 **and that overload is not being deleted in this change**, a nested
 `def … capturing` **without** `@__parameter` is allowed when the type
@@ -93,7 +97,7 @@ owned by this migration):
    - `{mut a, mut b, imm}` — several mutated names (incl. every
      `CacheBustingBuffer` passed to `offset_ptr`)
    - `{var}` capture-all — only when every capture should be owned
-   - `{}` — only when there are no free runtime captures
+   - No free runtime captures — **omit** the capture list. Never `{}`
    - **Never** capture-all `{mut}` if the closure also reads `Int` / indices /
      lengths — those are register-passable and cannot be `mut`-captured
 
@@ -205,7 +209,7 @@ def call_fn_adapt(ctx: DeviceContext, cache_iter: Int) raises {mut bufs, imm}:
 def clean_up(
     ctx: DeviceContext,
     atomic_counter: DeviceBuffer[DType.int32],
-) raises {}:
+) raises:
     ctx.enqueue_memset(atomic_counter, 0)
 ```
 
@@ -230,8 +234,8 @@ runs, or what the timed `call_fn` does on the host.
 - Host objects built once (`a_shape`, `c_full_shape`) stay in the helper body
   and are `{imm}`-captured. Rebuilding them inside the timed `call_fn` is extra
   measured work.
-- Lift a capture to an argument **only** for origin exclusivity (or the `{}`
-  helper around an imm `DeviceBuffer` param). Do not thread extra values as
+- Lift a capture to an argument **only** for origin exclusivity (or a
+  normal function with an imm `DeviceBuffer` param). Do not thread extra values as
   arguments just to move a closure.
 
 ## Step 5 — Delete parametric API overloads

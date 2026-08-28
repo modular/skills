@@ -33,6 +33,12 @@ type: `thin` is a function pointer and is fine (`add_function[vec_add]`,
 `compile_function[kernel]()`). `capturing` and not `thin` is the legacy
 closure. Do not route a unified-closure site back through `capturing[_]`.
 
+**Hard ban — do not write an empty capture list `{}`.** If the nested def
+has no free runtime captures, omit the list: `def foo() -> Int:` not
+`def foo() {} -> Int:` and not `raises {}`. `{}` is not a spelling of
+“no captures”; it is noise that reviewers will flag. `{imm}` is
+capture-all of outer state, not a stand-in for an empty list.
+
 | Do not | Do instead |
 |--------|------------|
 | `@__parameter` / `@parameter` on nested defs | Unified `def … {imm}:` / `{mut x, imm}:` / named captures |
@@ -44,6 +50,7 @@ closure. Do not route a unified-closure site back through `capturing[_]`.
 | Hoist `comptime if` arm buffers / `TileTensor`s to function scope (size-1 placeholders on other arms) | Keep them in the arm; define the unified closure next to those locals |
 | Rebuild `a_shape` / layouts inside the timed `call_fn` | Build once in the helper body; `{imm}`-capture |
 | New `api[fn](args)` where the callee param is `capturing` and not `thin` | Keep value-taking unified closures. `thin` function-pointer `api[fn]` is OK |
+| Empty `{}` (`def f() {} -> T` / `raises {}`) | Omit the capture list. `{imm}` only when you mean to capture outer state |
 
 If a callee still only accepts a comptime `capturing[_]` function parameter
 **and that overload is not being deleted in this change**, use a nested
@@ -185,8 +192,8 @@ thin-only; capturing kernels use `enqueue_function` /
 | Mutates some outer state; also reads `Int` / other register-passable values | `{mut buf, imm}` — **not** capture-all `{mut}` |
 | Mutates several outer names | `{mut a, mut b, imm}` |
 | Replacing `@__copy_capture(x, y)` | `{var x, var y, imm}` (copy). `{var}` only if every capture should be a copy. `{var^}` is a move — not this mapping. **Never** `{imm}` |
-| Named precision only | `{mut count}`, `{imm buf, imm shape}` |
-| No free runtime captures | `{}` |
+| Named precision only | `{mut count}`, `{imm buf, imm shape}` — `{imm}` captures names the body uses, not every local in scope |
+| No free runtime captures | Omit the capture list. **Never** `{}` |
 | `Could not infer capture convention` | Add `{imm}` / `{mut name, imm}` / named list |
 | `expression must be mutable in assignment` on a capture | That name needs `mut` (or declare temporary view arrays locally inside the closure if rebuilt per iteration) |
 | `register passible value … can not be captured by 'mut'` | Capture-all `{mut}` pulled in an `Int` (etc.) — use `{mut buf, imm}` |
@@ -269,8 +276,8 @@ Do **not** “fix” anything with `@__parameter`.
 - Do not bulk-replace capture lists (destroys `{mut count}` etc.)
 - `name[i] =` inside `with … as name` is a local, not an outer `mut` capture
 - Zero `@__parameter` / `@parameter` on nested closures in migrated code
-- Lift a capture to an argument **only** for origin exclusivity (or the
-  documented `{}` helper around an imm `DeviceBuffer` param)
+- Lift a capture to an argument **only** for origin exclusivity (or a
+  normal function with an imm `DeviceBuffer` parameter)
 - Stay NFC: do not change allocation lifetime, comptime vs dynamic layouts, or
   host work on the timed path. `comptime if` arm locals (buffers, host copies,
   `TileTensor`s, `row_major[M, N]()` layouts) stay in that arm — a size-1 alloc
