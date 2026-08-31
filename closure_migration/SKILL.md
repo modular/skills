@@ -150,7 +150,7 @@ Do not `bt-b200` / `bt-mi355` it. Elaboration is host-only.
 ```bash
 source ./utils/start-modular.sh
 # Matching compiler: bazel-run kgen, not a stale PATH kgen vs std.mojoc
-./bazelw run //KGEN/tools/kgen -- -elaborate path/to/file.mojo -o /dev/null
+./bazelw run //Mojo/tools/kgen -- -elaborate path/to/file.mojo -o /dev/null
 ```
 
 In-tree precedent: `kgen -elaborate` in
