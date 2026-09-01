@@ -42,11 +42,11 @@ Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`,
 
 ```mojo
 # Core GPU — pick what you need
-from std.gpu import global_idx                                    # simple indexing
-from std.gpu import block_dim, block_idx, thread_idx              # manual indexing
-from std.gpu import lane_id, WARP_SIZE                            # warp info
+from max.gpu import global_idx                                    # simple indexing
+from max.gpu import block_dim, block_idx, thread_idx              # manual indexing
+from max.gpu import lane_id, WARP_SIZE                            # warp info
 from max.gpu.sync import barrier                                  # block-level sync
-from std.gpu.primitives import warp                               # sum/max/min/broadcast/shuffle_*/reduce
+from max.gpu.primitives import warp                               # sum/max/min/broadcast/shuffle_*/reduce
 from max.gpu.memory import AddressSpace                           # for shared memory
 from max.gpu.memory import async_copy_wait_all                    # async copy sync
 from max.gpu.host import DeviceContext, DeviceBuffer              # host-side API
@@ -292,17 +292,17 @@ var sums = stack_allocation[
 
 ```mojo
 # Simple — automatic global offset
-from std.gpu import global_idx
+from max.gpu import global_idx
 var tid = global_idx.x           # 1D
 var row = global_idx.y           # 2D row
 var col = global_idx.x           # 2D col
 
 # Manual — when you need block/thread separately
-from std.gpu import block_idx, block_dim, thread_idx
+from max.gpu import block_idx, block_dim, thread_idx
 var tid = block_idx.x * block_dim.x + thread_idx.x
 
 # Warp info
-from std.gpu import lane_id, WARP_SIZE
+from max.gpu import lane_id, WARP_SIZE
 var my_lane = lane_id()          # 0..WARP_SIZE-1
 ```
 
@@ -312,7 +312,7 @@ All return `Int` — no casting needed for bounds checks.
 
 ```mojo
 from max.gpu.sync import barrier
-from std.gpu.primitives import warp
+from max.gpu.primitives import warp
 from std.atomic import Atomic
 
 barrier()                                    # block-level sync
@@ -410,7 +410,7 @@ comptime layout = row_major[SIZE]()
 ```mojo
 from std.math import ceildiv
 from std.sys import has_accelerator
-from std.gpu import global_idx
+from max.gpu import global_idx
 from max.gpu.host import DeviceContext
 from layout import TileTensor, row_major
 
@@ -460,7 +460,7 @@ from std.math import ceildiv
 from std.sys import has_accelerator
 from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
-from std.gpu import thread_idx, block_idx
+from max.gpu import thread_idx, block_idx
 from max.gpu.memory import AddressSpace
 from layout import TileTensor, TensorLayout, row_major, stack_allocation
 
