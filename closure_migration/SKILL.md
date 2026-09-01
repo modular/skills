@@ -138,7 +138,7 @@ closure is declared (and never re-add `@__parameter`).
 ## Verify compile_offload bind without a GPU
 
 `compile_offload_closure func must be fully bound` is an elaborator assert
-in `KGEN/lib/Elaborator/IREvaluatorContext.cpp` (`evaluateCompileOffloadClosureAttr`).
+in `Mojo/lib/Elaborator/IREvaluatorContext.cpp` (`evaluateCompileOffloadClosureAttr`).
 It fires while folding `#kgen.compile_offload_closure` on
 `CompiledFunctionInfo.populate` — the comptime field `DeviceFunction` and
 `compile_info` instantiate. Offload codegen has not started. A CI SIGSEGV
