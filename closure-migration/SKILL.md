@@ -1,5 +1,5 @@
 ---
-name: closure_migration
+name: closure-migration
 description: >-
   Migrates Mojo code off legacy parametric closures (`capturing[_]`,
   `@__parameter` / `@parameter`, `api[fn](args)`) onto value-taking unified
