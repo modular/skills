@@ -55,7 +55,9 @@ slightly in functionality.
 | `constrained(cond, msg)`                         | `comptime assert cond, msg`                                                      |
 | `DynamicVector[T]`                               | `List[T]`                                                                        |
 | `InlinedFixedVector[T, N]`                       | `Array[T, N]`                                                                    |
-| `Tensor[T]`                                      | Not in stdlib (use SIMD, List, UnsafePointer)                                    |
+| `Tensor[T]`                                      | Not in stdlib (use SIMD, List, Pointer)                                          |
+| `MutUnsafePointer` / `ImmUnsafePointer`          | `MutPointer` / `ImmPointer`                                                      |
+| `OptionalUnsafePointer`                          | `OptionalPointer`                                                                |
 | `escaping` closures                              | Unified closures (`def(...) -> T`, captures in `{}`); `capturing[_]` still valid |
 | `__del__(deinit self)`                           | `__deinit__(deinit self)`                                                        |
 
@@ -165,7 +167,7 @@ def __init__(out self, *, deinit move: Self):
 
 # Destructor
 def __deinit__(deinit self):
-    self.ptr.free()
+    dealloc(self.allocation^)
 ```
 
 To copy: `var b = a.copy()` (provided by `Copyable` trait).
@@ -248,8 +250,10 @@ import std.random
 
 Prelude auto-imports (no import needed): `Int`, `String`, `Bool`, `List`,
 `Dict`, `Optional`, `SIMD`, `Float32`, `Float64`, `UInt8`, `Pointer`,
-`UnsafePointer`, `Span`, `Error`, `DType`, `Writable`, `Writer`, `Copyable`,
-`Movable`, `Equatable`, `Hashable`, `rebind`, `print`, `range`, `len`, and more.
+`OptionalPointer`, `alloc`, `Span`, `Error`, `DType`, `Writable`, `Writer`,
+`Copyable`, `Movable`, `Equatable`, `Hashable`, `rebind`, `print`, `range`,
+`len`, and more. `Layout` and `dealloc` are **not** in the prelude — import them
+from `std.memory`.
 
 `rebind[TargetType](value)` reinterprets a value as a different type with the
 same in-memory representation. Useful when compile-time type expressions are
@@ -301,30 +305,77 @@ For-in: `for item in col:` (immutable) / `for ref item in col:` (mutable).
 
 ## Memory and pointer types
 
-| Type                            | Use                                                                    |
-|---------------------------------|------------------------------------------------------------------------|
-| `Pointer[T, mut=M, origin=O]`   | Safe, non-nullable. Deref with `p[]`.                                  |
-| `alloc[T](n)` / `UnsafePointer` | Free function `alloc[T](count)` → `UnsafePointer`. `.free()` required. |
-| `Span(list)`                    | Non-owning contiguous view.                                            |
-| `OwnedPointer[T]`               | Unique ownership (like Rust `Box`).                                    |
-| `ArcPointer[T]`                 | Reference-counted shared ownership.                                    |
+| Type                          | Use                                                      |
+|-------------------------------|----------------------------------------------------------|
+| `Pointer[T, mut=M, origin=O]` | Safe, non-nullable. Deref with `p[]`.                    |
+| `OptionalPointer[T, origin]`  | Nullable pointer — `Optional[Pointer[...]]`.             |
+| `Allocation[T]`               | Owning handle returned by `alloc`. Explicitly destroyed. |
+| `Span(list)`                  | Non-owning contiguous view.                              |
+| `OwnedPointer[T]`             | Unique ownership (like Rust `Box`).                      |
+| `ArcPointer[T]`               | Reference-counted shared ownership.                      |
 
-`UnsafePointer` has an `origin` parameter that must be specified for struct
-fields. Use `MutUntrackedOrigin` for owned heap data (this is what stdlib
-`ArcPointer` uses):
+`UnsafePointer` is a deprecated alias of `Pointer` — it still compiles and
+warns. The other legacy aliases were **removed** and are hard errors (see the
+table at the top). Most of the pointer API is being renamed alongside
+`UnsafePointer`; those old spellings still compile but warn:
+
+| Deprecated                | Replacement                             |
+|---------------------------|-----------------------------------------|
+| `UnsafePointer[T, O]`     | `Pointer[T, O]`                         |
+| `alloc[T](n)`             | `alloc(Layout[T](count=n))`             |
+| `p.free()`                | `dealloc(allocation^)`                  |
+| `p[i]`                    | `p[unsafe_offset=i]`                    |
+| `p + i`                   | `p.unsafe_offset(i)`                    |
+| `p += i`                  | `p = p.unsafe_offset(i)`                |
+| `p.load()` / `p.store(v)` | `p.unsafe_load()` / `p.unsafe_store(v)` |
+| `p.init_pointee_move(v)`  | `p.unsafe_write(v)`                     |
+| `p.init_pointee_copy(v)`  | `p.unsafe_write(copy=v)`                |
+
+`alloc(Layout[T](count=n))` returns an `Allocation[T]`, a linear type the
+compiler forces you to dispose of on every path — pass it to `dealloc`, or call
+`unsafe_leak()` to take ownership of the bare pointer:
 
 ```mojo
-# Struct field — specify origin explicitly
-var _ptr: UnsafePointer[Self.T, MutUntrackedOrigin]
+from std.memory import Layout, dealloc
 
-# Allocate with alloc[]
-def __init__(out self, size: Int):
-    self._ptr = alloc[Self.T](size)
+var allocation = alloc(Layout[Int32](count=4))
+var ptr = allocation.unsafe_ptr()
+ptr.unsafe_write(Int32(1))
+ptr.unsafe_offset(1).unsafe_write(Int32(2))
+dealloc(allocation^)
 ```
 
-`UnsafePointer` is **non-null by design** — null default constructor and
-`__bool__` are deprecated. For nullable storage, use
-`Optional[UnsafePointer[...]]` (same layout; `None` is the null niche).
+A struct that owns heap storage should hold the `Allocation`, not a leaked
+pointer. The compiler then enforces disposal on every path, and `dealloc`
+gets the `Layout` it needs:
+
+```mojo
+from std.memory import Layout, Allocation, alloc, dealloc
+
+struct Buffer[T: AnyType]:
+    var _alloc: Allocation[Self.T]
+
+    def __init__(out self, size: Int):
+        self._alloc = alloc(Layout[Self.T](count=size))
+
+    def __deinit__(deinit self):
+        dealloc(self._alloc^)
+```
+
+Get at the storage with `self._alloc.unsafe_ptr()`, whose origin is tied to the
+allocation. Don't substitute `Pointer.unsafe_free()`: it bypasses the `Layout`,
+and for zero-sized `T` it frees the dangling sentinel that `alloc` returns.
+
+A container that already tracks its own capacity may instead store a
+`ThinAllocation` and supply the `Layout` again at `dealloc` time. That is
+what `List` does; it is an optimization, not the default shape.
+
+When a struct field does hold a raw `Pointer`, its `origin` parameter must be
+specified; use `MutUntrackedOrigin` for owned heap data.
+
+`Pointer` is **non-null by design** — `Bool(p)` is unavailable, not merely
+deprecated. For nullable storage, use `OptionalPointer[T, origin]` (same layout;
+`None` is the null niche).
 
 ## Origin system (not "lifetime")
 
