@@ -583,9 +583,9 @@ var buf = DeviceBuffer[dtype](ctx, raw_ptr, count, owning=False)
 from std.benchmark import Bench, BenchConfig, Bencher, BenchId, BenchMetric, ThroughputMeasure
 from max.benchmark import bencher_iter_custom   # GPU form: a free function
 
-@always_inline
+@inline(.always)
 def bench_fn(mut b: Bencher) raises capturing[_]:
-    @always_inline
+    @inline(.always)
     def launch(ctx: DeviceContext) raises {imm}:
         ctx.enqueue_function[kernel](args, grid_dim=G, block_dim=B)
     var ctx = DeviceContext()

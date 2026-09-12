@@ -450,16 +450,16 @@ var x = values[i][T].copy()          # or `^` to transfer
 
 ## Common decorators
 
-| Decorator                                      | Purpose                               |
-|------------------------------------------------|---------------------------------------|
-| `@fieldwise_init`                              | Generate fieldwise constructor        |
-| `@implicit`                                    | Allow implicit conversion             |
-| `@always_inline` / `@always_inline("nodebug")` | Force inline                          |
-| `@no_inline`                                   | Prevent inline                        |
-| `@staticmethod`                                | Static method                         |
-| `@deprecated("msg")`                           | Deprecation warning                   |
-| `@doc_hidden`                                  | Hide from docs                        |
-| `@explicit_destroy`                            | Linear type (no implicit destruction) |
+| Decorator                                        | Purpose                                 |
+|--------------------------------------------------|-----------------------------------------|
+| `@fieldwise_init`                                | Generate fieldwise constructor          |
+| `@implicit`                                      | Allow implicit conversion               |
+| `@inline(.always)` / `@inline(.nodebug)`         | Force inline                            |
+| `@inline(.never)`                                | Prevent inline                          |
+| `@staticmethod`                                  | Static method                           |
+| `@deprecated("msg")`                             | Deprecation warning                     |
+| `@doc_hidden`                                    | Hide from docs                          |
+| `@explicit_destroy`                              | Linear type (no implicit destruction)   |
 
 ## Numeric conversions — must be explicit
 
