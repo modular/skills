@@ -461,6 +461,35 @@ var x = values[i][T].copy()          # or `^` to transfer
 | `@doc_hidden`                                    | Hide from docs                          |
 | `@explicit_destroy`                              | Linear type (no implicit destruction)   |
 
+## Contextual member references — prefer `.member`
+
+Where the expected type is already known, write `.member` instead of
+`Type.member`; the compiler rewrites it to `Type.member`. Idiomatic
+throughout the codebase for `DType` and `AddressSpace`:
+
+```mojo
+var v = SIMD[.float32, 4](1.0, 2.0, 3.0, 4.0)     # not SIMD[DType.float32, 4]
+comptime if dtype == .bfloat16: ...                # `__eq__` arg supplies context
+v.cast[.float32]()
+ctx.enqueue_create_buffer[.int32](num_rows)
+unsafe_stack_allocation[1, Int32, address_space=.SHARED]()
+
+def f[dtype: DType = .float32](x: TileTensor[.bfloat16, L, MutAnyOrigin]): ...
+```
+
+Works for any type's `comptime` aliases and static methods, including chains
+(`.red.opacity(0.5)`) and typed collection literals (`List[Color] = [.red]`).
+The context comes from a declared `var`/`ref` type, a call-argument type, a
+`return` destination, or a typed collection literal's element type. With none
+of those, qualify the name:
+
+| No contextual type            | Must write                                             |
+|-------------------------------|--------------------------------------------------------|
+| Unannotated binding           | `comptime t = DType.float32` (or annotate `t: DType`)  |
+| Overloaded callee             | `size_of[DType.float32]()` — overloads aren't searched |
+| Bare tuple literal            | `dtype in (DType.bfloat16, DType.float16)`             |
+| Type position                 | `.Foo` where a *type* is expected is an error          |
+
 ## Numeric conversions — must be explicit
 
 No implicit conversions between numeric *variables*. Use explicit constructors:
@@ -476,19 +505,19 @@ context:
 ```mojo
 var a: Float32 = 0.5              # literal becomes Float32
 var b = Float32(x) * 0.003921    # literal adapts — no wrapping needed
-var v = SIMD[DType.float32, 4](1.0, 2.0, 3.0, 4.0)  # literals adapt
+var v = SIMD[.float32, 4](1.0, 2.0, 3.0, 4.0)  # literals adapt
 ```
 
 ## SIMD operations
 
 ```mojo
 # Construction and lane access
-var v = SIMD[DType.float32, 4](1.0, 2.0, 3.0, 4.0)
-v[0]                              # read lane → Scalar[DType.float32]
+var v = SIMD[.float32, 4](1.0, 2.0, 3.0, 4.0)
+v[0]                              # read lane → Scalar[.float32]
 v[0] = 5.0                        # write lane
 
 # Type cast
-v.cast[DType.uint32]()            # element-wise → SIMD[DType.uint32, 4]
+v.cast[.uint32]()                 # element-wise → SIMD[.uint32, 4]
 
 # Clamp (method)
 v.clamp(0.0, 1.0)                 # element-wise clamp to [lower, upper]
@@ -499,7 +528,8 @@ min(a, b)                          # element-wise min (same-type SIMD args)
 max(a, b)                          # element-wise max
 
 # Element-wise ternary via bool SIMD
-var mask = (v > 0.0)              # SIMD[DType.bool, 4]
+var mask = v.gt(0.0)              # SIMD[.bool, 4] — `v > 0.0` is
+                                  # Scalar-only and fails to compile
 mask.select(true_case, false_case) # picks per-lane
 
 # Reductions
