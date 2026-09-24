@@ -30,8 +30,8 @@ while `mojo` is `1.0.0`; on nightly they're `26.6.0.dev*` and `1.1.0.dev*`.
 That's expected, not a mismatch.
 
 > [!NOTE]
-> Don't look for or use `magic` for Mojo or MAX projects; it's no longer
-> supported. Pixi has fully replaced its capabilities.
+> Mojo and MAX projects use `pixi`. The `magic` CLI is retired; its
+> replacement is the `modular` CLI. Don't use or suggest `magic`.
 
 ---
 
