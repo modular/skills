@@ -11,7 +11,7 @@ phases in [SKILL.md](../SKILL.md). Prefer data from Hub `config.json` and
 
 ---
 
-## Phase 1 — Decide & plan
+## Phase 1: Decide and plan
 
 ### Guard: native in MAX?
 
@@ -19,10 +19,10 @@ phases in [SKILL.md](../SKILL.md). Prefer data from Hub `config.json` and
 **`config.json` → `model_type`:** `` `<model_type>` ``
 
 ```bash
-pixi run python inspect_hf.py <HF_MODEL_ID>
-pixi run python list_checkpoint_keys.py <HF_MODEL_ID> --summary
-pixi run python list_native_archs.py --match <ArchitecturesClassFromConfig>
-pixi run python check_walls.py <HF_MODEL_ID>
+pixi run python scripts/inspect_hf.py <HF_MODEL_ID>
+pixi run python scripts/list_checkpoint_keys.py <HF_MODEL_ID> --summary
+pixi run python scripts/list_native_archs.py --match <ArchitecturesClassFromConfig>
+pixi run python scripts/check_walls.py <HF_MODEL_ID>
 ```
 
 | Check                       | Result                                |
@@ -102,25 +102,25 @@ different donor)
 
 ---
 
-## Phase 2 — Implement
+## Phase 2: Implement
 
-### Scaffold (files only — not the port)
+### Scaffold (files only, not the port)
 
 ```bash
-pixi run python scaffold.py <HF_MODEL_ID> \
+pixi run python scripts/scaffold.py <HF_MODEL_ID> \
   --start-from <max_arch_slug> \
   --output-dir <output_dir>
 ```
 
-**Port directory (`<port_dir>`):** `` `<output_dir>/<slug>/` `` — pass to
+**Port directory (`<port_dir>`):** `` `<output_dir>/<slug>/` ``. Pass to
 `--custom-architectures` and `run_oss_gates.py --port-dir` (not `<output_dir>/`)
 
 | File                 | Copied | Notes                                     |
 |----------------------|--------|-------------------------------------------|
-| `arch.py`            | yes    | Donor shell — verify `name=`              |
-| `model_config.py`    | yes    | Donor config — rewire                     |
-| `<slug>.py`          | yes    | **Donor graph — wrong until implemented** |
-| `weight_adapters.py` | yes    | Donor renames — rewrite                   |
+| `arch.py`            | yes    | Donor shell: verify `name=`               |
+| `model_config.py`    | yes    | Donor config: rewire                      |
+| `<slug>.py`          | yes    | **Donor graph: wrong until implemented**  |
+| `weight_adapters.py` | yes    | Donor renames: rewrite                    |
 | `model.py`           | yes    | Edit only if HF wrapper differs           |
 
 **Do not serve yet.**
@@ -144,16 +144,16 @@ a code change before serving.
 [implement-graph.md](implement-graph.md#completion-criteria-required-before-serving)
 
 ```bash
-pixi run python run_oss_gates.py <HF_MODEL_ID> --port-dir <port_dir>/
+pixi run python scripts/run_oss_gates.py <HF_MODEL_ID> --port-dir <port_dir>/
 ```
 
 ### Guard: smoke gate
 
-All four checks from [serve-and-iterate.md](serve-and-iterate.md) PASS.
+All checks from [serve-and-iterate.md](serve-and-iterate.md) PASS.
 
 ---
 
-## Phase 3 — Verify
+## Phase 3: Verify
 
 ### Coherence smoke
 
@@ -182,12 +182,12 @@ If garbage → load [`debug-model`](../../debug-model/SKILL.md)
 **Symptom** (from [divergences.md](divergences.md)):
 
 ```bash
-pixi run python compare_layers.py <HF_MODEL_ID> \
+pixi run python scripts/compare_layers.py <HF_MODEL_ID> \
   --slug <slug> --port 8000 \
   --prompt "The capital of France is"
 
 # Or full gate after serve:
-pixi run python run_oss_gates.py <HF_MODEL_ID> \
+pixi run python scripts/run_oss_gates.py <HF_MODEL_ID> \
   --port-dir <port_dir>/ --phase verify --slug <slug> --port 8000
 ```
 

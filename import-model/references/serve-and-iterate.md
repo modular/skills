@@ -7,8 +7,8 @@
 
 MAX loads custom archs by taking `dirname(<port_dir>)` for `sys.path` and
 importing `basename(<port_dir>)` as the module. Do **not** pass the parent of
-`<port_dir>` — you will import the wrong package (e.g. `custom-arch` instead
-of your slug) and see `AttributeError: module '…' has no attribute
+`<port_dir>`; you will import the wrong package (`custom-arch` instead of
+your slug) and see `AttributeError: module '…' has no attribute
 'ARCHITECTURES'`.
 
 Optional colon form: ``<parent_on_sys.path>:<module_name>`` (same effect as
@@ -16,12 +16,12 @@ passing `<port_dir>/`).
 
 ## Prerequisites: run these before `pixi run max serve`
 
-`max serve` cold-compiles for 5–25 minutes. Before serving, run the four local
+`max serve` cold-compiles for 5–25 minutes. Before serving, run the local
 checks below. `run_oss_gates.py` covers walls and `arch.py` registration only.
 
 ### Import smoke
 
-Manual import test (parent on path, slug as module name — mirrors what MAX
+Manual import test (parent on path, slug as module name; mirrors what MAX
 does):
 
 ```bash
@@ -46,13 +46,14 @@ from pathlib import Path
 port_dir = Path('<port_dir>')
 sys.path.insert(0, str(port_dir.parent))
 from max.graph import Graph
+from max.nn.transformer import ReturnLogits
 from transformers import AutoConfig
 from <slug>.<slug> import <YourGraphClass>
 from <slug>.model_config import <YourConfig>
 
 hf = AutoConfig.from_pretrained('<HF_MODEL_ID>', trust_remote_code=True)
-cfg = <YourConfig>(huggingface_config=hf, quantization_encoding=None)
-cfg.finalize(state_dict={}, devices=[...])
+cfg = <YourConfig>(huggingface_config=hf, quantization_encoding=None, devices=[...])
+cfg.finalize(huggingface_config=hf, state_dict={}, return_logits=ReturnLogits.LAST_TOKEN)
 with Graph('smoke') as g:
     model = <YourGraphClass>(cfg)
 print('graph built; n_params =', sum(1 for _ in model.parameters()))
@@ -68,9 +69,9 @@ expected FQNs after the adapter runs. See
 ### Weights-format preflight
 
 MAX loads only `.safetensors` or `.gguf` (`WeightsFormat` in
-`max/graph/weights/format.py`) — no `.bin`. In `<port_dir>/arch.py`, copy
+`max/graph/weights/format.py`); no `.bin`. In `<port_dir>/arch.py`, copy
 `default_weights_format` and `weight_adapters` from your scaffold donor under
-`modular/max/python/max/pipelines/architectures/<donor>/arch.py`; see
+`max/pipelines/architectures/<donor>/arch.py`; see
 [pitfalls-config.md § Import and config API traps](pitfalls-config.md#import-and-config-api-traps).
 
 Repo file check:
@@ -84,7 +85,7 @@ has_gguf = any(f.endswith('.gguf') for f in files)
 has_bin = any(f.endswith('.bin') for f in files)
 print(f'safetensors={has_st}  gguf={has_gguf}  bin_only_legacy={has_bin and not has_st}')
 if has_bin and not has_st:
-    print('STOP: convert to safetensors or pick a GGUF repo — MAX cannot load .bin')
+    print('STOP: convert to safetensors or pick a GGUF repo; MAX cannot load .bin')
 "
 ```
 

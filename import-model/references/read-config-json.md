@@ -86,13 +86,13 @@ The config and the released checkpoint must agree on shape. After loading
 the config, sanity-check it against safetensors metadata (no weight download):
 
 ```bash
-pixi run python list_checkpoint_keys.py <HF_MODEL_ID> --summary
+pixi run python scripts/list_checkpoint_keys.py <HF_MODEL_ID> --summary
 ```
 
 Or inspect a few attention keys from the metadata table:
 
 ```bash
-pixi run python list_checkpoint_keys.py <HF_MODEL_ID> \
+pixi run python scripts/list_checkpoint_keys.py <HF_MODEL_ID> \
   --prefix model.layers.0.self_attn --limit 10
 ```
 

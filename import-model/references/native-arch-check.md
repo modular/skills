@@ -62,7 +62,7 @@ Or open the raw Hub file:
 ### Check the MAX registry
 
 ```bash
-pixi run python list_native_archs.py --match <architectures[0]>
+pixi run python scripts/list_native_archs.py --match <architectures[0]>
 ```
 
 - **Exit 0** and prints `ClassName\tslug` → MAX already supports it. Run
@@ -75,7 +75,7 @@ pixi run python list_native_archs.py --match <architectures[0]>
 To browse everything MAX ships:
 
 ```bash
-pixi run python list_native_archs.py
+pixi run python scripts/list_native_archs.py
 ```
 
 ## Scan for port walls
@@ -84,7 +84,7 @@ Before scaffolding, scan the Hub config for hard blockers (ALiBi, quant-only
 weights, SSM/recurrence signals, extreme scale):
 
 ```bash
-pixi run python check_walls.py <HF_MODEL_ID>
+pixi run python scripts/check_walls.py <HF_MODEL_ID>
 ```
 
 - **Exit 0** — no blockers.
@@ -103,7 +103,7 @@ pixi run python check_walls.py <HF_MODEL_ID>
 Check:
 
 ```bash
-pixi run python list_native_archs.py --match Qwen3ForCausalLM
+pixi run python scripts/list_native_archs.py --match Qwen3ForCausalLM
 # Qwen3ForCausalLM    qwen3
 ```
 

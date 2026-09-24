@@ -7,7 +7,7 @@ every sublayer that the delta list flagged as different from Hugging Face.
 Do not run `pixi run max serve`, coherence checks, or logit verification until
 this phase's completion criteria pass. Serving an unmodified donor against a
 foreign checkpoint loads weights into the wrong shapes and
-**will fail verification** — that failure is not a tolerance problem; the port
+**will fail verification**. That failure is not a tolerance problem; the port
 was never finished.
 
 ---
@@ -29,16 +29,16 @@ you **execute** that list in MAX code, one sublayer at a time, against HF
 
 ## Work order
 
-Implement in this order — each layer depends on the previous wiring being
+Implement in this order; each layer depends on the previous wiring being
 correct:
 
-1. **`model_config.py`** — wire every `config.json` key (Phase 1 config table).
-2. **`list_checkpoint_keys.py`** — Hub safetensors metadata (keys, shapes,
+1. **`model_config.py`**: wire every `config.json` key (Phase 1 config table).
+2. **`list_checkpoint_keys.py`**: Hub safetensors metadata (keys, shapes,
    dtypes).
-3. **`weight_adapters.py`** — HF safetensor names → MAX module names.
+3. **`weight_adapters.py`**: HF safetensor names → MAX module names.
 4. **Embedding + final norm + LM head** in `<slug>.py` / `model.py`.
-5. **One decoder block** — get block 0 right before cloning the pattern.
-6. **Full stack** — repeat for all layers; conditional layers (sliding vs full,
+5. **One decoder block**: get block 0 right before cloning the pattern.
+6. **Full stack**: repeat for all layers; conditional layers (sliding vs full,
    MoE vs dense) need explicit per-layer logic matching HF.
 
 Keep HF `modeling_<type>.py` open side-by-side. For each MAX class you edit,
@@ -75,15 +75,12 @@ side with the right shape**.
 - Match fused vs split projections (`qkv_proj` vs separate `q_proj` / `k_proj` /
   `v_proj`).
 - Match MoE expert key layout (`experts.N.gate_proj` vs grouped tensors).
-- Match QKV stacking / head layout renames from the donor — delete donor-only
+- Match QKV stacking / head layout renames from the donor; delete donor-only
   renames that do not apply to your checkpoint.
 
-Verify load before serve:
-
-```python
-# In a REPL or one-off script after editing adapters:
-# load state dict through your adapter and assert no unexpected missing keys
-```
+Verify load before serve: in a REPL or one-off script after editing
+adapters, load the state dict through your adapter and assert no unexpected
+missing keys.
 
 See [rename-weights.md](rename-weights.md). After `load_state_dict`, run the
 audit in [state-dict-audit.md](state-dict-audit.md) so silent drops surface
@@ -91,19 +88,19 @@ before serve.
 
 ---
 
-## `<slug>.py` — the graph
+## `<slug>.py`: the graph
 
 This file is the port. Subclassing the donor is fine **only** for methods that
 are identical to HF. When the delta list flagged a difference:
 
-- **One method differs** — subclass donor layer, override that method.
-- **Block wiring differs** — rewrite the block class; do not inherit donor
+- **One method differs**: subclass donor layer, override that method.
+- **Block wiring differs**: rewrite the block class; do not inherit donor
   `forward()` if norm/residual order differs.
 - **New attention pattern** (MLA, sliding window per layer index, NoPE on some
-  layers) — new attention module using `max.nn` primitives.
+  layers): new attention module using the lane's primitives.
 
 Do not copy-paste the donor `<slug>.py` and change the class name. Walk HF
-`forward()` and implement what it actually does.
+`forward()` and implement what it does.
 
 ### Recurrent / shared-weight stacks: mix the injection in ONCE
 
@@ -179,16 +176,16 @@ All must be true before `pixi run max serve` or any verification script:
 **Compiles and serves is not done.** This phase means the graph implements HF
 math, not that `pixi run max serve` starts. Garbage or `&&&&` loops after a
 rewrite usually mean a delta is still wrong (NoPE `freqs_cis` layout, block
-wiring, MoE combine) — stay in the implement / divergence-hunt loop until logits
+wiring, MoE combine), so stay in the implement / divergence-hunt loop until logits
 match, not "tolerance."
 
-If any box is unchecked, you are still implementing — not verifying.
+If any box is unchecked, you are still implementing, not verifying.
 
 ---
 
 ## API surface
 
-Copy imports and registration from the scaffold donor in
-`modular/max/python/max/pipelines/architectures/<donor>/`. For stale-import
+Copy imports and registration from the scaffold donor in your installed MAX
+package, `max/pipelines/architectures/<donor>/`. For stale-import
 traps and encoding/device rules, see
 [pitfalls-config.md § Import and config API traps](pitfalls-config.md#import-and-config-api-traps).

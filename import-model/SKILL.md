@@ -3,14 +3,15 @@ name: import-model
 description: >
   Use when importing a new model architecture into MAX from a Hugging Face model ID.
   Triggers on: "import a model into MAX", "add model to MAX", "bring up <HF model> in MAX".
-  Workflow: inspect Hugging Face config and modeling code, scaffold from a similar
-  MAX architecture, implement each graph layer to match HF, serve, then verify against
-  the Hugging Face reference. When the server runs but output is wrong (gibberish,
+  Workflow: inspect Hugging Face config and modeling code, pick the V2 graph or
+  ModuleV3 lane, scaffold from a similar MAX architecture, implement each layer to
+  match HF, serve, then verify against the Hugging Face reference. When the server
+  runs but output is wrong (gibberish,
   greedy mismatch, coherent-then-diverges), load debug-model for the
   divergence hunt instead of scalar-tap iteration.
 compatibility: Requires pixi env with MAX installed, network access to Hugging Face Hub, and a GPU for serving/verification.
 metadata:
-  argument-hint: "[Hugging Face model ID, e.g. 'Qwen/Qwen3-8B']"
+  argument-hint: "[Hugging Face model ID, for example 'Qwen/Qwen3-8B']"
 ---
 
 # Import a model into MAX
@@ -25,7 +26,7 @@ computation as the model's `modeling_<type>.py` in Hugging Face `transformers`,
 then loading the released weights into that graph and verifying the outputs
 match.
 
-The workflow has three phases: **decide & plan**, **implement**, **verify**.
+The workflow phases are **decide and plan**, **implement**, and **verify**.
 Phase 1 is reading and planning. Phase 2 is the port: implement every divergent
 sublayer in the graph. Phase 3 is verification, only after implementation is
 complete. Guards (preconditions that stop the line) gate the transitions
@@ -33,7 +34,7 @@ between activities; they are not steps of their own.
 
 **Anti-pattern:** running `scaffold.py`, tweaking `arch.py`, and serving
 while `<slug>.py` still implements the donor (`llama3`, `qwen3`, …). That is
-not a bring-up — logit verification will fail because the wrong architecture
+not a bring-up: logit verification will fail because the wrong architecture
 is running. Do not run verification scripts until
 [implement-graph.md](references/implement-graph.md) completion criteria pass.
 
@@ -68,29 +69,29 @@ pixi run python scripts/import_model.py compare <HF_MODEL_ID> --slug <slug> --po
 
 Port layout:
 
-- **`<port_dir>`** — slug folder containing `arch.py` and `ARCHITECTURES` in
+- **`<port_dir>`**: slug folder containing `arch.py` and `ARCHITECTURES` in
   `__init__.py` (usually `<output_dir>/<slug>/`). Pass this path to both
   `--custom-architectures` and `run_oss_gates.py --port-dir`.
 
 MAX resolves `--custom-architectures <port_dir>` by adding `dirname(<port_dir>)`
 to `sys.path` and importing `basename(<port_dir>)` as the module. Passing the
-parent directory imports the wrong module name (e.g. `custom-arch` instead of
-your slug).
+parent directory imports the wrong module name (for example, `custom-arch`
+instead of your slug).
 
 Import/API errors while editing: copy the donor arch under
-`modular/max/python/max/pipelines/architectures/<donor>/`; see
+`max/pipelines/architectures/<donor>/` in your installed MAX package; see
 [pitfalls-config.md § Import and config API traps](references/pitfalls-config.md#import-and-config-api-traps).
 
 ---
 
-## Phase 1 — Decide & plan
+## Phase 1: Decide and plan
 
 > **Guard: is the architecture already registered in MAX?**
 > Before writing any code, check whether MAX already registers the architecture
 > class in your model's `config.json::architectures[0]`. If
-> `pixi run python list_native_archs.py --match <Class>` returns a slug, run
+> `pixi run python scripts/list_native_archs.py --match <Class>` returns a slug, run
 > `pixi run max serve --model <HF_MODEL_ID>`
-> and stop — no port needed. Full procedure:
+> and stop; no port needed. Full procedure:
 > [native-arch-check.md](references/native-arch-check.md).
 
 ### Read `config.json`
@@ -106,13 +107,13 @@ Or use the helper, which fetches raw `config.json` from the Hub, runs the
 native-arch check, and prints every key mapped to the MAX API:
 
 ```bash
-pixi run python inspect_hf.py <HF_MODEL_ID>
+pixi run python scripts/inspect_hf.py <HF_MODEL_ID>
 ```
 
-Then list safetensors metadata (keys, shapes, dtypes — no weight download):
+Then list safetensors metadata (keys, shapes, dtypes; no weight download):
 
 ```bash
-pixi run python list_checkpoint_keys.py <HF_MODEL_ID> --summary
+pixi run python scripts/list_checkpoint_keys.py <HF_MODEL_ID> --summary
 ```
 
 Each row is one `config.json` key → `pipeline_config.model.huggingface_config`
@@ -124,7 +125,7 @@ implement in the graph. Field meanings and common deltas:
 Scan for hard blockers before you commit to a port:
 
 ```bash
-pixi run python check_walls.py <HF_MODEL_ID>
+pixi run python scripts/check_walls.py <HF_MODEL_ID>
 ```
 
 Exit 0 → continue. Exit 1 → review
@@ -135,7 +136,7 @@ wall is resolved or scoped out.
 
 Open `https://huggingface.co/<HF_MODEL_ID>` and read the model card for:
 
-- **The paper or blog post.** Skim its architecture section — authors call out
+- **The paper or blog post.** Skim its architecture section; authors call out
   the *interesting* modifications (QK-norm, MLA, sliding-window attention,
   MoE routing) because those are what they want credit for.
 - **"Tricks" mentioned in the card.** Phrases like "we introduce", "unlike
@@ -143,7 +144,7 @@ Open `https://huggingface.co/<HF_MODEL_ID>` and read the model card for:
   during implementation if you miss them now.
 
 If the card says the model is from a known family (Llama, Mistral, Qwen,
-Gemma), note that; the donor-comparison activity below will start from the
+Gemma), the donor-comparison activity below will start from the
 closest already-ported variant of that family.
 
 If the card mentions custom CUDA kernels, custom attention with no public
@@ -151,20 +152,42 @@ reference, FP8/FP4-only released weights, ALiBi, recurrence or state-space
 layers; see [recognize-walls.md](references/recognize-walls.md) before going
 further. Some models can't be ported with the public MAX surface alone.
 
+### Pick the implementation lane
+
+MAX has two model APIs, and the port lands on one of them. The V2 graph
+API (`max.nn` layers, `TensorValue`, an explicit `Graph`) is what most
+registered architectures use today. ModuleV3 (`max.experimental.nn`,
+`Tensor`, `F.lazy()` + `compile()`) is where the architecture library is
+heading, and it supports mesh sharding. The
+[migrate-max-v2-to-v3](../migrate-max-v2-to-v3/SKILL.md) skill holds the
+concept map for both.
+
+Pick the lane before choosing a donor; the donor must be on the same lane:
+
+- **ModuleV3**: the default for single-GPU ports and for models that
+  shard through a mesh. Read a V3 reference architecture in your
+  installed MAX package (`max/pipelines/architectures/`) before
+  implementing: `olmo3` for single-GPU, `kimik2_5_modulev3` for TP + EP.
+- **V2**: when the model needs distributed machinery ModuleV3 has no
+  equivalent for yet (`Signals`, `Allreduce`, `.shard()`), or kernels the
+  V3 library hasn't grown. The port serves as V2, and the
+  migrate-max-v2-to-v3 skill can move it later without touching the V2
+  code.
+
 ### Propose a plan; accept a veto
 
 Before any code, write a short paragraph stating what you'd do by default,
-then wait for the user to confirm or veto. Cover four axes (distribution
-shape, quantization variants, validation depth, hardware target) — all
-derived from what you've already read. Don't ask blank questions; state a
-default and let them push back.
+then wait for the user to confirm or veto. Cover distribution shape, the
+implementation lane you picked, quantization variants, validation depth,
+and hardware target, all derived from what you've already read. Don't
+ask blank questions; state a default and let them push back.
 
 Full guidance and an example paragraph:
 [plan-and-veto.md](references/plan-and-veto.md).
 
 If estimated weight bytes do not fit one GPU, read
 [distributed-transformer.md](references/distributed-transformer.md) before
-choosing `--start-from` — distribution shape matters more than attention
+choosing `--start-from`: distribution shape matters more than attention
 family alone.
 
 ### Compare with other MAX architectures
@@ -177,7 +200,7 @@ untied, single Linear vs. multi-step).
 List what your installed MAX registers (do not hard-code a slug list):
 
 ```bash
-pixi run python list_native_archs.py
+pixi run python scripts/list_native_archs.py
 ```
 
 Heuristic HF-signal → donor slug hints are in
@@ -192,6 +215,12 @@ Heuristic HF-signal → donor slug hints are in
 | Phi-ish (partial RoPE)                              | `phi3`            |
 | MoE (sparse experts, top-k routing)                 | `qwen3`           |
 | MLA (latent KV)                                     | `deepseekV3`      |
+
+On the ModuleV3 lane, start from a V3 donor instead: a `_modulev3`
+architecture (`llama3_modulev3`, `gpt_oss_modulev3`) or a natively-V3 one
+such as `olmo3`. The delta list is then V3-to-HF, and the
+[migrate-max-v2-to-v3](../migrate-max-v2-to-v3/SKILL.md) skill is the V3
+pattern catalog.
 
 Open the chosen MAX arch's directory and read its top-level model file
 (usually `<slug>.py`). You're answering: which functions/classes need to
@@ -209,7 +238,7 @@ class, and the final head. Compare each to the MAX equivalent. The reference
 [read-modeling-code.md](references/read-modeling-code.md) covers what to look
 for in each.
 
-Output of this activity: a **delta list** — one row per real difference between
+Output of this activity: a **delta list**, one row per real difference between
 HF and the donor MAX arch (attention, MLP/MoE, block wiring, head, RoPE,
 masks). You implement every row in Phase 2. Three or fewer structural deltas
 → good donor choice. Many deltas → pick a closer donor or plan to rewrite
@@ -218,41 +247,41 @@ Llama-ish" delta list.
 
 ---
 
-## Phase 2 — Implement
+## Phase 2: Implement
 
 ### Scaffold the file layout
 
 `scaffold.py` **only copies files**. It does not implement your model.
 
 ```bash
-pixi run python scaffold.py <HF_MODEL_ID> --start-from <max_arch_slug> --output-dir <output_dir>
+pixi run python scripts/scaffold.py <HF_MODEL_ID> --start-from <max_arch_slug> --output-dir <output_dir>
 ```
 
 This reads ``architectures[0]`` from the Hub ``config.json`` for
 ``arch.py::name``, then copies the chosen native MAX architecture into
 ``<output_dir>/<slug>/`` as five files:
 
-- `arch.py` — registration shell carrying the donor's `memory_planner=`
+- `arch.py`: registration shell carrying the donor's `memory_planner=`
   verbatim, including a configured planner such as
   `PagedMemoryPlanner.with_activation_reservation(...)` (verify `name=`,
   encoding, and `memory_planner=`). When the donor declares no planner, the
   field is left out with a TODO instead of being defaulted
-- `model_config.py` — donor config (must be rewired during implementation)
-- `model.py` — pipeline model shell (inherits the donor's batch processor,
+- `model_config.py`: donor config (must be rewired during implementation)
+- `model.py`: pipeline model shell (inherits the donor's batch processor,
   so input preparation keeps working without a `batch_processor.py`)
-- `weight_adapters.py` — donor renames (must be rewritten for your checkpoint)
-- `<slug>.py` — **donor graph** (must be edited to match HF during
+- `weight_adapters.py`: donor renames (must be rewritten for your checkpoint)
+- `<slug>.py`: **donor graph** (must be edited to match HF during
   implementation)
 
 After scaffold, you have a directory layout and a **wrong** graph. Stop here
-until the graph is implemented — do not serve.
+until the graph is implemented; do not serve.
 
 **Scaffold also leaves the donor's docstrings and code comments in place.**
 Sed-renaming class names doesn't touch text that records *what the file
 claims to do*. After scaffold, ``<slug>.py`` opens with a docstring
 describing the donor; the new class claims behaviors (single-GPU support,
 QK-norm, post-attention norm, etc.) the new file may not have. Rewriting
-those docstrings is a required part of the graph implementation — not
+those docstrings is a required part of the graph implementation, not
 optional polish. See [honest-docstrings.md](references/honest-docstrings.md)
 for the three-sentence pattern every module docstring should follow and a
 mandatory audit checklist before declaring the implementation done.
@@ -265,33 +294,44 @@ implementation activity executes them in code.
 Full checklist, work order, anti-patterns, and completion criteria:
 [implement-graph.md](references/implement-graph.md).
 
+The references below are the V2 lane treatment. On the ModuleV3 lane,
+`model_config.py`, `weight_adapters.py`, and `arch.py` follow the same
+steps, but `<slug>.py` is a `forward()` over `Tensor` values and
+`model.py` compiles with `F.lazy()` + `compile(weights=...)` instead of
+building a `Graph`. Layer constructors take keyword-only args, KV inputs
+unflatten in `forward()`, and weight names must preserve the root
+module's wrapper prefix. The
+[migrate-max-v2-to-v3](../migrate-max-v2-to-v3/SKILL.md) skill holds the
+V3 pattern catalog.
+
 In order:
 
-1. **`model_config.py`** — wire every `config.json` key from Phase 1 /
-   `inspect_hf.py`. Set `construct_kv_params()` head counts and head_dim to match HF.
-2. **`weight_adapters.py`** — map your checkpoint's safetensor keys to the MAX
+1. **`model_config.py`**: wire every `config.json` key from Phase 1 /
+   `inspect_hf.py`. Set `construct_kv_params()` head counts and head_dim
+   to match HF.
+2. **`weight_adapters.py`**: map your checkpoint's safetensor keys to the MAX
    module names you will use. Run `list_checkpoint_keys.py` first; see
    [rename-weights.md](references/rename-weights.md). After load, wire the
    coverage audit in [state-dict-audit.md](references/state-dict-audit.md)
    (especially MoE and `strict=False` tied embeddings).
-3. **`<slug>.py`** — for **each row in the delta list**, edit or replace
+3. **`<slug>.py`**: for **each row in the delta list**, edit or replace
    the donor class so MAX `forward()` mirrors HF `forward()`:
    - Attention (Q/K/V, RoPE, mask, GQA, softcap, …)
    - MLP or MoE (activation, routing, shared experts, …)
-   - Decoder block (**norm order and residual wiring** — not interchangeable
+   - Decoder block (**norm order and residual wiring**, not interchangeable
      with Llama)
    - Final norm and LM head (tie, logit scale, softcap)
-4. **`arch.py`** — confirm `name=` matches `architectures[0]`;
+4. **`arch.py`**: confirm `name=` matches `architectures[0]`;
    `default_encoding` matches Hub `torch_dtype`. Keep the scaffolded
    `memory_planner=` (copied from the donor); without it MAX budgets no
    activation memory for the KV cache and skips `max_batch_size` inference.
-   If scaffold left a `memory_planner` TODO, the donor had none — resolve it
+   If scaffold left a `memory_planner` TODO, the donor had none. Resolve it
    before serving: KV-cache ports need `memory_planner=PagedMemoryPlanner`,
    and only architectures doing their own memory estimation (diffusion,
    embedding) should leave it unset. Add `batching=` only if the port's
-   batching diverges from the donor's — the model shell inherits the donor's
+   batching diverges from the donor's; the model shell inherits the donor's
    batch processor.
-5. **`model.py`** — only if HF wraps the backbone differently (VL, multi-modal).
+5. **`model.py`**: only if HF wraps the backbone differently (VL, multi-modal).
 
 Read HF `modeling_<type>.py` **while editing**, not after verification fails.
 Subclass the donor only where HF and donor match; rewrite the class where the
@@ -299,7 +339,7 @@ delta list said they differ.
 
 **The implementation is done when** every item in
 [implement-graph.md](references/implement-graph.md#completion-criteria-required-before-serving)
-is checked — especially: every delta has a corresponding code change, weights
+is checked, especially: every delta has a corresponding code change, weights
 load without orphan keys, and the **scaffold-comment audit** in
 [honest-docstrings.md](references/honest-docstrings.md#mandatory-audit-before-declaring-the-implementation-done)
 has been run with each match classified as OK / Lie / Stale. A passing audit is
@@ -314,41 +354,41 @@ pixi run rg -i -n 'qwen|llama|mistral|cohere|gemma|phi|deepseek|olmo|granite|qwe
 ```
 
 Your implementation-complete message must explicitly attest to the audit
-(e.g. ``"docstrings rewritten to the three-sentence pattern; rg returns N
-hits, all legitimate lineage references"``). A claim without the
+(for example, ``"docstrings rewritten to the three-sentence pattern; rg
+returns N hits, all legitimate lineage references"``). A claim without the
 attestation isn't a completion.
 
-Preflight (Hub config + arch registration — run before first serve):
+Preflight (Hub config + arch registration, run before first serve):
 
 ```bash
-pixi run python run_oss_gates.py <HF_MODEL_ID> --port-dir <port_dir>/
+pixi run python scripts/run_oss_gates.py <HF_MODEL_ID> --port-dir <port_dir>/
 ```
 
 > **Guard: local smoke gate (mandatory before Phase 3).**
 > `pixi run max serve` cold-compiles for 5–25 minutes. Before serving, run the
-> four local checks in [serve-and-iterate.md](references/serve-and-iterate.md)
+> local checks in [serve-and-iterate.md](references/serve-and-iterate.md)
 > (import smoke, graph dry-build, adapter⇄graph key diff, weights-format
 > preflight). `run_oss_gates.py` covers walls, checkpoint metadata, and
-> `arch.py` name/encoding — not a substitute for those four.
+> `arch.py` name/encoding is not a substitute for those checks.
 
 ---
 
-## Phase 3 — Verify
+## Phase 3: Verify
 
 ### Check if it generates coherent text
 
 **Prerequisite:** graph implementation complete. Do not serve to "see what
-happens" during implementation — fix config, adapters, and graph first.
+happens" during implementation; fix config, adapters, and graph first.
 
 **Sanity-check the HF reference FIRST.** Run HF alone on the model card's
 intended prompt template, before involving MAX. If HF itself produces
-gibberish, your oracle is broken — fixing your port against a broken
+gibberish, your oracle is broken; fixing your port against a broken
 oracle wastes days.
 
 Then serve with
 `pixi run max serve --model-path <HF_MODEL_ID> --custom-architectures <port_dir>`
 and probe with the model card's intended template (not just "The capital of
-France is" — that prompt is wrong for PrefixLMs and instruction-tuned models).
+France is"; that prompt is wrong for PrefixLMs and instruction-tuned models).
 Three possible outcomes: server crashes during load → fix config/adapters;
 server starts but returns garbage → divergence hunt; server returns plausible
 text → run at `max_tokens=64+` before celebrating.
@@ -380,7 +420,7 @@ Use `import-model` for bring-up scaffolding and gates. Use
 Before building dumpers, a fast sanity check:
 
 ```bash
-pixi run python compare_layers.py <HF_MODEL_ID> \
+pixi run python scripts/compare_layers.py <HF_MODEL_ID> \
   --slug <your_slug> --port 8000 \
   --prompt "The capital of France is"
 ```
@@ -408,20 +448,24 @@ after the divergence hunt passed usually means tokenizer/chat-template
 mismatch, dtype mismatch with the released weights, or nonzero MAX sampling.
 
 When matching text comes out, the port is done **for greedy text**. Real
-"done" depends on the validation depth picked during planning — pick a tier
-from 1 (smoke) to 6 (logit parity).
+"done" depends on the validation depth picked during planning; pick a tier
+from smoke to logit parity.
 
-Full HF-comparison recipe, divergence triage, and the 6-tier validation
+If you ported on the V2 lane, the
+[`migrate-max-v2-to-v3`](../migrate-max-v2-to-v3/SKILL.md) skill can move
+the verified port to ModuleV3 without touching the V2 code.
+
+Full HF-comparison recipe, divergence triage, and the validation-tier
 table: [validation-tiers.md](references/validation-tiers.md).
 
 ---
 
 ## Common pitfalls
 
-Use [pitfalls.md](references/pitfalls.md) as an index — find your symptom,
-then load the one category file (config, weights, graph, or serving) —
+Use [pitfalls.md](references/pitfalls.md) as an index: find your symptom,
+then load the one category file (config, weights, graph, or serving), and
 [honest-docstrings.md](references/honest-docstrings.md) for the docstring
-audit specifically. The two big ones:
+audit specifically. The most common:
 
 - **Scaffold ≠ port.** Do not serve or verify until the graph implements
   every delta in `<slug>.py`.

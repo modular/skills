@@ -80,6 +80,10 @@ it expects the model to be in:
   `--max-length`, `--task`, and `--trust-remote-code`. Use
   `--custom-architectures` for an architecture you ported with
   `/import-model`.
+- [`/migrate-max-v2-to-v3`](migrate-max-v2-to-v3/SKILL.md): Ports a model
+  written against the V2 graph API (`max.nn`, `TensorValue`, explicit `Graph`)
+  to ModuleV3 (`max.experimental.nn`), leaving the V2 code untouched and
+  verifying greedy outputs match.
 - [`/debug-model`](debug-model/SKILL.md): Takes over once a model loads and
   generates tokens but the output is wrong. Builds tensor-dump comparators and
   bisects serve versus pipeline. For crashes on load, use `/import-model`.

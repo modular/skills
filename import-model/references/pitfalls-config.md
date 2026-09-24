@@ -30,7 +30,7 @@ unnecessarily. Match what the model ships in.
 MAX's `MemoryEstimator.plan_from_sizes` sizes the model from the HF
 config's `torch_dtype`, *before* `weight_adapters.convert_safetensor_state_dict`
 runs. If the released checkpoint ships FP32 tensors but your adapter casts them
-to BF16 at load time, the estimator still thinks the model is FP32-sized — a 25
+to BF16 at load time, the estimator still thinks the model is FP32-sized: a 25
 GiB BF16 model will pre-estimate at ~50 GiB and trip
 `--device-memory-utilization 0.5` even though the real on-device footprint fits
 comfortably.
@@ -45,12 +45,12 @@ casts to BF16 at load time.
 
 The exact GELU function matters. Look up `config.hidden_act` in
 `transformers/activations.py::ACT2FN` to see which one HF uses, and
-match it in MAX. The three common variants:
+match it in MAX. The common variants:
 
-- `gelu` — erf-based: `0.5 * x * (1 + erf(x / sqrt(2)))`.
-- `gelu_new` / `gelu_tanh` — tanh approximation:
+- `gelu`, erf-based: `0.5 * x * (1 + erf(x / sqrt(2)))`.
+- `gelu_new` / `gelu_tanh`, tanh approximation:
   `0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x**3)))`.
-- `gelu_fast` — a different approximation; rare.
+- `gelu_fast`, a different approximation; rare.
 
 Visually similar outputs but cos_sim of ~0.95 at every MLP exit is the
 signal.
@@ -59,8 +59,8 @@ signal.
 
 Do not maintain a parallel API cheat sheet. When imports or pydantic fields
 fail, **copy from the donor arch you scaffolded** under
-``modular/max/python/max/pipelines/architectures/<donor>/`` (``arch.py``,
-``model.py``, ``model_config.py``) — that tree is the source of truth.
+``max/pipelines/architectures/<donor>/`` (``arch.py``,
+``model.py``, ``model_config.py``); that tree is the source of truth.
 
 Common mistakes after older MAX examples or blog posts:
 
@@ -71,22 +71,23 @@ Common mistakes after older MAX examples or blog posts:
 | `pipeline_config.model_config`                          | `pipeline_config.model`                                                                              |
 | `pipeline_config.max_length`                            | `pipeline_config.model.max_length`                                                                   |
 | `pipeline_config.max_batch_size`                        | `pipeline_config.runtime.max_batch_size`                                                             |
-| `KVCacheParams(..., cache_strategy=..., n_devices=...)` | Removed in current MAX — use `kv_cache_config.to_params(...)` only                                   |
+| `KVCacheParams(..., cache_strategy=..., n_devices=...)` | Removed in current MAX; use `kv_cache_config.to_params(...)` only                                    |
 | `RMSNorm(..., devices=...)`                             | No `devices` on `RMSNorm` (unlike `LayerNorm`, which takes a device list)                            |
 | `RotaryEmbedding(..., device=...)`                      | No `device` on `RotaryEmbedding.__init__`                                                            |
 
 `SupportedArchitecture` uses plain strings for `default_encoding`,
-`supported_encodings`, and `rope_type` — not enums.
+`supported_encodings`, and `rope_type`, not enums.
 
 **Weights on disk:** only `WeightsFormat.safetensors` and `WeightsFormat.gguf`
 exist (`max/graph/weights/format.py`). No `.bin` / PyTorch shard loader. See
 weights preflight in [serve-and-iterate.md](serve-and-iterate.md).
 
-**Encoding vs device** (`max/pipelines/lib/config/config_enums.py`):
+**Encoding vs device** (`max/pipelines/modeling/config_enums.py`):
 
 | Encoding                                   | Devices      |
 |--------------------------------------------|--------------|
-| `float32`, `bfloat16`                      | `cpu`, `gpu` |
+| `float32`                                  | `cpu`, `gpu` |
+| `float16`, `bfloat16`                      | `gpu` only   |
 | `float8_e4m3fn`, `float4_e2m1fnx2`, `gptq` | `gpu` only   |
 | `q4_k`, `q4_0`, `q6_k`                     | `cpu` only   |
 

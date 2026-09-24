@@ -1,11 +1,11 @@
 # Building the per-layer tensor comparator
 
-Three artifacts. Total time ~45 minutes to build, then comparison is
+Total time ~45 minutes to build, then comparison is
 seconds.
 
 The reference does not have to be `AutoModelForCausalLM`. Any PyTorch model
 you can attach forward hooks to works the same way: a `trust_remote_code=True`
-modeling file, or — when debugging a quantized or multi-GPU variant — your own
+modeling file, or (when debugging a quantized or multi-GPU variant) your own
 already-verified MAX port's reference dumps from the original bring-up.
 
 Set dump directories via environment variables or script arguments. Use the
@@ -36,7 +36,7 @@ model = AutoModelForCausalLM.from_pretrained(
 model.eval()
 
 backbone = model.model  # adjust for non-decoder-only architectures
-# Confirm this is the decoder stack, not a multimodal/encoder wrapper —
+# Confirm this is the decoder stack, not a multimodal/encoder wrapper:
 # hooks on the wrong module produce dumps that compare against nothing.
 print("backbone:", type(backbone).__name__)
 
@@ -72,8 +72,8 @@ Run time: ~2 to 3 min model load + ~1s prefill.
 
 ## Artifact 2: MAX dumper
 
-Two pieces: graph edits to expose hidden states, and a standalone runner
-that bypasses `max serve` to capture all graph outputs.
+This dumper has graph edits to expose hidden states and a standalone
+runner that bypasses `max serve` to capture all graph outputs.
 
 ### Graph edits (in your port's model file)
 
@@ -109,22 +109,54 @@ return (last_logits, *dump_tensors) if _DUMP else (last_logits,)
 
 If your port stacks layers through a helper such as
 `forward_sequential_layers` (the distributed-transformer path), don't unroll
-the loop — pass the tap as its `on_layer_output` callback, and tap shard 0
-(`hs[0]`) for sharded hidden states. Two warnings for that path:
+the loop; pass the tap as its `on_layer_output` callback, and tap shard 0
+(`hs[0]`) for sharded hidden states. Warnings for that path:
 
 - **Keep subgraphs on.** Disabling subgraphs in dump mode can cause CUDA
   errors; disabling them for serve debugging can hang compile.
-- Run the final norm across all shards (e.g. `forward_sharded_layers`)
+- Run the final norm across all shards (for example, `forward_sharded_layers`)
   before tapping its output.
 
 **Critical**: cast to FP32 in the graph. `np.from_dlpack` fails on BF16;
 the graph-side cast lets the dumper use plain numpy.
 
+ModuleV3 ports tap inside `forward()` instead. Same FP32 rule, same
+dump list, but the tap appends to a plain list in the module and the
+compiled model returns the taps as extra outputs:
+
+```python
+import os
+from max.dtype import DType
+from max.experimental.tensor import Tensor
+
+_DUMP = os.environ.get("PORT_DUMP") == "1"
+dump_tensors: list[Tensor] = []
+
+
+def _tap(t: Tensor) -> None:
+    if _DUMP:
+        dump_tensors.append(t.cast(DType.float32))
+
+
+# inside forward(): after the embedding, after each layer, after the
+# final norm:
+_tap(h)
+...
+return (*last_logits, *dump_tensors) if _DUMP else (last_logits,)
+```
+
+The flag is read at trace time, so compile with `PORT_DUMP=1` set. The
+standalone runner below is lane-independent; on V3 the outputs are
+`Tensor` objects, so read each dump through `.driver_tensor` (a
+`Buffer`) before `np.from_dlpack`. The
+[`migrate-max-v2-to-v3`](../../migrate-max-v2-to-v3/SKILL.md) skill holds
+the V2/V3 concept map.
+
 ### Standalone dumper
 
 This runner uses internal pipeline APIs that shift between MAX releases. If
 an import or attribute below fails, grep your installed `max.pipelines`
-package for the symbol and adjust — the pattern (build a context, reserve KV
+package for the symbol and adjust: the pattern (build a context, reserve KV
 cache, prepare token inputs, call the inner model's `execute`) is what
 matters, not the exact paths.
 

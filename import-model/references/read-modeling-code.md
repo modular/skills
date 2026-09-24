@@ -23,12 +23,12 @@ Hugging Face cache under `~/.cache/huggingface/hub/<repo>/snapshots/...`.
 Read the file top-down following the class hierarchy. For a typical causal
 LM, the relevant classes are:
 
-1. **`<ModelType>Config`** — already covered when you read `config.json`.
-2. **`<ModelType>Attention`** — how Q/K/V are computed and combined.
-3. **`<ModelType>MLP`** — the feedforward layer.
-4. **`<ModelType>DecoderLayer`** — how attention + MLP + norms are wired.
-5. **`<ModelType>Model`** — the embedding, layer stack, final norm.
-6. **`<ModelType>ForCausalLM`** — the LM head and the loss.
+1. **`<ModelType>Config`**: already covered when you read `config.json`.
+2. **`<ModelType>Attention`**: how Q/K/V are computed and combined.
+3. **`<ModelType>MLP`**: the feedforward layer.
+4. **`<ModelType>DecoderLayer`**: how attention + MLP + norms are wired.
+5. **`<ModelType>Model`**: the embedding, layer stack, final norm.
+6. **`<ModelType>ForCausalLM`**: the LM head and the loss.
 
 You're looking at `__init__` (what layers exist) and `forward` (how they
 compose). Skip everything else.
@@ -41,47 +41,47 @@ from.
 
 Common findings:
 
-- **Extra norms** — `self.q_norm = nn.RMSNorm(...)`, `self.k_norm = ...`
+- **Extra norms**: `self.q_norm = nn.RMSNorm(...)`, `self.k_norm = ...`
   indicates QK-norm. Two extra norms inside attention; their dim is either
   `head_dim` (Olmo2-style, per-head) or `hidden_size` (full Q/K).
-- **Extra projections** — `self.q_a_proj`, `self.q_b_proj`,
+- **Extra projections**: `self.q_a_proj`, `self.q_b_proj`,
   `self.kv_a_proj_with_mqa`, `self.kv_b_proj` is MLA. Two-stage Q
   projection, two-stage KV projection with a latent in the middle.
-- **Router** — `self.gate = nn.Linear(hidden, num_experts, bias=False)` is
+- **Router**: `self.gate = nn.Linear(hidden, num_experts, bias=False)` is
   MoE. Followed by `self.experts = nn.ModuleList([...])`.
-- **Side embeddings** — `self.alibi_bias`, `self.rotary_emb` at the
+- **Side embeddings**: `self.alibi_bias`, `self.rotary_emb` at the
   attention level (vs. module level) signals positional encoding variants.
 
 ## What to look for in attention `forward`
 
 This is where most architectures diverge. Read line by line:
 
-1. **Q/K/V computation** — are they separate (`self.q_proj(x)`, ...) or
+1. **Q/K/V computation**: are they separate (`self.q_proj(x)`, ...) or
    fused (`self.qkv_proj(x).chunk(3)`)? The weight adapter needs to match.
-2. **Shape reshaping** — `view(bsz, q_len, num_heads, head_dim)` is
+2. **Shape reshaping**: `view(bsz, q_len, num_heads, head_dim)` is
    standard. If you see `view(bsz, q_len, num_heads, 2, head_dim // 2)`,
    that's interleaved RoPE.
-3. **QK norm** — `q = self.q_norm(q)` before the dot product. Check the
+3. **QK norm**: `q = self.q_norm(q)` before the dot product. Check the
    *dim* the norm acts on (head_dim is per-head, hidden_size is full).
-4. **RoPE application** — `apply_rotary_pos_emb(q, k, cos, sin)`. Look
+4. **RoPE application**: `apply_rotary_pos_emb(q, k, cos, sin)`. Look
    at the rotary embedding class: does it use `rotate_half` (split-half)
    or some variant? Is RoPE applied to only part of the head
    (`q[..., :rope_dim]` vs. full `q`)?
-5. **GQA repeat** — for `num_key_value_heads < num_attention_heads`,
+5. **GQA repeat**: for `num_key_value_heads < num_attention_heads`,
    K and V get repeated. `repeat_kv(key_states, self.num_key_value_groups)`.
-6. **Mask** — sliding window vs. causal vs. sink-token. Check whether the
+6. **Mask**: sliding window vs. causal vs. sink-token. Check whether the
    layer index conditionally selects between two masks.
-7. **Softmax scale** — `attn_weights / math.sqrt(self.head_dim)` is
+7. **Softmax scale**: `attn_weights / math.sqrt(self.head_dim)` is
    default. Some models use a different scaling (`1 / d` for normalized
    attention, MuP `attention_multiplier`).
-8. **Softcap** — `attn_weights = soft_cap * torch.tanh(attn_weights / soft_cap)`
+8. **Softcap**: `attn_weights = soft_cap * torch.tanh(attn_weights / soft_cap)`
    sits between the score and the softmax in Gemma 2.
-9. **Output projection** — `self.o_proj(attn_output)`, usually
+9. **Output projection**: `self.o_proj(attn_output)`, usually
    unremarkable.
 
 ## What to look for in MLP `forward`
 
-Most MLPs are one of three shapes:
+Most MLPs take one of the shapes below:
 
 - **Gated SwiGLU** (Llama-family): `down_proj(silu(gate_proj(x)) * up_proj(x))`.
 - **Standard two-layer** (GPT-style): `fc2(act(fc1(x)))`. Activation may
@@ -102,7 +102,7 @@ Things that bite:
 ## What to look for in the block `forward`
 
 The block class composes attention and MLP with norms and residual
-connections. Three common patterns:
+connections. Common patterns:
 
 - **Pre-norm** (Llama, Mistral, Qwen, default):
 
@@ -127,7 +127,7 @@ connections. Three common patterns:
   ```
 
 If your model is anything other than the first pattern, the stock MAX
-`TransformerBlock` will not match — see "Choosing an edit strategy" below.
+`TransformerBlock` will not match; see "Choosing an edit strategy" below.
 
 ## What to look for in the final head
 
@@ -146,35 +146,35 @@ pixi run rg -n 'lm_head\(' modeling_<type>.py
 
 Flag anything that is not a bare `hidden_states` (or `outputs[0]`):
 
-- **Width divisor** — `self.lm_head(h / (hidden_size / dim_model_base))`,
+- **Width divisor**: `self.lm_head(h / (hidden_size / dim_model_base))`,
   `h / self.scale_width`, or `h * (dim_model_base / hidden_size)`. Common on
   MiniCPM-family and some Cohere-style configs. `dim_model_base` is often
   smaller than `hidden_size`; missing the divisor makes logits wrong with no
   load error.
-- **MuP `logits_scaling`** — multiply or divide logits *after* `lm_head` (see
+- **MuP `logits_scaling`**: multiply or divide logits *after* `lm_head` (see
   [divergences.md §13](divergences.md#13-mup-scalars)). Do not confuse with a
   pre-head width divisor; check order in HF.
-- **Final logit softcap** — Gemma 2: `softcap * tanh(logits / softcap)` after
+- **Final logit softcap**: Gemma 2: `softcap * tanh(logits / softcap)` after
   the linear.
 
 Record the exact formula in your delta list (scalar name, config keys, and
 whether scaling happens before or after `lm_head`). In MAX, mirror that
-order in `<slug>.py` — usually `ops.mul` / `ops.div` on the last hidden
+order in `<slug>.py`, usually `ops.mul` / `ops.div` on the last hidden
 state before the output `Linear`, not only a post-hoc logits tweak.
 
 ### Other head variants
 
-- **LM head** — `self.lm_head = nn.Linear(hidden, vocab, bias=False)`.
+- **LM head**: `self.lm_head = nn.Linear(hidden, vocab, bias=False)`.
   If `config.tie_word_embeddings=True`, the LM head reuses the embedding
   matrix.
-- **Multi-step head** — some models apply additional layers between the
+- **Multi-step head**: some models apply additional layers between the
   final block and the LM head (`LayerNorm → Linear → activation →
   Linear(vocab)`). The MAX template likely ends with a single Linear; you
   need to add the extra layers.
 
 ## Choosing an edit strategy
 
-Given your delta list, pick one of three approaches:
+Given your delta list, pick an approach:
 
 | What differs                                             | Strategy                                         |
 |----------------------------------------------------------|--------------------------------------------------|
@@ -183,7 +183,7 @@ Given your delta list, pick one of three approaches:
 | One attention variant (sliding window, MLA, softcap)     | Subclass `Attention`, override `__call__`        |
 | Block layout differs (post-norm, peri-LN)                | Subclass `TransformerBlock`, override `__call__` |
 | Multi-step head                                          | Subclass the top-level model, override the head  |
-| Attention is fundamentally new (recurrence, state-space) | Write from scratch with `max.nn` primitives      |
+| Attention is fundamentally new (recurrence, state-space) | Write from scratch with the lane's primitives     |
 | MoE routing differs from existing MAX MoE archs          | Write from scratch                               |
 
 Prefer subclassing. Every layer you write from scratch is a layer you can

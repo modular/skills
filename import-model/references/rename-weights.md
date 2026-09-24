@@ -10,8 +10,8 @@ checkpoint **actually** ships — keys, shapes, and dtypes — without
 downloading tensor payloads:
 
 ```bash
-pixi run python list_checkpoint_keys.py <HF_MODEL_ID> --summary
-pixi run python list_checkpoint_keys.py <HF_MODEL_ID> \
+pixi run python scripts/list_checkpoint_keys.py <HF_MODEL_ID> --summary
+pixi run python scripts/list_checkpoint_keys.py <HF_MODEL_ID> \
   --prefix model. --limit 40
 ```
 
@@ -56,7 +56,7 @@ These are the names your adapter must produce.
 Then list the Hub safetensor keys (preferred — no download):
 
 ```bash
-pixi run python list_checkpoint_keys.py <HF_MODEL_ID>
+pixi run python scripts/list_checkpoint_keys.py <HF_MODEL_ID>
 ```
 
 Or, if you already have a local cache, open shards with `safe_open`:

@@ -18,7 +18,7 @@ The divergence hunt has two layers of debugging:
 From the repo root (via the OSS shim):
 
 ```bash
-pixi run python compare_layers.py <HF_MODEL_ID> \
+pixi run python scripts/compare_layers.py <HF_MODEL_ID> \
   --slug <your_slug> \
   --port 8000 \
   --prompt "The capital of France is"
@@ -40,14 +40,14 @@ Flags:
 Preflight before serve (guard + scaffold):
 
 ```bash
-pixi run python check_walls.py <HF_MODEL_ID>
-pixi run python run_oss_gates.py <HF_MODEL_ID> --port-dir <port_dir>/
+pixi run python scripts/check_walls.py <HF_MODEL_ID>
+pixi run python scripts/run_oss_gates.py <HF_MODEL_ID> --port-dir <port_dir>/
 ```
 
 After serve (during the divergence hunt):
 
 ```bash
-pixi run python run_oss_gates.py <HF_MODEL_ID> \
+pixi run python scripts/run_oss_gates.py <HF_MODEL_ID> \
   --port-dir <port_dir>/ --phase verify --slug <slug> --port 8000
 ```
 
