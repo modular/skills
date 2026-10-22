@@ -632,7 +632,8 @@ async Mojo yet.
 
 ## Function types and closures
 
-No lambda. Closures use bare `def` with a capture list in `{}` after the arg
+Lambda expressions (`lambda (args) -> return_type: body`) are supported as of
+Mojo 1.1.0. Closures use bare `def` with a capture list in `{}` after the arg
 list. `escaping`, `capturing`, `@__parameter`, and `@__copy_capture` are
 removed:
 
