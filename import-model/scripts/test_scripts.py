@@ -204,8 +204,7 @@ def test_native_mapping_reads_every_registration() -> None:
 
     ``qwen3`` and ``qwen3_embedding`` both register ``Qwen3ForCausalLM``.
     ``qwen3`` also registers ``Qwen3MoeForCausalLM`` in a second call.
-    ``Speculator(name=...)`` and ``replace(base, name=...)`` register names
-    too.
+    ``replace(base, name=...)`` registers names too.
     """
     mapping = max_arch_paths.list_native_arch_mapping(_ARCHS)
     assert {"qwen3", "qwen3_embedding"} <= set(mapping["Qwen3ForCausalLM"])

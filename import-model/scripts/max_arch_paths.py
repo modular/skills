@@ -267,15 +267,14 @@ def supported_architecture_calls(tree: ast.Module) -> Iterator[ast.Call]:
 
 # ``replace`` is ``dataclasses.replace``, which derives one registration
 # from another: ``replace(mimo_v2_arch, name="MiMoV2DFlashContext...")``.
-_REGISTRATIONS = frozenset({"SupportedArchitecture", "Speculator", "replace"})
+_REGISTRATIONS = frozenset({"SupportedArchitecture", "replace"})
 
 
 def registered_names(tree: ast.Module) -> list[str]:
     """Every architecture name an ``arch.py`` registers, in source order.
 
-    Counts ``SupportedArchitecture(name=...)``, the speculative-decoding
-    ``Speculator(name=...)``, and registrations derived with
-    ``dataclasses.replace(base, name=...)``.
+    Counts ``SupportedArchitecture(name=...)`` and registrations derived
+    with ``dataclasses.replace(base, name=...)``.
     """
     names: dict[str, None] = {}
     for node in ast.walk(tree):
