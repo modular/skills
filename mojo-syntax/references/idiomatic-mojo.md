@@ -497,7 +497,7 @@ literal identity is spelling-based (`4` vs `0x4` are different keys).
 Pick by shape, in order:
 
 - **Fallback to a default** → `opt.or_else(default)`. One expression, no
-  branch: `var global_rank = my_rank.or_else(Int(ctx.id()))`. Works on
+  branch: `var global_rank = my_rank.or_else(Int(ctx.device().id))`. Works on
   runtime and comptime Optionals alike. This replaces the
   `opt.value() if opt else default` ternary and the two-line
   default-then-overwrite dance.
@@ -511,10 +511,10 @@ Pick by shape, in order:
   loudly instead of silently skipping work.
 ```mojo
 # WRONG: guard-then-unwrap
-var global_rank = my_rank.value() if my_rank else Int(ctx.id())
+var global_rank = my_rank.value() if my_rank else Int(ctx.device().id)
 
 # CORRECT: fallback is one expression
-var global_rank = my_rank.or_else(Int(ctx.id()))
+var global_rank = my_rank.or_else(Int(ctx.device().id))
 ```
 
 For the branch-on-presence shape, `if case pattern = value:` evaluates the
