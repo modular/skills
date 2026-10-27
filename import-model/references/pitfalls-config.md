@@ -79,8 +79,8 @@ posts:
 | `pipeline_config.max_length`                            | `pipeline_config.model.max_length`                                                                |
 | `pipeline_config.max_batch_size`                        | `pipeline_config.runtime.max_batch_size`                                                          |
 | `KVCacheParams(..., cache_strategy=..., n_devices=...)` | Removed in current MAX. Use `kv_cache_config.to_params(...)` only                                 |
-| `from max.nn import Linear, RMSNorm` in the port        | `from max.experimental.nn import Linear`, `from max.experimental.nn.norm import RMSNorm`          |
-| `from max.nn import PagedCacheValues`                   | `from max.experimental.nn.common_layers.kv_cache import PagedCacheValues` (has `from_upstream()`) |
+| `from max.nn.legacy import Linear, RMSNorm` in the port        | `from max.experimental.nn import Linear`, `from max.experimental.nn.norm import RMSNorm`          |
+| `from max.nn.legacy import PagedCacheValues`                   | `from max.experimental.nn.common_layers.kv_cache import PagedCacheValues` (has `from_upstream()`) |
 | `Linear(in_dim, out_dim, dtype=..., device=...)`        | `Linear(in_dim, out_dim, bias=False)`. `model.py` places the module with `.to()`                  |
 | `ModuleList(*layers)`                                   | `ModuleList(layers)`. It takes one iterable and raises `TypeError` on several arguments           |
 

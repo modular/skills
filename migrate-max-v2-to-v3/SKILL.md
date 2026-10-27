@@ -1,9 +1,9 @@
 ---
 name: migrate-max-v2-to-v3
 description: >
-  Use when migrating a MAX model from the V2 graph API (max.nn, TensorValue,
+  Use when migrating a MAX model from the V2 graph API (max.nn.legacy, TensorValue,
   explicit Graph construction) to ModuleV3 (max.experimental.nn, Tensor,
-  F.lazy() + compile()). Triggers on: "migrate to ModuleV3", "port a max.nn
+  F.lazy() + compile()). Triggers on: "migrate to ModuleV3", "port a max.nn.legacy
   model to max.experimental", "convert TensorValue to Tensor", "update my
   model to the V3 API", "ModuleV3 migration". Workflow: read the concept map,
   rewrite imports and __call__ signatures, and replace graph building with
@@ -22,7 +22,7 @@ metadata:
 
 ModuleV3 (`max.experimental.nn`) is the current MAX model API. A V2 model
 builds an explicit `Graph` over `TensorValue` values with layers from
-`max.nn`. A ModuleV3 model declares a `forward()` over `Tensor` values and
+`max.nn.legacy`. A ModuleV3 model declares a `forward()` over `Tensor` values and
 compiles with `F.lazy()` + `compile()`. Read
 [references/v2-v3-basics.md](references/v2-v3-basics.md) first. It covers
 `F.lazy()`, `compile(weights=...)`, dtype handling with `auto_cast`,
@@ -34,7 +34,7 @@ rules.
 ### 1. Confirm the model is V2
 
 Classify by imports, and read the file when grep and the imports disagree.
-V2 code imports its layers from `max.nn` and builds an explicit `Graph`
+V2 code imports its layers from `max.nn.legacy` and builds an explicit `Graph`
 over `TensorValue`. ModuleV3 code imports `max.experimental.nn` and
 subclasses its `Module`. Scoped greps shortcut the read:
 
@@ -64,9 +64,9 @@ by default.
 ```python
 # REMOVE:
 from max.graph import Graph, TensorValue, BufferValue, ops
-from max.nn.layer import Module, LayerList
-from max.nn.linear import Linear
-from max.nn.norm.rms_norm import RMSNorm
+from max.nn.legacy.layer import Module, LayerList
+from max.nn.legacy.linear import Linear
+from max.nn.legacy.norm.rms_norm import RMSNorm
 
 # ADD:
 from max.experimental import functional as F
@@ -77,16 +77,16 @@ from max.experimental.nn.norm import RMSNorm
 from max.experimental.nn.sequential import ModuleList
 
 # KEEP (TensorValue-free, shared with V2):
-from max.nn.kv_cache import KVCacheParams, KVCacheParamInterface
-from max.nn.attention import MHAMaskVariant
+from max.nn.legacy.kv_cache import KVCacheParams, KVCacheParamInterface
+from max.nn.legacy.attention import MHAMaskVariant
 ```
 
 - `TensorType` and `DeviceRef` stay from `max.graph`. They define input
   specs, not graph values.
-- `max.nn` imports are fine when the imported class doesn't use
+- `max.nn.legacy` imports are fine when the imported class doesn't use
   `TensorValue`.
 - `PagedCacheValues` comes from
-  `max.experimental.nn.common_layers.kv_cache` for the V3 type. `max.nn`
+  `max.experimental.nn.common_layers.kv_cache` for the V3 type. `max.nn.legacy`
   exports a `PagedCacheValues` of its own, an alias for the V2 input type
   without `from_upstream()`. Import from the `max.experimental` path to
   get the V3 type.
@@ -167,7 +167,7 @@ state dict.
 
 ### 8. Move the KV cache unflatten into `forward()`
 
-The KV cache parameter types stay in `max.nn`. The values type has a V3
+The KV cache parameter types stay in `max.nn.legacy`. The values type has a V3
 home in `max.experimental.nn.common_layers.kv_cache`. Use the methods on
 `kv_params` plus `PagedCacheValues.from_upstream()`:
 

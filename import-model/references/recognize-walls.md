@@ -30,7 +30,7 @@ schemes. Check the HF checkpoint's ``quantization_config`` before
 committing to any MoE quant variant. The ModuleV3 path (``QuantizedMoE``
 in ``deepseekV3_modulev3/layers/quant_moe.py``) accepts block-scaled FP8
 and NVFP4 only, and raises ``ValueError`` for any other format. The table
-covers the graph-API path (``max.nn.moe.MoEQuantized``), where an
+covers the graph-API path (``max.nn.legacy.moe.MoEQuantized``), where an
 unsupported scheme fails a ``block_size`` assertion at first serve.
 
 | HF format (compressed-tensors / native)  | Weight scaling                              | Activation scaling                       | MAX 26.4 `MoEQuantized`?                                                         |

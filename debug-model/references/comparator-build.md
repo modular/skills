@@ -194,11 +194,11 @@ model). The dump itself is under one second.
 ### Quick inspection with `PrintHook`
 
 The tensor dumpers above save each layer's activations to disk for offline
-diffing. For a faster look that needs no model edits, `max.nn.hooks.PrintHook`
+diffing. For a faster look that needs no model edits, `max.nn.legacy.hooks.PrintHook`
 prints every layer's inputs and outputs as the model runs:
 
 ```python
-from max.nn.hooks import PrintHook
+from max.nn.legacy.hooks import PrintHook
 
 hook = PrintHook()
 hook.name_layers(model)  # name each Module by its attribute path

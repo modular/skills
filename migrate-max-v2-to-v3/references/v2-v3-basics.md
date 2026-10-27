@@ -1,7 +1,7 @@
 # ModuleV2 vs ModuleV3 essentials
 
 How a model, a layer, and a distributed layer look in the V2 graph API
-(`max.nn`, `TensorValue`, explicit `Graph`) and in ModuleV3
+(`max.nn.legacy`, `TensorValue`, explicit `Graph`) and in ModuleV3
 (`max.experimental.nn`, `Tensor`, `F.lazy()` + `compile()`).
 
 ## Building and running a model
@@ -188,7 +188,7 @@ from max.experimental.nn.sequential import ModuleList
 The KV cache splits across packages: `PagedCacheValues` comes from
 `max.experimental.nn.common_layers.kv_cache`, while `KVCacheParams`,
 `KVCacheParamInterface`, and `MultiKVCacheParams` stay in
-`max.nn.kv_cache`. `max.nn` also exports a `PagedCacheValues` of its
+`max.nn.legacy.kv_cache`. `max.nn.legacy` also exports a `PagedCacheValues` of its
 own, the same name resolving to the V2 input type, which lacks
 `from_upstream()`. The `max.experimental` path carries the V3 type.
 
@@ -196,22 +196,22 @@ own, the same name resolving to the V2 input type, which lacks
 
 ```python
 from max.graph import DeviceRef, TensorValue, ops, ...
-from max.nn.layer import LayerList, Module
-from max.nn.embedding import VocabParallelEmbedding
+from max.nn.legacy.layer import LayerList, Module
+from max.nn.legacy.embedding import VocabParallelEmbedding
 ```
 
-Any file that imports layers from `max.nn` (not `max.experimental.nn`)
+Any file that imports layers from `max.nn.legacy` (not `max.experimental.nn`)
 needs a second look.
 
-### Some max.nn imports are fine
+### Some max.nn.legacy imports are fine
 
-`max.nn` is fine when the imported class or method doesn't use
+`max.nn.legacy` is fine when the imported class or method doesn't use
 `TensorValue`:
 
 ```python
-from max.nn.comm.ep import EPCommBuffers
-from max.nn.rotary_embedding import DeepseekYarnRopeScalingParams
-from max.nn.kv_cache import KVCacheInputs, KVCacheParamInterface
+from max.nn.legacy.comm.ep import EPCommBuffers
+from max.nn.legacy.rotary_embedding import DeepseekYarnRopeScalingParams
+from max.nn.legacy.kv_cache import KVCacheInputs, KVCacheParamInterface
 ```
 
 ## When there is no Tensor equivalent
@@ -246,7 +246,7 @@ from max.nn.kv_cache import KVCacheInputs, KVCacheParamInterface
   from max.experimental.sharding import DeviceMapping
   from max.experimental.tensor import Tensor
   from max.graph import DeviceRef, TensorValue
-  from max.nn.data_parallelism import split_batch_replicated
+  from max.nn.legacy.data_parallelism import split_batch_replicated
 
 
   def split_replicated_batch(

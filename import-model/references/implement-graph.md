@@ -59,7 +59,7 @@ class MyMLP(Module[[Tensor], Tensor]):
   `max.experimental.functional`. `PagedCacheValues` comes from
   `max.experimental.nn.common_layers.kv_cache`. KV cache parameter types
   (`KVCacheParams`, `MultiKVCacheParams`, `KVCacheParamInterface`) and
-  `MHAMaskVariant` come from `max.nn.kv_cache` and `max.nn.attention`. They
+  `MHAMaskVariant` come from `max.nn.legacy.kv_cache` and `max.nn.legacy.attention`. They
   hold configuration, not tensors. `TensorType` and `DeviceRef` come from
   `max.graph` and describe inputs.
 - **Constructors.** Layer arguments are keyword-friendly and carry no
