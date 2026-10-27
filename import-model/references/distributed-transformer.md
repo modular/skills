@@ -58,7 +58,7 @@ Set `multi_gpu_supported=True` in `arch.py` for a port that shards.
 `default_device(mesh)`, so every weight is created on the mesh. The axis name
 tells the parallel layers which mesh axis to shard over: `"tp"` for tensor
 parallelism, `"dp"` for data parallelism
-(`max.experimental.nn.common_layers.mesh_axis`):
+(`max.nn.common_layers.mesh_axis`):
 
 ```python
 from max.experimental.sharding import DeviceMesh
@@ -93,9 +93,9 @@ creates each shard on its device:
   `row_parallel(Linear(...))`. Each device holds a slice of the input
   features and produces a partial sum.
 - **Vocab-parallel embedding**: `VocabParallelEmbedding(vocab_size,
-  dim=hidden_size)` from `max.experimental.nn.common_layers.embedding`.
+  dim=hidden_size)` from `max.nn.common_layers.embedding`.
 
-All of these live in `max.experimental.nn.common_layers.linear` unless noted.
+All of these live in `max.nn.common_layers.linear` unless noted.
 `gemma3_modulev3/layers/attention.py` is the reference for a TP attention
 module.
 

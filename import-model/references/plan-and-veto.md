@@ -10,7 +10,7 @@ already read:
 
 - **Missing ModuleV3 pieces.** Name any piece the model needs that
   ModuleV3 doesn't have yet (a layer, a distributed primitive, a quantized
-  path), and whether you'll add it to `max.experimental.nn` or need the
+  path), and whether you'll add it to `max.nn` or need the
   user to decide.
 - **Distribution shape.** Single-GPU dense, multi-GPU tensor-parallel,
   multi-GPU DP+EP (MoE), or text-only port of a multimodal wrapper. The

@@ -35,7 +35,7 @@ computes in `forward()`:
 
 ```python
 from max.experimental import functional as F
-from max.experimental.nn import Linear, Module
+from max.nn import Linear, Module
 from max.experimental.tensor import Tensor
 
 
@@ -50,14 +50,14 @@ class MyMLP(Module[[Tensor], Tensor]):
         return self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))
 ```
 
-- **Imports.** Layers come from `max.experimental.nn` (`Linear`, `Embedding`,
-  `RMSNorm` in `max.experimental.nn.norm`, `ModuleList` in
-  `max.experimental.nn.sequential`) and the `max.experimental.nn.common_layers`
+- **Imports.** Layers come from `max.nn` (`Linear`, `Embedding`,
+  `RMSNorm` in `max.nn.norm`, `ModuleList` in
+  `max.nn.sequential`) and the `max.nn.common_layers`
   submodules (`MLP` in `mlp`, rotary embeddings in `rotary_embedding`,
   `ColumnParallelLinear` and `RowParallelLinear` in `linear`, and the
   attention kernels in `functional_kernels`). Ops come from
   `max.experimental.functional`. `PagedCacheValues` comes from
-  `max.experimental.nn.common_layers.kv_cache`. KV cache parameter types
+  `max.nn.common_layers.kv_cache`. KV cache parameter types
   (`KVCacheParams`, `MultiKVCacheParams`, `KVCacheParamInterface`) and
   `MHAMaskVariant` come from `max.nn.legacy.kv_cache` and `max.nn.legacy.attention`. They
   hold configuration, not tensors. `TensorType` and `DeviceRef` come from
@@ -185,7 +185,7 @@ are identical to HF. When the delta list flagged a difference:
 - **Block wiring differs**: rewrite the block module. Don't inherit the donor
   `forward()` if norm/residual order differs.
 - **New attention pattern** (MLA, sliding window per layer index): a new
-  attention `Module` built from `max.experimental.nn.common_layers` and the
+  attention `Module` built from `max.nn.common_layers` and the
   kernels in `common_layers.functional_kernels`.
 - **NoPE on some layers**: give those layers a rotary module with an identity
   `freqs_cis` table

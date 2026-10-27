@@ -613,7 +613,7 @@ def render_module(*, donor: Donor, short: str) -> str:
     )
     return f'''{_GENERATED_HEADER}"""Root module for the {short} port.
 
-Subclasses {root} from the {donor.slug} donor, a ``max.experimental.nn.Module``.
+Subclasses {root} from the {donor.slug} donor, a ``max.nn.Module``.
 Override ``__init__`` for structural deltas (norm variants, RoPE tweaks, MuP
 scalars read from ``{short}Config``) and ``forward()`` for dataflow deltas.
 Debug a layer by adding ``F.print(tensor, "name")`` taps in ``forward()``.

@@ -179,7 +179,7 @@ at the corresponding MAX module attribute names.
 
 ### `Conv2d` weight layout follows `permute`
 
-`max.experimental.nn.Conv2d(..., permute=True)` takes its `weight` in PyTorch
+`max.nn.Conv2d(..., permute=True)` takes its `weight` in PyTorch
 order, `(out_channels, in_channels / num_groups, height, width)`, and reads it
 in that layout, so the adapter passes the HF tensor through unchanged. That mode
 also takes NCHW input, and its FCRS filter layout needs a cuDNN GPU. With the

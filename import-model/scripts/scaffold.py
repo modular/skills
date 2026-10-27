@@ -20,7 +20,7 @@ Default mode (recommended): produces a small subclass skeleton that inherits
 the donor's behavior and exposes the deltas a port typically overrides:
 
 - ``model_config.py``: the donor's config plus the port's novel HF fields.
-- ``<slug>.py``: the port's root ``max.experimental.nn.Module``, a subclass
+- ``<slug>.py``: the port's root ``max.nn.Module``, a subclass
   of the donor's root module. Override ``__init__`` and ``forward()``.
 - ``model.py``: the donor's pipeline model with ``_instantiate_module``
   building the port's root module.

@@ -72,7 +72,7 @@ it expects the model to be in:
 
 - [`/import-model`](import-model/SKILL.md): Imports a new model architecture
   into MAX from a Hugging Face model ID as a ModuleV3 model
-  (`max.experimental.nn`), scaffolding from a similar registered architecture
+  (`max.nn`), scaffolding from a similar registered architecture
   and verifying outputs match. Hands off to `/debug-model` when
   the server runs but the text is wrong.
 - [`/serve-model`](serve-model/SKILL.md): Takes you from no environment to a
@@ -83,7 +83,7 @@ it expects the model to be in:
   `/import-model`.
 - [`/migrate-max-v2-to-v3`](migrate-max-v2-to-v3/SKILL.md): Ports a model
   written against the V2 graph API (`max.nn.legacy`, `TensorValue`, explicit `Graph`)
-  to ModuleV3 (`max.experimental.nn`), leaving the V2 code untouched and
+  to ModuleV3 (`max.nn`), leaving the V2 code untouched and
   verifying greedy outputs match.
 - [`/debug-model`](debug-model/SKILL.md): Takes over once a model loads and
   generates tokens but the output is wrong. Builds tensor-dump comparators and

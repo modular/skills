@@ -4,7 +4,7 @@ description: >
   Use when importing a new model architecture into MAX from a Hugging Face model ID.
   Triggers on: "import a model into MAX", "add model to MAX", "bring up <HF model> in MAX".
   Workflow: inspect the Hugging Face config and modeling code, then scaffold from
-  a similar ModuleV3 architecture. Implement each layer as a max.experimental.nn
+  a similar ModuleV3 architecture. Implement each layer as a max.nn
   Module that matches HF, serve, then verify against the Hugging Face reference.
   When the server runs but output is wrong (gibberish, greedy mismatch,
   coherent-then-diverges), load debug-model for the divergence hunt.
@@ -25,7 +25,7 @@ Porting a model to MAX means writing a ModuleV3 model that performs the same
 computation as the model's `modeling_<type>.py` in Hugging Face
 `transformers`. You then compile it with the released weights and verify that
 the outputs match. ModuleV3 is MAX's model API. Layers are `Module` subclasses
-from `max.experimental.nn` with a `forward()` over `Tensor` values. Ops come
+from `max.nn` with a `forward()` over `Tensor` values. Ops come
 from `max.experimental.functional` (imported as `F`). The pipeline builds the
 module under `F.lazy()` and compiles it with `compile(weights=...)`.
 Single-GPU, tensor-parallel, and expert-parallel models all use ModuleV3.
@@ -180,7 +180,7 @@ then wait for the user to confirm or veto. Cover distribution shape, the
 donor, quantization variants, validation depth, and hardware target, all
 derived from what you've already read. If the model needs a piece ModuleV3
 doesn't have yet (a layer, a distributed primitive, a quantized path), name
-it and say whether you'll add it to `max.experimental.nn` or need the user
+it and say whether you'll add it to `max.nn` or need the user
 to decide. Don't ask blank questions. State a default and let the user push
 back.
 

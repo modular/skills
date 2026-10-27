@@ -186,7 +186,7 @@ Given your delta list, pick an approach:
 | One attention variant (sliding window, MLA, softcap)     | Subclass the donor attention, override `forward` |
 | Block layout differs (post-norm, peri-LN)                | Subclass the donor block, override `forward`     |
 | Multi-step head                                          | Subclass the top-level model, override the head  |
-| Attention is fundamentally new (recurrence, state-space) | Write a new `Module` from `max.experimental.nn`  |
+| Attention is fundamentally new (recurrence, state-space) | Write a new `Module` from `max.nn`  |
 | MoE routing differs from existing MAX MoE archs          | Write from scratch                               |
 
 Prefer subclassing. An inherited layer has already passed the donor's

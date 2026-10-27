@@ -2,7 +2,7 @@
 
 How a model, a layer, and a distributed layer look in the V2 graph API
 (`max.nn.legacy`, `TensorValue`, explicit `Graph`) and in ModuleV3
-(`max.experimental.nn`, `Tensor`, `F.lazy()` + `compile()`).
+(`max.nn`, `Tensor`, `F.lazy()` + `compile()`).
 
 ## Building and running a model
 
@@ -68,7 +68,7 @@ class Linear(Module, Shardable):
 
 ```python
 from max.experimental import random
-from max.experimental.nn import Module
+from max.nn import Module
 from max.experimental.tensor import Tensor
 
 
@@ -119,7 +119,7 @@ linear_shards = linear.shard(devices)
 ### Distributed Linear (ModuleV3)
 
 ```python
-from max.experimental.nn.common_layers.linear import (
+from max.nn.common_layers.linear import (
     col_parallel,
     row_parallel,
 )
@@ -176,17 +176,17 @@ from max.experimental.sharding import (
     Sharded,
 )
 
-from max.experimental.nn import Module
-from max.experimental.nn.embedding import Embedding
-from max.experimental.nn.common_layers.functional_kernels import ...
-from max.experimental.nn.common_layers.kv_cache import PagedCacheValues
-from max.experimental.nn.common_layers.linear import ColumnParallelLinear
-from max.experimental.nn.norm import RMSNorm
-from max.experimental.nn.sequential import ModuleList
+from max.nn import Module
+from max.nn.embedding import Embedding
+from max.nn.common_layers.functional_kernels import ...
+from max.nn.common_layers.kv_cache import PagedCacheValues
+from max.nn.common_layers.linear import ColumnParallelLinear
+from max.nn.norm import RMSNorm
+from max.nn.sequential import ModuleList
 ```
 
 The KV cache splits across packages: `PagedCacheValues` comes from
-`max.experimental.nn.common_layers.kv_cache`, while `KVCacheParams`,
+`max.nn.common_layers.kv_cache`, while `KVCacheParams`,
 `KVCacheParamInterface`, and `MultiKVCacheParams` stay in
 `max.nn.legacy.kv_cache`. `max.nn.legacy` also exports a `PagedCacheValues` of its
 own, the same name resolving to the V2 input type, which lacks
@@ -200,7 +200,7 @@ from max.nn.legacy.layer import LayerList, Module
 from max.nn.legacy.embedding import VocabParallelEmbedding
 ```
 
-Any file that imports layers from `max.nn.legacy` (not `max.experimental.nn`)
+Any file that imports layers from `max.nn.legacy` (not `max.nn`)
 needs a second look.
 
 ### Some max.nn.legacy imports are fine
@@ -233,9 +233,9 @@ from max.nn.legacy.kv_cache import KVCacheInputs, KVCacheParamInterface
   ```
 
 - A missing op used across architectures goes into
-  `max/experimental/nn/common_layers/functional_kernels.py` in the
+  `max/nn/common_layers/functional_kernels.py` in the
   installed `max` package. In the MAX source repository, the file lives
-  at `max/python/max/experimental/nn/common_layers/functional_kernels.py`.
+  at `max/python/max/nn/common_layers/functional_kernels.py`.
 - A missing layer gets a ModuleV3 version, added to `common_layers` or
   to the architecture's own `<arch>/layers/<layer_name>.py`.
 - Other NN components: make the existing class handle both `Tensor` and

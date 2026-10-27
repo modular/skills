@@ -94,7 +94,7 @@ invocation). See also
 
 ## A shared subgraph assumes uniform layer signatures
 
-`as_subgraph(layer, name=...)` from `max.experimental.nn` traces one subgraph
+`as_subgraph(layer, name=...)` from `max.nn` traces one subgraph
 per name and input signature, and calls it from every layer that uses that
 name, so the compiler processes a repeated block once. Each call reads its own
 weights by name. The body comes from the **first** call, including that

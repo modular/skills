@@ -2,7 +2,7 @@
 name: migrate-max-v2-to-v3
 description: >
   Use when migrating a MAX model from the V2 graph API (max.nn.legacy, TensorValue,
-  explicit Graph construction) to ModuleV3 (max.experimental.nn, Tensor,
+  explicit Graph construction) to ModuleV3 (max.nn, Tensor,
   F.lazy() + compile()). Triggers on: "migrate to ModuleV3", "port a max.nn.legacy
   model to max.experimental", "convert TensorValue to Tensor", "update my
   model to the V3 API", "ModuleV3 migration". Workflow: read the concept map,
@@ -20,7 +20,7 @@ metadata:
 
 **Input**: the V2 model source to migrate (`$ARGUMENTS`).
 
-ModuleV3 (`max.experimental.nn`) is the current MAX model API. A V2 model
+ModuleV3 (`max.nn`) is the current MAX model API. A V2 model
 builds an explicit `Graph` over `TensorValue` values with layers from
 `max.nn.legacy`. A ModuleV3 model declares a `forward()` over `Tensor` values and
 compiles with `F.lazy()` + `compile()`. Read
@@ -35,7 +35,7 @@ rules.
 
 Classify by imports, and read the file when grep and the imports disagree.
 V2 code imports its layers from `max.nn.legacy` and builds an explicit `Graph`
-over `TensorValue`. ModuleV3 code imports `max.experimental.nn` and
+over `TensorValue`. ModuleV3 code imports `max.nn` and
 subclasses its `Module`. Scoped greps shortcut the read:
 
 ```bash
@@ -71,10 +71,10 @@ from max.nn.legacy.norm.rms_norm import RMSNorm
 # ADD:
 from max.experimental import functional as F
 from max.experimental.tensor import Tensor
-from max.experimental.nn import Module
-from max.experimental.nn.linear import Linear
-from max.experimental.nn.norm import RMSNorm
-from max.experimental.nn.sequential import ModuleList
+from max.nn import Module
+from max.nn.linear import Linear
+from max.nn.norm import RMSNorm
+from max.nn.sequential import ModuleList
 
 # KEEP (TensorValue-free, shared with V2):
 from max.nn.legacy.kv_cache import KVCacheParams, KVCacheParamInterface
@@ -86,7 +86,7 @@ from max.nn.legacy.attention import MHAMaskVariant
 - `max.nn.legacy` imports are fine when the imported class doesn't use
   `TensorValue`.
 - `PagedCacheValues` comes from
-  `max.experimental.nn.common_layers.kv_cache` for the V3 type. `max.nn.legacy`
+  `max.nn.common_layers.kv_cache` for the V3 type. `max.nn.legacy`
   exports a `PagedCacheValues` of its own, an alias for the V2 input type
   without `from_upstream()`. Import from the `max.experimental` path to
   get the V3 type.
@@ -101,7 +101,7 @@ from max.nn.legacy.attention import MHAMaskVariant
 - Layer constructors take keyword args and drop `dtype=` and `device=`.
   V3 uses default dtype and device contexts, and `model.to(device)` moves
   the module to one device after construction.
-- `LayerList` becomes `ModuleList` from `max.experimental.nn.sequential`.
+- `LayerList` becomes `ModuleList` from `max.nn.sequential`.
   `ModuleList` subclasses `list`, so it takes a single iterable:
   `ModuleList(layers)`. `ModuleList(*layers)` raises `TypeError`.
 - Parameters are plain `Tensor` objects. Create them with `Tensor.zeros()`,
@@ -168,7 +168,7 @@ state dict.
 ### 8. Move the KV cache unflatten into `forward()`
 
 The KV cache parameter types stay in `max.nn.legacy`. The values type has a V3
-home in `max.experimental.nn.common_layers.kv_cache`. Use the methods on
+home in `max.nn.common_layers.kv_cache`. Use the methods on
 `kv_params` plus `PagedCacheValues.from_upstream()`:
 
 ```python
@@ -191,7 +191,7 @@ V2 sharding sets a `ShardingStrategy` on each layer and calls
 the model and a placement mapping on each weight:
 
 ```python
-from max.experimental.nn.common_layers.linear import row_parallel
+from max.nn.common_layers.linear import row_parallel
 from max.experimental.sharding import DeviceMesh
 
 model.mesh = DeviceMesh(devices, (n_devices,), ("tp",))

@@ -2,7 +2,7 @@
 
 The `import-model` skill brings a new large language model architecture to MAX
 from a Hugging Face model ID, written in MAX's ModuleV3 API
-(`max.experimental.nn`). It drives a phased workflow (decide and plan,
+(`max.nn`). It drives a phased workflow (decide and plan,
 implement, then verify), and you stay the coordinator and validator at each
 checkpoint.
 
@@ -40,7 +40,7 @@ implementation:
 2. **Config mapping**: The agent maps Hugging Face config keys to the typed
    configuration class the model is built from.
 3. **Module definition**: The agent modifies the `Module` subclasses from
-   `max.experimental.nn` to implement each architecture difference identified
+   `max.nn` to implement each architecture difference identified
    in the delta list.
 4. **Weight translation**: The agent writes weight adapters that translate
    weight names from the Hugging Face checkpoint to the parameter names of the

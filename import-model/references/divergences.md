@@ -52,7 +52,7 @@ the prompt.
 For models where `num_key_value_heads < num_attention_heads`, K and V
 must be repeated `num_attention_heads / num_key_value_heads` times before
 the attention dot product. The ragged attention kernels in
-`max.experimental.nn.common_layers.functional_kernels`
+`max.nn.common_layers.functional_kernels`
 (`flash_attention_ragged`) handle this from the KV head count in
 `kv_params`. Custom attention math outside those kernels must repeat K and
 V itself.
@@ -331,7 +331,7 @@ table.
 
 The identity table must match how MAX stores `freqs_cis`,
 not how HF names the RoPE style. The rotary classes in
-`max.experimental.nn.common_layers.rotary_embedding` store `freqs_cis` as
+`max.nn.common_layers.rotary_embedding` store `freqs_cis` as
 interleaved pairs, `[cos_0, sin_0, cos_1, sin_1, …]`, whatever the
 `interleaved` flag says. The flag only selects how Q and K are rotated. So
 build the identity table as `[1, 0, 1, 0, …]`. A split-half identity,

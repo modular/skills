@@ -57,7 +57,7 @@ routing scheme, or recurrence with non-standard memory), no template will
 match. Pick one of these paths:
 
 - Pick the closest decoder and write the unique pieces from scratch as
-  `Module` subclasses built from `max.experimental.nn` and
+  `Module` subclasses built from `max.nn` and
   `max.experimental.functional`. Accept that the scaffold-stage parity check
   will fail until you replace the divergent module.
 - See [recognize-walls.md](recognize-walls.md): some architectures aren't
@@ -83,10 +83,10 @@ What you're looking for:
   (for example, `olmo3/layers/transformer.py`).
 - The attention class: a `Module` over `Tensor` and `PagedCacheValues` (for
   example, `olmo3/layers/attention.py`), composed from
-  `max.experimental.nn.common_layers` and the fused kernels in
+  `max.nn.common_layers` and the fused kernels in
   `common_layers.functional_kernels`.
-- The MLP class: `MLP` from `max.experimental.nn.common_layers.mlp`, or a
-  `Module` built from `max.experimental.nn.Linear` and the activations in
+- The MLP class: `MLP` from `max.nn.common_layers.mlp`, or a
+  `Module` built from `max.nn.Linear` and the activations in
   `max.experimental.functional`.
 
 These classes show what you can subclass when you need to change one
