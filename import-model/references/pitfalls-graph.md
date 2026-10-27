@@ -30,8 +30,8 @@ wrong device. Pass both arguments:
 ```python
 from max.driver import CPU
 from max.dtype import DType
-from max.experimental import functional as F
-from max.experimental.tensor import Tensor
+from max import functional as F
+from max.tensor import Tensor
 
 x = Tensor.ones([2, 4], dtype=DType.float32)
 

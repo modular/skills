@@ -21,7 +21,7 @@ text model as `self.language_model`, every text-model weight is named
 names from the lazily built module:
 
 ```python
-from max.experimental import functional as F
+from max import functional as F
 
 with F.lazy():
     model = MyModel(config, kv_params)

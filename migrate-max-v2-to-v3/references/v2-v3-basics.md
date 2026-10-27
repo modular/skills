@@ -67,9 +67,9 @@ class Linear(Module, Shardable):
 ### Linear (ModuleV3)
 
 ```python
-from max.experimental import random
+from max.functional import random
 from max.nn import Module
-from max.experimental.tensor import Tensor
+from max.tensor import Tensor
 
 
 class Linear(Module):
@@ -85,7 +85,7 @@ class Linear(Module):
   `.to()` on the tensor directly. `Module.to()` rejects a multi-device
   mesh; see the distributed section below.
 - There is no `Weight` class. Weights are `Tensor` objects, created
-  with `Tensor.zeros()`, `max.experimental.random.*`, and similar
+  with `Tensor.zeros()`, `max.functional.random.*`, and similar
   factories.
 - `__call__()` becomes `forward()`.
 - Constructor args are keyword-only where V2 accepted positions:
@@ -123,7 +123,7 @@ from max.nn.common_layers.linear import (
     col_parallel,
     row_parallel,
 )
-from max.experimental.sharding import DeviceMesh
+from max.tensor.sharding import DeviceMesh
 
 device_mesh = DeviceMesh(devices=(...), mesh_shape=(n,), axis_names=("tp",))
 linear = Linear(...)
@@ -158,7 +158,7 @@ with F.lazy(), default_dtype(dtype), default_device(llm.mesh):
 
 A ModuleV3 module should work both eagerly and compiled. It takes
 `Tensor` where V2 took `TensorValue`, and its ops come from
-`max.experimental.functional` (`F.gather()`, not `ops.gather()`).
+`max.functional` (`F.gather()`, not `ops.gather()`).
 
 ## Imports
 
@@ -167,10 +167,10 @@ A ModuleV3 module should work both eagerly and compiled. It takes
 ```python
 from max.dtype import DType
 
-from max.experimental import functional as F
-from max.experimental.tensor import Tensor
+from max import functional as F
+from max.tensor import Tensor
 
-from max.experimental.sharding import (
+from max.tensor.sharding import (
     DeviceMapping,
     DeviceMesh,
     Sharded,
@@ -221,7 +221,7 @@ from max.nn.legacy.kv_cache import KVCacheInputs, KVCacheParamInterface
   function on each device's shard for a distributed input:
 
   ```python
-  from max.experimental import functional as F
+  from max import functional as F
   from max.graph import TensorValue, ops
 
 
@@ -243,8 +243,8 @@ from max.nn.legacy.kv_cache import KVCacheInputs, KVCacheParamInterface
   wrapper. Wrapping `split_batch_replicated()`:
 
   ```python
-  from max.experimental.sharding import DeviceMapping
-  from max.experimental.tensor import Tensor
+  from max.tensor.sharding import DeviceMapping
+  from max.tensor import Tensor
   from max.graph import DeviceRef, TensorValue
   from max.nn.legacy.data_parallelism import split_batch_replicated
 

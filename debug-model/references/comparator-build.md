@@ -88,7 +88,7 @@ tensors as extra outputs of the root module's `forward()`:
 import os
 
 from max.dtype import DType
-from max.experimental.tensor import Tensor
+from max.tensor import Tensor
 
 _DUMP = os.environ.get("PORT_DUMP") == "1"
 
@@ -211,7 +211,7 @@ implementation of the same model, add the same hook to both and run them.
 Compare the printed layer values to find the first one that disagrees. When
 the reference is a `transformers` model, hook it with the PyTorch forward
 hooks from Artifact 1. For multi-device (distributed) tensors,
-`F.print(value, name)` from `max.experimental.functional` prints each shard
+`F.print(value, name)` from `max.functional` prints each shard
 with its device.
 
 `PrintHook` prints to the console, so use it for quick triage. For cosine

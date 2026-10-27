@@ -45,7 +45,7 @@ expects:
 
 ```python
 # In a Python REPL with your scaffold importable:
-from max.experimental import functional as F
+from max import functional as F
 from your_package.your_slug import YourModel
 
 # Build lazily, so no weights are allocated:

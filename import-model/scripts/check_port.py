@@ -41,13 +41,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from max import functional as F
 from max.dtype import DType
-from max.experimental import functional as F
-from max.experimental.tensor import default_dtype
 from max.pipelines import PIPELINE_REGISTRY, PipelineConfig
 from max.pipelines.lib.pipeline_args import PipelineArgs
 from max.pipelines.lib.pipeline_runtime_config import PipelineRuntimeConfig
 from max.pipelines.modeling.types import PipelineTask
+from max.tensor import default_dtype
 
 _CASTABLE = frozenset({DType.float32, DType.bfloat16})
 

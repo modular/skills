@@ -69,8 +69,8 @@ from max.nn.legacy.linear import Linear
 from max.nn.legacy.norm.rms_norm import RMSNorm
 
 # ADD:
-from max.experimental import functional as F
-from max.experimental.tensor import Tensor
+from max import functional as F
+from max.tensor import Tensor
 from max.nn import Module
 from max.nn.linear import Linear
 from max.nn.norm import RMSNorm
@@ -105,7 +105,7 @@ from max.nn.legacy.attention import MHAMaskVariant
   `ModuleList` subclasses `list`, so it takes a single iterable:
   `ModuleList(layers)`. `ModuleList(*layers)` raises `TypeError`.
 - Parameters are plain `Tensor` objects. Create them with `Tensor.zeros()`,
-  `max.experimental.random.*`, and similar factories.
+  `max.functional.random.*`, and similar factories.
 
 ### 5. Rewrite operations
 
@@ -192,7 +192,7 @@ the model and a placement mapping on each weight:
 
 ```python
 from max.nn.common_layers.linear import row_parallel
-from max.experimental.sharding import DeviceMesh
+from max.tensor.sharding import DeviceMesh
 
 model.mesh = DeviceMesh(devices, (n_devices,), ("tp",))
 linear = row_parallel(Linear(in_dim, out_dim))

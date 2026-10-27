@@ -61,8 +61,8 @@ parallelism, `"dp"` for data parallelism
 (`max.nn.common_layers.mesh_axis`):
 
 ```python
-from max.experimental.sharding import DeviceMesh
-from max.experimental.tensor import default_device
+from max.tensor.sharding import DeviceMesh
+from max.tensor import default_device
 
 
 def _instantiate_module(self, model_config: MyConfig) -> MyModel:

@@ -58,7 +58,7 @@ match. Pick one of these paths:
 
 - Pick the closest decoder and write the unique pieces from scratch as
   `Module` subclasses built from `max.nn` and
-  `max.experimental.functional`. Accept that the scaffold-stage parity check
+  `max.functional`. Accept that the scaffold-stage parity check
   will fail until you replace the divergent module.
 - See [recognize-walls.md](recognize-walls.md): some architectures aren't
   portable with the public MAX surface today.
@@ -87,7 +87,7 @@ What you're looking for:
   `common_layers.functional_kernels`.
 - The MLP class: `MLP` from `max.nn.common_layers.mlp`, or a
   `Module` built from `max.nn.Linear` and the activations in
-  `max.experimental.functional`.
+  `max.functional`.
 
 These classes show what you can subclass when you need to change one
 method. A subclass that overrides one method keeps your port small.

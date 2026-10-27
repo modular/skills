@@ -26,7 +26,7 @@ computation as the model's `modeling_<type>.py` in Hugging Face
 `transformers`. You then compile it with the released weights and verify that
 the outputs match. ModuleV3 is MAX's model API. Layers are `Module` subclasses
 from `max.nn` with a `forward()` over `Tensor` values. Ops come
-from `max.experimental.functional` (imported as `F`). The pipeline builds the
+from `max.functional` (imported as `F`). The pipeline builds the
 module under `F.lazy()` and compiles it with `compile(weights=...)`.
 Single-GPU, tensor-parallel, and expert-parallel models all use ModuleV3.
 Multi-GPU models shard through a `DeviceMesh`.

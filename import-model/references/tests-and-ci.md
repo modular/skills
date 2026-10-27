@@ -19,7 +19,7 @@ vary inputs without recompiling.
 import pytest
 from max.driver import Accelerator
 from max.dtype import DType
-from max.experimental.tensor import TensorType
+from max.tensor.tensor import TensorType
 
 from my_port.layers import MyMLP
 

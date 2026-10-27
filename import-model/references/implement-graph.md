@@ -34,9 +34,9 @@ signature, builds its parameters and child modules in `__init__()`, and
 computes in `forward()`:
 
 ```python
-from max.experimental import functional as F
+from max import functional as F
 from max.nn import Linear, Module
-from max.experimental.tensor import Tensor
+from max.tensor import Tensor
 
 
 class MyMLP(Module[[Tensor], Tensor]):
@@ -56,7 +56,7 @@ class MyMLP(Module[[Tensor], Tensor]):
   submodules (`MLP` in `mlp`, rotary embeddings in `rotary_embedding`,
   `ColumnParallelLinear` and `RowParallelLinear` in `linear`, and the
   attention kernels in `functional_kernels`). Ops come from
-  `max.experimental.functional`. `PagedCacheValues` comes from
+  `max.functional`. `PagedCacheValues` comes from
   `max.nn.common_layers.kv_cache`. KV cache parameter types
   (`KVCacheParams`, `MultiKVCacheParams`, `KVCacheParamInterface`) and
   `MHAMaskVariant` come from `max.nn.legacy.kv_cache` and `max.nn.legacy.attention`. They
@@ -93,7 +93,7 @@ Wrap a function over `TensorValue` with `F.functional()` to get a function
 over `Tensor`:
 
 ```python
-from max.experimental import functional as F
+from max import functional as F
 from max.graph import TensorValue, ops
 
 
