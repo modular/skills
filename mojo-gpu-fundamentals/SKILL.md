@@ -35,7 +35,7 @@ Mojo GPU programming has **no CUDA syntax**. No `__global__`, `__device__`,
 | `blockIdx.x * blockDim.x + threadIdx.x` | `global_idx.x` (convenience, returns `Int`)                                          |
 | `__shfl_down_sync(mask, val, d)`        | `warp.shuffle_down(val, d)` / `warp.sum` / `warp.max` / `warp.min` / `warp.reduce`   |
 | `atomicAdd(&ptr, val)`                  | `Atomic.fetch_add(ptr, val)`                                                         |
-| Raw `float*` kernel args                | `TileTensor[dtype, LayoutType, MutAnyOrigin]`                                        |
+| Raw `float*` kernel args                | `MutTileTensor[dtype, LT, MutUntrackedOrigin]` (`Imm` variants for inputs)           |
 | `cudaFree(ptr)`                         | Automatic — buffers freed when out of scope                                          |
 
 ## Imports
@@ -53,7 +53,8 @@ from max.gpu.host import DeviceContext, DeviceBuffer              # host-side AP
 from std.atomic import Atomic                                     # atomics
 
 # Layout system — NOT in std, separate package
-from layout import TileTensor, TensorLayout, Idx, row_major, stack_allocation
+from layout import TileTensor, ImmTileTensor, MutTileTensor, TensorLayout
+from layout import Idx, row_major, stack_allocation
 ```
 
 ## Kernel definition
@@ -70,8 +71,8 @@ The assert unlocks N-D indexing:
 def my_kernel[
     dtype: DType, LT: TensorLayout,
 ](
-    input: TileTensor[dtype, LT, MutAnyOrigin],
-    output: TileTensor[dtype, LT, MutAnyOrigin],
+    input: ImmTileTensor[dtype, LT, ImmUntrackedOrigin],
+    output: MutTileTensor[dtype, LT, MutUntrackedOrigin],
     size: Int,                                    # scalar args are fine
 ):
     comptime assert input.flat_rank == 1, "expected 1D tensor"
@@ -83,7 +84,7 @@ def my_kernel[
 - Kernel functions cannot raise.
 - `global_idx.x` returns `Int` — compare directly with `size`.
 - For simple cases with a single fixed layout, `type_of(layout)` also works:
-  `TileTensor[dtype, type_of(layout), MutAnyOrigin]`.
+  `MutTileTensor[dtype, type_of(layout), MutUntrackedOrigin]`.
 
 ## TileTensor — the primary GPU data abstraction
 
@@ -412,7 +413,7 @@ from std.math import ceildiv
 from std.sys import has_accelerator
 from max.gpu import global_idx
 from max.gpu.host import DeviceContext
-from layout import TileTensor, row_major
+from layout import TileTensor, ImmTileTensor, MutTileTensor, row_major
 
 comptime dtype = DType.float32
 comptime N = 1024
@@ -420,9 +421,9 @@ comptime BLOCK = 256
 comptime layout = row_major[N]()
 
 def add_kernel(
-    a: TileTensor[dtype, type_of(layout), MutAnyOrigin],
-    b: TileTensor[dtype, type_of(layout), MutAnyOrigin],
-    c: TileTensor[dtype, type_of(layout), MutAnyOrigin],
+    a: ImmTileTensor[dtype, type_of(layout), ImmUntrackedOrigin],
+    b: ImmTileTensor[dtype, type_of(layout), ImmUntrackedOrigin],
+    c: MutTileTensor[dtype, type_of(layout), MutUntrackedOrigin],
     size: Int,
 ):
     var tid = global_idx.x
@@ -443,7 +444,7 @@ def main() raises:
     var c = TileTensor(c_buf, layout)
 
     ctx.enqueue_function[add_kernel](
-        a, b, c, N,
+        a.as_imm(), b.as_imm(), c, N,
         grid_dim=ceildiv(N, BLOCK),
         block_dim=BLOCK,
     )
@@ -462,7 +463,8 @@ from max.gpu.sync import barrier
 from max.gpu.host import DeviceContext
 from max.gpu import thread_idx, block_idx
 from max.gpu.memory import AddressSpace
-from layout import TileTensor, TensorLayout, row_major, stack_allocation
+from layout import TileTensor, ImmTileTensor, MutTileTensor, TensorLayout
+from layout import row_major, stack_allocation
 
 comptime dtype = DType.float32
 comptime M = 64
@@ -476,9 +478,9 @@ comptime c_layout = row_major[M, N]()
 def matmul_kernel[
     ALayout: TensorLayout, BLayout: TensorLayout, CLayout: TensorLayout,
 ](
-    A: TileTensor[dtype, ALayout, MutAnyOrigin],
-    B: TileTensor[dtype, BLayout, MutAnyOrigin],
-    C: TileTensor[dtype, CLayout, MutAnyOrigin],
+    A: ImmTileTensor[dtype, ALayout, ImmUntrackedOrigin],
+    B: ImmTileTensor[dtype, BLayout, ImmUntrackedOrigin],
+    C: MutTileTensor[dtype, CLayout, MutUntrackedOrigin],
 ):
     comptime assert A.flat_rank == 2 and B.flat_rank == 2 and C.flat_rank == 2
     var tx = thread_idx.x
@@ -515,7 +517,7 @@ def main() raises:
     # ... allocate buffers, init data, then:
     comptime kernel = matmul_kernel[type_of(a_layout), type_of(b_layout), type_of(c_layout)]
     ctx.enqueue_function[kernel](
-        A, B, C,
+        A.as_imm(), B.as_imm(), C,
         grid_dim=(ceildiv(N, TILE), ceildiv(M, TILE)),
         block_dim=(TILE, TILE),
     )
@@ -544,8 +546,8 @@ comptime TPB = 512          # `comptime for` needs a static bound, so the
                             # block size must be comptime, not `block_dim.x`
 
 def block_reduce(
-    output: MutPointer[Int32, MutAnyOrigin],
-    input: MutPointer[Int32, MutAnyOrigin],
+    output: MutPointer[Int32, MutUntrackedOrigin],
+    input: ImmPointer[Int32, ImmUntrackedOrigin],
 ):
     var sums = stack_allocation[TPB, Scalar[DType.int32],
         address_space=AddressSpace.SHARED]()

@@ -30,8 +30,8 @@ Compiling isn't the bar for review. Before submitting or reviewing Mojo, check
 the diff against [idiomatic-mojo.md](references/idiomatic-mojo.md): the style
 rules code reviewers flag most often (open-coded helpers, redundant casts,
 over-specified parameters, `IndexList` instead of tuples, missing `comptime`,
-unneeded `rebind`, mutable origins on inputs, single-vendor gates on generic
-kernels).
+unneeded `rebind`, `AnyOrigin` or mutable origins on arguments, single-vendor
+gates on generic kernels).
 
 ## Removed syntax — DO NOT generate these
 
@@ -378,9 +378,6 @@ A container that already tracks its own capacity may instead store a
 `ThinAllocation` and supply the `Layout` again at `dealloc` time. That is
 what `List` does; it is an optimization, not the default shape.
 
-When a struct field does hold a raw `Pointer`, its `origin` parameter must be
-specified; use `MutUntrackedOrigin` for owned heap data.
-
 `Pointer` is **non-null by design** — `Bool(p)` is unavailable, not merely
 deprecated. For nullable storage, use `OptionalPointer[T, origin]` (same layout;
 `None` is the null niche).
@@ -393,9 +390,32 @@ Mojo tracks reference provenance with **origins**, not "lifetimes":
 struct Span[mut: Bool, //, T: AnyType, origin: Origin[mut=mut]]: ...
 ```
 
-Key types: `Origin`, `MutOrigin`, `ImmOrigin`, `MutAnyOrigin`,
-`ImmutAnyOrigin`, `MutUntrackedOrigin`, `ImmUntrackedOrigin`,
-`ImmStaticOrigin`. Use `origin_of(value)` to get a value's origin.
+Key types: `Origin`, `MutOrigin`, `ImmOrigin`, `MutUntrackedOrigin`,
+`ImmUntrackedOrigin`, `ImmStaticOrigin`. Use `origin_of(value)` to get a
+value's origin.
+
+**Never write `AnyOrigin` or `UnsafeAnyOrigin`** in any spelling
+(`MutAnyOrigin`, `ImmutAnyOrigin`, `MutUnsafeAnyOrigin`, ...), and never call
+`.as_unsafe_any_origin()`. They are an unsafe escape hatch slated for removal:
+they turn off exclusivity checking and keep every value in scope alive. Leave
+an argument's origin unbound with `_`, which infers the caller's origin:
+
+```mojo
+# WRONG
+def add(dst: Pointer[UInt32, MutUnsafeAnyOrigin], src: Pointer[UInt32, MutAnyOrigin]): ...
+# CORRECT — `_` infers the origin; read-only inputs are `Imm`
+def add(dst: MutPointer[UInt32, _], src: ImmPointer[UInt32, _]): ...
+def total[LT: TensorLayout](x: ImmTileTensor[.float32, LT, _]) -> Float32: ...
+```
+
+Where `_` can't be used, name a concrete origin, still never an any-origin:
+
+| Case                                          | Origin                                                                    |
+|-----------------------------------------------|---------------------------------------------------------------------------|
+| GPU kernel passed to `enqueue_function`       | `MutUntrackedOrigin` / `ImmUntrackedOrigin` (see GPU skill)               |
+| Nested pointer (`_` inside `_` is rejected)   | Inferred param: `def f[o: ImmOrigin](p: ImmPointer[ImmPointer[T, o], _])` |
+| Struct field borrowing a Mojo value           | An `origin` struct parameter                                              |
+| Struct field pointing at heap/device/C memory | `MutUntrackedOrigin` / `ImmUntrackedOrigin`                               |
 
 ## Testing
 
@@ -482,7 +502,7 @@ v.cast[.float32]()
 ctx.enqueue_create_buffer[.int32](num_rows)
 unsafe_stack_allocation[1, Int32, address_space=.SHARED]()
 
-def f[dtype: DType = .float32](x: TileTensor[.bfloat16, L, MutAnyOrigin]): ...
+def f[dtype: DType = .float32](x: TileTensor[.bfloat16, L, _]): ...
 ```
 
 Works for any type's `comptime` aliases and static methods, including chains

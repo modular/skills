@@ -168,24 +168,37 @@ rebind[TileTensor[dtype, LayoutB, origin]](tile_a)
 - More than one rebind per function, or one you can't justify in a
   sentence, is a red flag.
 
-The same applies to origins: don't call `as_any_origin()` or use
-`ImmutAnyOrigin` without need, and use `TileTensor.as_imm()` rather
-than overriding `mut=False`.
+The same applies to origins: never cast to an any-origin
+(`.as_unsafe_any_origin()`, `unsafe_origin_cast[MutAnyOrigin]`) to make
+types line up (see §7), and use `TileTensor.as_imm()` rather than
+overriding `mut=False`.
 
-## 7. Mark read-only data immutable
+## 7. Leave origins unbound; mark read-only data immutable
 
-Inputs that are never written take immutable origins so the signature
-shows which arguments are outputs. Question every `MutAnyOrigin`.
+An argument's origin is `_` unless something forces a concrete one. `_`
+infers the caller's origin, so lifetimes and exclusivity stay checked.
+Never write `MutAnyOrigin`, `ImmutAnyOrigin`, or their `UnsafeAnyOrigin`
+spellings in new code, and never add `.as_unsafe_any_origin()` at a call
+site to satisfy one; fix the signature instead. Inputs that are never
+written take immutable origins so the signature shows which arguments are
+outputs.
 
 ```mojo
 # WRONG                                        # CORRECT
-src: Pointer[Float32, MutAnyOrigin]            src: ImmPointer[Float32, _]
+src: Pointer[Float32, ImmAnyOrigin]            src: ImmPointer[Float32, _]
+dst: Pointer[Float32, MutAnyOrigin]            dst: MutPointer[Float32, _]
+x: TileTensor[dtype, L, ImmAnyOrigin].         x: ImmTileTensor[dtype, L, _]
+f(p.as_unsafe_any_origin())                    f(p)
 ```
+
+GPU kernel entry points are the exception: `enqueue_function` can't
+infer `_`, so they take `MutUntrackedOrigin` / `ImmUntrackedOrigin`.
+Helpers the kernel calls still take `_`.
 
 A caller holding mutable data doesn't make the parameter mutable. A
 mutable value converts implicitly to an immutable parameter with a
 generic origin (`ImmTileTensor[dtype, L, _]`); with a concrete origin
-such as `ImmutAnyOrigin`, the caller passes `.as_imm()`. Never widen a
+such as `ImmUntrackedOrigin`, the caller passes `.as_imm()`. Never widen a
 read-only parameter to `mut=True` to match a caller.
 
 Loads from immutable data are invariant by default; don't pass
