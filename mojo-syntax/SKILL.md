@@ -417,6 +417,19 @@ Where `_` can't be used, name a concrete origin, still never an any-origin:
 | Struct field borrowing a Mojo value           | An `origin` struct parameter                                              |
 | Struct field pointing at heap/device/C memory | `MutUntrackedOrigin` / `ImmUntrackedOrigin`                               |
 
+Replacing AnyOrigin can expose a latent lifetime bug: wrong results, usually
+no crash. A live any-origin value keeps every value in scope alive, so code
+that hides a pointer to `x` from the checker (stored in an any- or
+untracked-origin field, laundered through `unsafe_from_address=Int(...)`, or
+cast with `.as_unsafe_any_origin()`) only worked by accident. Once origins are
+threaded through, `x` is destroyed after its last *visible* use. Confirm with
+`_ = x` after the real last use; fix by tying the pointer (origin parameter on
+the struct, `Pointer(to=x)` with no cast), never by restoring AnyOrigin.
+Origins don't reorder loads or stores, so don't blame aliasing. The one
+codegen effect is mutability: on GPU, loads through an `ImmPointer` or
+immutable `TileTensor` are invariant by default, so don't read memory other
+threads rewrite through one.
+
 ## Testing
 
 ```mojo
