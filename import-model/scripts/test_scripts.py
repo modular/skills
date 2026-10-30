@@ -164,7 +164,6 @@ def test_architectures_root_namespace(
 @pytest.mark.parametrize(
     ("slug", "expected"),
     [
-        ("olmo3", True),
         ("llama3_modulev3", True),
         # No model file of its own: inherits llama3_modulev3's pipeline model.
         ("phi3_modulev3", True),
@@ -194,7 +193,6 @@ def test_modulev3_detection(slug: str, expected: bool) -> None:
 @needs_tree
 def test_list_modulev3_donors() -> None:
     donors = dict(_DONORS)
-    assert donors.get("olmo3") == "Olmo3ForCausalLM"
     assert "llama3" not in donors
 
 
@@ -404,19 +402,6 @@ def test_unresolved_keyword_warns() -> None:
 @pytest.mark.parametrize(
     ("slug", "arch_name", "module_path", "model_path"),
     [
-        (
-            "olmo3",
-            "Qwen3ForCausalLM",
-            f"{_ARCH_PKG}.olmo3.olmo3.Olmo3",
-            f"{_ARCH_PKG}.olmo3.model.Olmo3Model",
-        ),
-        # Port and donor class names match, so the donor's are aliased.
-        (
-            "olmo3",
-            "Olmo3ForCausalLM",
-            f"{_ARCH_PKG}.olmo3.olmo3.Olmo3",
-            f"{_ARCH_PKG}.olmo3.model.Olmo3Model",
-        ),
         (
             "llama3_modulev3",
             "Qwen3ForCausalLM",
@@ -634,17 +619,17 @@ def test_from_donor_carries_fields() -> None:
     The stand-in donor config uses ``__slots__`` and sets a field after
     construction the way ``finalize`` does. The port adds a novel field.
     """
-    rendered = _render_port("olmo3", "Olmo3ForCausalLM").files[
+    rendered = _render_port("llama3_modulev3", "Llama3ForCausalLM").files[
         "model_config.py"
     ]
-    port = _class_def(ast.parse(rendered), "Olmo3Config")
+    port = _class_def(ast.parse(rendered), "Llama3Config")
     port.body.insert(0, ast.parse("embedding_multiplier: float = 1.0").body[0])
     # The rendered file postpones annotations, and they name the class
     # before its body finishes.
     source = f"from __future__ import annotations\n\n{ast.unparse(port)}\n"
 
     @dataclasses.dataclass(kw_only=True, slots=True)
-    class DonorOlmo3Config:
+    class DonorLlama3Config:
         hidden_size: int
         return_logits: str = "last"
 
@@ -652,12 +637,12 @@ def test_from_donor_carries_fields() -> None:
         dataclass=dataclasses.dataclass,
         fields=dataclasses.fields,
         AutoConfig=object,
-        DonorOlmo3Config=DonorOlmo3Config,
+        DonorLlama3Config=DonorLlama3Config,
     )
     exec(compile(source, "model_config.py", "exec"), namespace)
-    donor_config = DonorOlmo3Config(hidden_size=8)
+    donor_config = DonorLlama3Config(hidden_size=8)
     donor_config.return_logits = "all"
-    cfg = namespace["Olmo3Config"].from_donor(donor_config, object())
+    cfg = namespace["Llama3Config"].from_donor(donor_config, object())
     assert (cfg.hidden_size, cfg.return_logits, cfg.embedding_multiplier) == (
         8,
         "all",
@@ -719,10 +704,6 @@ def test_weight_adapter_forwards_pipeline_kwargs(
 
 
 _SNAPSHOT_CASES = [
-    # Root module in the donor's own package, inherited from another
-    # donor, and with the donor's class names reused.
-    ("olmo3", "Qwen3ForCausalLM"),
-    ("olmo3", "Olmo3ForCausalLM"),
     ("llama3_modulev3", "Qwen3ForCausalLM"),
     ("phi3_modulev3", "Phi4ForCausalLM"),
 ]
@@ -1027,7 +1008,6 @@ def test_list_native_archs_smoke() -> None:
     out = _run("list_native_archs.py", "--match", "Qwen3ForCausalLM")
     assert "Qwen3ForCausalLM\tqwen3\n" in out
     assert "Qwen3ForCausalLM\tqwen3_embedding\n" in out
-    assert "olmo3\tOlmo3ForCausalLM" in _run("list_native_archs.py", "--donors")
 
 
 _HUB_SMOKE: list[tuple[str, Callable[[str], list[str]], str]] = [
