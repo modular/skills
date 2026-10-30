@@ -19,7 +19,10 @@ directories register (``Qwen3ForCausalLM`` in ``qwen3`` and
 ``qwen3_embedding``) gets one row per directory.
 
 ``--donors`` lists the ModuleV3 architectures that ``scaffold.py --start-from``
-accepts, one ``slug<TAB>arch name`` row each.
+accepts, one ``slug<TAB>arch name<TAB>style`` row each. The style is
+``registered`` for a donor that registers its modules by role, whose port
+registers a ``DECODER`` module and has no pipeline model, and
+``pipeline_model`` for a donor whose port subclasses its pipeline model.
 
 Usage:
     pixi run python list_native_archs.py
@@ -34,12 +37,12 @@ import sys
 from pathlib import Path
 
 try:
-    from .donor import list_modulev3_donors
+    from .donor import list_donors
     from .max_arch_paths import list_native_arch_mapping
 except ImportError:
     # Standalone invocation: `python /path/to/list_native_archs.py ...`
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from donor import list_modulev3_donors  # type: ignore[no-redef]
+    from donor import list_donors  # type: ignore[no-redef]
     from max_arch_paths import (  # type: ignore[no-redef]
         list_native_arch_mapping,
     )
@@ -64,18 +67,20 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     group.add_argument(
         "--donors",
         action="store_true",
-        help="List ModuleV3 donor slugs for scaffold.py --start-from.",
+        help="List ModuleV3 donor slugs for scaffold.py --start-from, "
+        "with each donor's style (registered or pipeline_model).",
     )
 
 
 def main(args: argparse.Namespace) -> int:
     if args.donors:
-        donors = list_modulev3_donors()
+        donors = list_donors()
         if not donors:
             print(MAX_NOT_INSTALLED_MSG, file=sys.stderr)
             return 2
-        for slug, arch_name in donors:
-            print(f"{slug}\t{arch_name}")
+        for donor in donors:
+            style = "registered" if donor.registered else "pipeline_model"
+            print(f"{donor.slug}\t{donor.name}\t{style}")
         return 0
 
     mapping = list_native_arch_mapping()

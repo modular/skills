@@ -22,9 +22,16 @@ the donor's behavior and exposes the deltas a port typically overrides:
 - ``model_config.py``: the donor's config plus the port's novel HF fields.
 - ``<slug>.py``: the port's root ``max.nn.Module``, a subclass
   of the donor's root module. Override ``__init__`` and ``forward()``.
-- ``model.py``: the donor's pipeline model with ``_instantiate_module``
-  building the port's root module.
 - ``weight_adapters.py``: delegates to the donor's safetensors adapter.
+- ``arch.py``: the registration, with the donor's serving settings.
+
+A donor that registers its modules by role (``gemma3_modulev3``) gives a
+port that does the same: ``arch.py`` sets
+``modules={GraphRole.DECODER: <Short>}``, the root module is constructed as
+``<Short>(config)`` and its ``forward`` takes ``DecoderInputs``, and there is
+no ``model.py``. A donor with a ModuleV3 pipeline model also gets
+``model.py``, the donor's pipeline model with ``_instantiate_module``
+building the port's root module.
 
 After scaffold, edit only the spots marked ``TODO`` for the deltas your
 model has.
@@ -247,9 +254,10 @@ def main(args: argparse.Namespace) -> int:
 
             write_port(dst, write)
             print(f"Scaffolding subclass skeleton at {dst}")
+            model = "registered" if donor.registered else donor.model.name
             print(
                 f"  donor classes: module={donor.module.name}, "
-                f"model={donor.model.name}, config={donor.config.name}"
+                f"model={model}, config={donor.config.name}"
             )
             for name in skeleton.files:
                 print(f"  wrote {name}")
@@ -274,6 +282,12 @@ def main(args: argparse.Namespace) -> int:
                 f"  3. Open {module_file}: implement every delta in the "
                 f"root module's __init__ and forward()"
             )
+        elif donor.registered:
+            print(
+                f"  3. The donor reuses another architecture's root module. "
+                f"Add {slug}.py with the port's Module and register it in "
+                f"{dst}/arch.py's modules="
+            )
         else:
             print(
                 f"  3. The donor reuses another architecture's root module. "
@@ -287,8 +301,9 @@ def main(args: argparse.Namespace) -> int:
         print(
             "  1. Inspect the HF reference modeling code. Record deltas vs the donor."
         )
+        hook = "finalize" if donor.registered else "from_donor"
         print(
-            f"  2. Open {dst}/model_config.py: add novel HF fields and set them in from_donor"
+            f"  2. Open {dst}/model_config.py: add novel HF fields and set them in {hook}"
         )
         print(
             f"  3. Open {dst}/{slug}.py: override __init__ / forward() for structural deltas"

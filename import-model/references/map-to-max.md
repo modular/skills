@@ -66,16 +66,20 @@ match. Pick one of these paths:
 ## Read the chosen arch
 
 Once you've picked, read its source in your installed MAX package. Start from
-`max/pipelines/architectures/<chosen_slug>/model.py`: its
-`_instantiate_module()` names the root module, and the file that defines that
-module is the one to read next (`olmo3/olmo3.py`, `llama3_modulev3/llama3.py`).
+`max/pipelines/architectures/<chosen_slug>/arch.py`. A registered donor
+names its root module there, in `modules={GraphRole.DECODER: <Module>}`
+(`gemma3_modulev3/gemma3.py`). Otherwise, `pipeline_model=` names the
+pipeline model in `model.py`, whose `_instantiate_module()` names the root
+module (`olmo3/olmo3.py`). Read the file that defines the root module next.
 
 What you're looking for:
 
-- The pipeline model class in `model.py`: it subclasses
-  `ModuleV3PipelineModelWithKVCache` from `max.pipelines.lib`, directly or
-  through another architecture's model (`phi3_modulev3` reuses
-  `llama3_modulev3`'s).
+- How the donor is served. A registered donor has no pipeline model: the
+  framework constructs its root module as `Module(config)` and calls its
+  `forward(inputs: DecoderInputs)`. Any other donor has a pipeline model
+  class in `model.py` that subclasses `ModuleV3PipelineModelWithKVCache`
+  from `max.pipelines.lib`, directly or through another architecture's
+  model (`phi3_modulev3` reuses `llama3_modulev3`'s).
 - The root module: a `Module` whose `forward()` unflattens the KV cache inputs
   and calls a text model, often stored as `self.language_model`, which sets
   the weight-name prefix.

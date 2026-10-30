@@ -15,7 +15,9 @@
 Each ``render_*`` function returns one generated file's text, and the
 renderers that can hit something they can't trace also return warnings for
 the user. :func:`render_skeleton` renders the whole set from a resolved
-donor.
+donor. A registered donor's port registers its root module for the
+``DECODER`` role and has no ``model.py``. A pipeline model donor's port
+subclasses the donor's pipeline model in ``model.py``.
 """
 
 from __future__ import annotations
@@ -115,13 +117,17 @@ ARCHITECTURES = [{slug}_arch]
 '''
 
 
-def _render_imports(extras: Iterable[tuple[str, str]] = ()) -> str:
+def _render_imports(
+    extras: Iterable[tuple[str, str]] = (), *, registered: bool = False
+) -> str:
     """Render arch.py's ``max`` import block with donor ``extras`` merged."""
     modules = [
         ("max.graph.weights", "WeightsFormat"),
         ("max.pipelines.lib", "SupportedArchitecture"),
         *extras,
     ]
+    if registered:
+        modules.append(("max.pipelines.lib", "GraphRole"))
     return _render_section(pairs=modules)
 
 
@@ -142,6 +148,7 @@ PORT_KEYWORDS = frozenset(
         "name",
         "example_repo_ids",
         "pipeline_model",
+        "modules",
         "config",
         "weight_adapters",
         "default_weights_format",
@@ -153,6 +160,10 @@ PORT_KEYWORDS = frozenset(
 _CARRIED_HEADER = (
     "    # Carried verbatim from the donor's arch.py. The port inherits the\n"
     "    # donor's ModuleV3 pipeline model, so its serving settings apply.\n"
+)
+_REGISTERED_CARRIED_HEADER = (
+    "    # Carried verbatim from the donor's arch.py. The port's decoder\n"
+    "    # subclasses the donor's, so its serving settings apply.\n"
 )
 _PLANNER_NOTE = (
     "    # KV-cache models need a planner. Without one, MAX budgets no"
@@ -179,7 +190,9 @@ def _port_bindings(slug: str, short: str) -> dict[str, ImportedName | None]:
         "SupportedArchitecture": ImportedName(
             "max.pipelines.lib", "SupportedArchitecture"
         ),
+        "GraphRole": ImportedName("max.pipelines.lib", "GraphRole"),
         "weight_adapters": None,
+        short: None,
         f"{short}Model": None,
         f"{short}Config": None,
         f"{slug}_arch": None,
@@ -196,8 +209,9 @@ def _carry(
 ) -> tuple[str, list[tuple[str, str]]]:
     """Rewrite one resolved keyword value for the port's arch.py.
 
-    The donor's ``pipeline_model=`` and ``config=`` classes become the
-    port's ``{short}Model`` and ``{short}Config``, which subclass them: a
+    The donor's ``pipeline_model=``, ``config=`` and registered ``DECODER``
+    classes become the port's ``{short}Model``, ``{short}Config`` and
+    ``{short}``, which subclass them: a
     donor's ``batching=NemotronHModel.batch_processor_cls`` reads the
     port's attribute, so an override in the port takes effect. Any other
     name that the port's arch.py binds to something else is imported under
@@ -213,6 +227,8 @@ def _carry(
             target = f"{short}Model"
         elif carried.role == "config":
             target = f"{short}Config"
+        elif carried.role == "module":
+            target = short
         else:
             target = carried.name
             if (
@@ -244,7 +260,11 @@ class _Keywords:
 
 
 def _render_keywords(
-    donor_keywords: Mapping[str, DonorKeyword], *, slug: str, short: str
+    donor_keywords: Mapping[str, DonorKeyword],
+    *,
+    slug: str,
+    short: str,
+    registered: bool = False,
 ) -> _Keywords:
     """Render every donor keyword outside ``PORT_KEYWORDS``, in donor order.
 
@@ -273,7 +293,8 @@ def _render_keywords(
         lines.append(f"{note}    {keyword}={expr},\n")
     if "memory_planner" not in donor_keywords:
         lines.append(_PLANNER_ABSENT)
-    return _Keywords(_CARRIED_HEADER + "".join(lines), imports, warnings)
+    header = _REGISTERED_CARRIED_HEADER if registered else _CARRIED_HEADER
+    return _Keywords(header + "".join(lines), imports, warnings)
 
 
 def render_arch(
@@ -283,29 +304,45 @@ def render_arch(
     short: str,
     hf_id: str,
     donor_keywords: Mapping[str, DonorKeyword],
+    registered: bool = False,
 ) -> tuple[str, list[str]]:
     """Render arch.py from every keyword the donor's arch.py sets.
 
     ``donor_keywords`` is :attr:`Donor.keywords`. Keywords in
-    ``PORT_KEYWORDS`` are skipped. Returns the file and its warnings.
+    ``PORT_KEYWORDS`` are skipped. With ``registered``, the port registers
+    its root module for the ``DECODER`` role, the way a registered donor
+    does, instead of a pipeline model. Returns the file and its warnings.
     """
-    keywords = _render_keywords(donor_keywords, slug=slug, short=short)
+    keywords = _render_keywords(
+        donor_keywords, slug=slug, short=short, registered=registered
+    )
+    if registered:
+        classes = f"{short} and {short}Config"
+        local = _render_relative_imports(
+            [(slug, short), ("model_config", f"{short}Config")]
+        )
+        root = f"    modules={{GraphRole.DECODER: {short}}},\n"
+    else:
+        classes = f"{short}Model and {short}Config"
+        local = _render_relative_imports(
+            [("model", f"{short}Model"), ("model_config", f"{short}Config")]
+        )
+        root = f"    pipeline_model={short}Model,\n"
+    imports = _render_imports(keywords.imports, registered=registered)
     return (
-        f'''{_GENERATED_HEADER}"""Registers ``{arch_name}`` with {short}Model and {short}Config."""
+        f'''{_GENERATED_HEADER}"""Registers ``{arch_name}`` with {classes}."""
 
-{_render_imports(keywords.imports)}
+{imports}
 
 from . import weight_adapters
-from .model import {short}Model
-from .model_config import {short}Config
+{local}
 
 {slug}_arch = SupportedArchitecture(
     name="{arch_name}",
     example_repo_ids=["{hf_id}"],
     default_encoding="bfloat16",
     supported_encodings={{"bfloat16"}},
-    pipeline_model={short}Model,
-    default_weights_format=WeightsFormat.safetensors,
+{root}    default_weights_format=WeightsFormat.safetensors,
     weight_adapters={{
         WeightsFormat.safetensors: weight_adapters.convert_safetensor_state_dict,
     }},
@@ -316,7 +353,76 @@ from .model_config import {short}Config
     )
 
 
+def render_registered_config(*, donor: Donor, short: str) -> str:
+    """Render model_config.py for a registered donor's port.
+
+    The framework builds the config with the inherited ``initialize`` and
+    completes it with ``finalize``, so novel fields are read there.
+    """
+    config = donor.config.name
+    alias = _donor_alias(config, f"{short}Config")
+    if donor.config_defines("finalize"):
+        base = (
+            "super().finalize(\n"
+            "            huggingface_config, state_dict, outputs, **kwargs\n"
+            "        )"
+        )
+    else:
+        # finalize_config() skips a config without finalize, so the port's
+        # is the first one.
+        base = "self"
+    imports = _render_section(
+        pairs=[
+            ("max.graph.weights", "WeightData"),
+            ("max.pipelines.lib.interfaces.arch_config", "ModelOutputConfig"),
+            (donor.config.module, _import_name(config, alias)),
+            ("transformers", "AutoConfig"),
+        ]
+    )
+    return f'''{_GENERATED_HEADER}"""Config for the {short} port.
+
+Subclasses {config} from the {donor.slug} donor. The framework builds it
+with the inherited ``initialize`` and completes it against the checkpoint
+with ``finalize``. Add a field for each config.json key the donor doesn't
+read (MuP scalars, custom RoPE fields, novel attention params, …) and set
+it in ``finalize``.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
+from typing import Any, Self
+
+{imports}
+
+
+@dataclass(kw_only=True)
+class {short}Config({alias}):
+    # TODO(port): declare novel fields with defaults. Examples:
+    #   embedding_multiplier: float = 1.0
+    #   residual_multiplier: float = 1.0
+
+    def finalize(
+        self,
+        huggingface_config: AutoConfig,
+        state_dict: Mapping[str, WeightData],
+        outputs: ModelOutputConfig,
+        **kwargs: Any,
+    ) -> Self:
+        """Completes the donor's config and reads novel HF fields."""
+        cfg = {base}
+        # TODO(port): read novel HF config fields into replace(). Examples:
+        #   embedding_multiplier=huggingface_config.scale_emb,  # MuP
+        # initialize() built kv_params from the donor's construct_kv_params().
+        # If the port's KV layout differs, set kv_params here as well.
+        return replace(cfg)
+'''
+
+
 def render_config(*, donor: Donor, short: str) -> str:
+    if donor.registered:
+        return render_registered_config(donor=donor, short=short)
     config = donor.config.name
     alias = _donor_alias(config, f"{short}Config")
     if donor.builds_config:
@@ -605,7 +711,42 @@ class {short}Model({alias}):
     )
 
 
+def render_registered_module(*, donor: Donor, short: str) -> str:
+    root = donor.module.name
+    alias = _donor_alias(root, short)
+    imports = _render_section(
+        pairs=[(donor.module.module, _import_name(root, alias))]
+    )
+    return f'''{_GENERATED_HEADER}"""Root module for the {short} port.
+
+Subclasses {root} from the {donor.slug} donor. arch.py registers it for the
+``DECODER`` role: the framework constructs it as ``{short}(config)`` from the
+finalized ``{short}Config``, and its ``forward(inputs: DecoderInputs) ->
+DecoderOutputs`` (from ``max.pipelines.lib.role_contracts``) takes the
+ragged tokens, row offsets, ``return_n_logits`` and KV cache inputs.
+Override ``__init__`` for structural deltas (norm variants, RoPE tweaks, MuP
+scalars read from ``{short}Config``) and ``forward()`` for dataflow deltas.
+Debug a layer by adding ``F.print(tensor, "name")`` taps in ``forward()``.
+For a 1:1 port, no overrides are needed.
+"""
+
+from __future__ import annotations
+
+{imports}
+
+from .model_config import {short}Config
+
+
+class {short}({alias}):
+    def __init__(self, config: {short}Config) -> None:
+        super().__init__(config)
+        # TODO(port): apply structural deltas not covered by config fields.
+'''
+
+
 def render_module(*, donor: Donor, short: str) -> str:
+    if donor.registered:
+        return render_registered_module(donor=donor, short=short)
     root = donor.module.name
     alias = _donor_alias(root, short)
     imports = _render_section(
@@ -737,8 +878,8 @@ def render_skeleton(
         short=short,
         hf_id=hf_id,
         donor_keywords=donor.keywords,
+        registered=donor.registered,
     )
-    model, model_warnings = render_model(slug=slug, donor=donor, short=short)
     adapter, adapter_warnings = render_weight_adapter(
         donor_slug=donor.slug, donor_adapter=donor.safetensors_adapter
     )
@@ -746,8 +887,12 @@ def render_skeleton(
         "__init__.py": render_init(slug),
         "arch.py": arch,
         "model_config.py": render_config(donor=donor, short=short),
-        "model.py": model,
-        f"{slug}.py": render_module(donor=donor, short=short),
-        "weight_adapters.py": adapter,
     }
+    model_warnings: list[str] = []
+    if not donor.registered:
+        files["model.py"], model_warnings = render_model(
+            slug=slug, donor=donor, short=short
+        )
+    files[f"{slug}.py"] = render_module(donor=donor, short=short)
+    files["weight_adapters.py"] = adapter
     return Skeleton(files, [*arch_warnings, *model_warnings, *adapter_warnings])

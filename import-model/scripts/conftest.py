@@ -26,6 +26,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Hub model the smoke tests inspect and scaffold",
     )
     parser.addoption(
+        "--gemma3-hf-id",
+        default="unsloth/gemma-3-270m-it",
+        help="Ungated Gemma 3 checkpoint the registered-donor smoke test "
+        "scaffolds from gemma3_modulev3",
+    )
+    parser.addoption(
         "--snapshot-dir",
         type=Path,
         help="Compare each rendered skeleton with <dir>/<donor>-<arch>/",

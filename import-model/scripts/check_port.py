@@ -13,7 +13,7 @@
 """Check a port's parameters against its adapted checkpoint, without compiling.
 
 Imports the port the way ``max serve --custom-architectures`` does, builds
-the pipeline that ``max serve`` would build, and stops in ``load_model()``
+the pipeline that ``max serve`` would build, and stops in ``load_graphs()``
 right after the port constructs its root module under ``F.lazy()``. It then
 compares the module's parameters with the tensors the port's weight adapter
 returns for the real checkpoint:
@@ -53,7 +53,7 @@ _CASTABLE = frozenset({DType.float32, DType.bfloat16})
 
 
 class _Built(BaseException):
-    """Carries the lazily built module out of ``load_model()``.
+    """Carries the lazily built module out of ``load_graphs()``.
 
     A ``BaseException``, so a pipeline's ``except Exception`` cleanup can't
     swallow it.
@@ -65,13 +65,17 @@ class _Built(BaseException):
         self.state_dict = state_dict
 
 
-def _build_lazily(self: Any) -> Any:
-    """Runs ``load_model()``'s steps up to the module build, then stops."""
+def _build_lazily(self: Any, *unused_session: Any) -> Any:
+    """Runs ``load_graphs()``'s steps up to the module build, then stops.
+
+    The steps are those of ``graph_specs()`` for a ModuleV3 decoder, without
+    its cast to the parameter dtypes, so dtype mismatches stay visible.
+    """
     state_dict = self._load_state_dict()
     model_config = self._create_model_config(state_dict)
     state_dict = self._prepare_state_dict(state_dict, model_config)
     # A donor can set what _instantiate_module reads (an expert-parallel
-    # batch manager) in this hook; load_model() runs it before the build.
+    # batch manager) in this hook; graph_specs() runs it before the build.
     init_distributed = getattr(self, "_init_distributed_runtime", None)
     if init_distributed is not None:
         init_distributed(model_config)
@@ -137,16 +141,16 @@ def main(args: argparse.Namespace) -> int:
     port_dir = args.port_dir.resolve()
     archs = _import_port(port_dir)
     print(f"import OK: {port_dir.name} registers {[a.name for a in archs]}")
-    # Patch the class that defines load_model(), usually a base class in
+    # Patch the class that defines load_graphs(), usually a base class in
     # max.pipelines.lib. MAX can import the port package again under its own
     # loader, which makes new port classes but reuses those bases.
     for arch in archs:
         owner = next(
             cls
             for cls in arch.pipeline_model.__mro__
-            if "load_model" in vars(cls)
+            if "load_graphs" in vars(cls)
         )
-        owner.load_model = _build_lazily
+        owner.load_graphs = _build_lazily
 
     # The same steps `max serve` takes: resolve the task by architecture name
     # unless --task names it, then build the pipeline from the factory.
@@ -177,7 +181,7 @@ def main(args: argparse.Namespace) -> int:
     except _Built as built:
         return _report(built.module, built.state_dict)
     print(
-        "MAX built the pipeline without calling the port's load_model(). "
+        "MAX built the pipeline without calling the port's load_graphs(). "
         "Check that arch.py's name matches config.json architectures[0], and "
         "pass --task when the port serves a task other than the one the "
         "name resolves to."

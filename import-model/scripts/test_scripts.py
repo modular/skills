@@ -61,6 +61,11 @@ needs_tree = pytest.mark.skipif(
     not _ARCHS.is_dir(), reason="MAX architectures source tree not present"
 )
 _DONORS = donor_mod.list_modulev3_donors(_ARCHS) if _ARCHS.is_dir() else []
+_REGISTERED = frozenset(
+    donor.slug
+    for donor in (donor_mod.list_donors(_ARCHS) if _ARCHS.is_dir() else [])
+    if donor.registered
+)
 
 
 def _donor(slug: str) -> donor_mod.Donor:
@@ -171,6 +176,8 @@ def test_architectures_root_namespace(
         ("deepseekV3_modulev3", True),
         # No KV cache: subclasses PipelineModel, not a ModuleV3 base.
         ("mpnet_modulev3", True),
+        # Registers its decoder by role and has no pipeline model.
+        ("gemma3_modulev3", True),
         # Architectures without a ModuleV3 pipeline model.
         ("llama3", False),
         ("mpnet", False),
@@ -193,7 +200,30 @@ def test_modulev3_detection(slug: str, expected: bool) -> None:
 @needs_tree
 def test_list_modulev3_donors() -> None:
     donors = dict(_DONORS)
+    assert donors.get("olmo3") == "Olmo3ForCausalLM"
+    assert donors.get("gemma3_modulev3") == "Gemma3ForCausalLM_ModuleV3"
     assert "llama3" not in donors
+    assert {"olmo3", "gemma3_modulev3"} <= _REGISTERED
+
+
+@needs_tree
+def test_registered_donor_resolves_from_its_registration() -> None:
+    """A registered donor's classes come from ``modules=`` and ``config=``."""
+    donor = _donor("gemma3_modulev3")
+    assert donor.registered
+    assert donor.lineage == ()
+    assert donor.module == max_arch_paths.ImportedName(
+        f"{_ARCH_PKG}.gemma3_modulev3.gemma3", "Gemma3"
+    )
+    assert donor.config == max_arch_paths.ImportedName(
+        f"{_ARCH_PKG}.gemma3_modulev3.model_config", "Gemma3Config"
+    )
+    assert donor.module_stem == "gemma3"
+    assert donor.builds_config
+    assert donor.config_defines("finalize")
+    assert "modules" in donor.keywords
+    with pytest.raises(donor_mod.DonorError, match="no pipeline model"):
+        _ = donor.model
 
 
 @needs_tree
@@ -208,7 +238,6 @@ def test_native_mapping_reads_every_registration() -> None:
     assert {"qwen3", "qwen3_embedding"} <= set(mapping["Qwen3ForCausalLM"])
     assert mapping.get("Qwen3MoeForCausalLM") == ["qwen3"]
     assert mapping.get("Eagle3MHADeepseekV3DraftModel") == ["eagle3_deepseekV3"]
-    assert mapping.get("MiMoV2DFlashContextForCausalLM") == ["dflash_mimo_v2"]
 
 
 @needs_tree
@@ -219,7 +248,11 @@ def test_native_mapping_reads_every_registration() -> None:
         # Call form: the reservation and its arguments must survive.
         ("gemma3multimodal_modulev3", "PagedMemoryPlanner", "with_activation"),
         # Per-architecture planner imported from another donor package.
-        ("deepseekV3_modulev3", "DeepseekV3MemoryPlanner", "DeepseekV3"),
+        (
+            "deepseekV3_modulev3",
+            "DeepseekV3ModuleV3MemoryPlanner",
+            "DeepseekV3",
+        ),
     ],
 )
 def test_planner_resolution(slug: str, root_name: str, expected: str) -> None:
@@ -266,11 +299,21 @@ def test_arch_carries_donor_keywords(
     arch_name = (
         donor.name.removesuffix("_ModuleV3") if own_name else "Qwen3ForCausalLM"
     )
-    rendered, _ = _render_arch(donor.keywords, arch_name)
+    rendered, _ = templates.render_arch(
+        slug="p",
+        arch_name=arch_name,
+        short=scaffold.short_name(arch_name),
+        hf_id="org/m",
+        donor_keywords=donor.keywords,
+        registered=donor.registered,
+    )
     got = _call_keywords(rendered)
     port = templates.PORT_KEYWORDS
     assert set(got) - port == set(donor.keywords) - port
-    assert port <= set(got)
+    # A port registers either a pipeline model or its modules, never both.
+    unused = "pipeline_model" if donor.registered else "modules"
+    assert port - {unused} <= set(got)
+    assert unused not in got
     assert len(got) == len(set(got))
     _lint({"arch.py": rendered}, "p", tmp_path)
 
@@ -398,62 +441,115 @@ def test_unresolved_keyword_warns() -> None:
         assert any(f"arch.py sets {keyword}," in w for w in warnings)
 
 
+def _base_import(tree: ast.Module, cls: str) -> str:
+    """The ``module.Name`` that the first base of class ``cls`` imports."""
+    base = _class_def(tree, cls).bases[0]
+    assert isinstance(base, ast.Name)
+    return _imports_from(tree)[base.id]
+
+
+@needs_tree
+@pytest.mark.parametrize("slug", [slug for slug, _ in _DONORS])
+def test_scaffold_modulev3_donors(slug: str, tmp_path: Path) -> None:
+    """The skeleton subclasses the donor's root module and config.
+
+    A registered donor's port registers its root module for ``DECODER``
+    and has no ``model.py``. Any other donor's port subclasses the donor's
+    pipeline model, whose ``_instantiate_module`` builds the port's root
+    module. Donors with no single root module raise and point at
+    ``--full-copy``.
+    """
+    donor = _donor(slug)
+    arch_name = "PortForCausalLM"
+    short = scaffold.short_name(arch_name)
+    port = f"port_{slug.lower()}"
+    try:
+        files = _render_port(slug, arch_name).files
+    except donor_mod.DonorError as exc:
+        assert not donor.registered
+        assert "--full-copy" in str(exc)
+        return
+    trees = {name: ast.parse(text) for name, text in files.items()}
+    module = donor.module
+    assert _base_import(trees[f"{port}.py"], short) == (
+        f"{module.module}.{module.name}"
+    )
+    if donor.builds_config:
+        config = donor.config
+        assert _base_import(trees["model_config.py"], f"{short}Config") == (
+            f"{config.module}.{config.name}"
+        )
+    keywords = _call_keywords(files["arch.py"])
+    if donor.registered:
+        assert "model.py" not in files
+        assert "pipeline_model" not in keywords
+        assert f"modules={{GraphRole.DECODER: {short}}}," in files["arch.py"]
+    else:
+        assert "modules" not in keywords
+        assert _base_import(trees["model.py"], f"{short}Model") == (
+            f"{donor.model.module}.{donor.model.name}"
+        )
+        methods = {
+            node.name: node
+            for node in _class_def(trees["model.py"], f"{short}Model").body
+            if isinstance(node, ast.FunctionDef)
+        }
+        assert "_build_graph" not in methods
+        built = {
+            node.func.id
+            for node in ast.walk(methods["_instantiate_module"])
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        assert short in built
+    _lint(files, port, tmp_path)
+
+
 @needs_tree
 @pytest.mark.parametrize(
-    ("slug", "arch_name", "module_path", "model_path"),
-    [
-        (
-            "llama3_modulev3",
-            "Qwen3ForCausalLM",
-            f"{_ARCH_PKG}.llama3_modulev3.llama3.Llama3",
-            f"{_ARCH_PKG}.llama3_modulev3.model.Llama3Model",
-        ),
-        # Inherits both classes from llama3_modulev3.
-        (
-            "phi3_modulev3",
-            "Phi4ForCausalLM",
-            f"{_ARCH_PKG}.llama3_modulev3.llama3.Llama3",
-            f"{_ARCH_PKG}.phi3_modulev3.model.Phi3Model",
-        ),
-    ],
+    "arch_name", ["Gemma3ForCausalLM", "MyGemmaForCausalLM"]
 )
-def test_scaffold_modulev3_donors(
-    slug: str, arch_name: str, module_path: str, model_path: str, tmp_path: Path
-) -> None:
-    """The skeleton subclasses the donor's root module and pipeline model."""
-    port = f"port_{slug.lower()}"
+def test_scaffold_registered_gemma3(arch_name: str, tmp_path: Path) -> None:
+    """A port of ``gemma3_modulev3`` registers a decoder and keeps its settings.
+
+    Under the donor's own name, the port's classes reuse the donor's class
+    names, so the donor's are imported under aliases.
+    """
+    port = "port_gemma3_modulev3"
     short = scaffold.short_name(arch_name)
-    files = _render_port(slug, arch_name).files
-    trees = {name: ast.parse(text) for name, text in files.items()}
-
-    module_base = _class_def(trees[f"{port}.py"], short).bases[0]
-    assert isinstance(module_base, ast.Name)
-    assert _imports_from(trees[f"{port}.py"])[module_base.id] == module_path
-
-    model_cls = _class_def(trees["model.py"], f"{short}Model")
-    model_base = model_cls.bases[0]
-    assert isinstance(model_base, ast.Name)
-    assert _imports_from(trees["model.py"])[model_base.id] == model_path
-    methods = {
-        node.name: node
-        for node in model_cls.body
-        if isinstance(node, ast.FunctionDef)
-    }
-    assert "_build_graph" not in methods
-    built = {
-        node.func.id
-        for node in ast.walk(methods["_instantiate_module"])
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert short in built
-
+    files = _render_port("gemma3_modulev3", arch_name).files
+    assert sorted(files) == sorted(
+        [
+            "__init__.py",
+            "arch.py",
+            "model_config.py",
+            f"{port}.py",
+            "weight_adapters.py",
+        ]
+    )
     for expected in (
         f'name="{arch_name}"',
+        f"modules={{GraphRole.DECODER: {short}}},",
+        f"config={short}Config,",
         "memory_planner=PagedMemoryPlanner",
+        "multi_gpu_supported=True",
         "supports_overlap_scheduler=False",
         "supports_device_graph_capture=False",
+        f"from .{port} import {short}",
     ):
         assert expected in files["arch.py"]
+    assert "pipeline_model" not in files["arch.py"]
+    assert "batching=" not in files["arch.py"]
+    module = ast.parse(files[f"{port}.py"])
+    assert _base_import(module, short) == (
+        f"{_ARCH_PKG}.gemma3_modulev3.gemma3.Gemma3"
+    )
+    init = next(
+        node
+        for node in _class_def(module, short).body
+        if isinstance(node, ast.FunctionDef) and node.name == "__init__"
+    )
+    assert [a.arg for a in init.args.args] == ["self", "config"]
+    assert "super().finalize(" in files["model_config.py"]
     _lint(files, port, tmp_path)
 
 
@@ -500,7 +596,8 @@ def test_scaffold_task_donors(
     files = _render_port(slug, "Qwen3ForCausalLM").files
     for text in expected:
         assert text in files["arch.py"]
-    assert ("from_donor(" in files["model.py"]) == builds_config
+    if not _donor(slug).registered:
+        assert ("from_donor(" in files["model.py"]) == builds_config
     _lint(files, f"port_{slug.lower()}", tmp_path)
 
 
@@ -603,13 +700,47 @@ def test_config_names_mark_unread_keys() -> None:
 def test_multi_module_donor_raises() -> None:
     """A donor with no ``_instantiate_module`` points at ``--full-copy``."""
     multi = next(
-        (slug for slug, _ in _DONORS if _donor(slug)._instantiate is None),
+        (
+            slug
+            for slug, _ in _DONORS
+            if not _donor(slug).registered and _donor(slug)._instantiate is None
+        ),
         None,
     )
     if multi is None:
         pytest.skip("no multi-module donor in this tree")
     with pytest.raises(donor_mod.DonorError, match="--full-copy"):
         _render_port(multi, "Qwen3ForCausalLM")
+
+
+def _pipeline_model_donor() -> donor_mod.Donor:
+    """Any in-tree donor whose port subclasses its pipeline model.
+
+    Architectures move to registered modules one at a time, so no single
+    slug is guaranteed to stay a pipeline model donor.
+    """
+    for slug, _ in _DONORS:
+        donor = _donor(slug)
+        if (
+            not donor.registered
+            and donor.builds_config
+            and donor._instantiate is not None
+        ):
+            return donor
+    pytest.skip("no pipeline model donor in this tree")
+
+
+def _exec_config(rendered: str, short: str, namespace: dict[str, Any]) -> Any:
+    """Execute the port's config class from ``rendered`` in ``namespace``.
+
+    The port adds a novel field. The rendered file postpones annotations,
+    and they name the class before its body finishes.
+    """
+    port = _class_def(ast.parse(rendered), f"{short}Config")
+    port.body.insert(0, ast.parse("embedding_multiplier: float = 1.0").body[0])
+    source = f"from __future__ import annotations\n\n{ast.unparse(port)}\n"
+    exec(compile(source, "model_config.py", "exec"), namespace)
+    return namespace[f"{short}Config"]
 
 
 @needs_tree
@@ -619,35 +750,142 @@ def test_from_donor_carries_fields() -> None:
     The stand-in donor config uses ``__slots__`` and sets a field after
     construction the way ``finalize`` does. The port adds a novel field.
     """
-    rendered = _render_port("llama3_modulev3", "Llama3ForCausalLM").files[
-        "model_config.py"
-    ]
-    port = _class_def(ast.parse(rendered), "Llama3Config")
-    port.body.insert(0, ast.parse("embedding_multiplier: float = 1.0").body[0])
-    # The rendered file postpones annotations, and they name the class
-    # before its body finishes.
-    source = f"from __future__ import annotations\n\n{ast.unparse(port)}\n"
+    donor = _pipeline_model_donor()
+    rendered = templates.render_skeleton(
+        slug="port",
+        short="Port",
+        arch_name="PortForCausalLM",
+        hf_id="org/m",
+        donor=donor,
+    ).files["model_config.py"]
 
     @dataclasses.dataclass(kw_only=True, slots=True)
-    class DonorLlama3Config:
+    class DonorConfig:
         hidden_size: int
         return_logits: str = "last"
 
-    namespace: dict[str, Any] = dict(
-        dataclass=dataclasses.dataclass,
-        fields=dataclasses.fields,
-        AutoConfig=object,
-        DonorLlama3Config=DonorLlama3Config,
+    port_cls = _exec_config(
+        rendered,
+        "Port",
+        {
+            "dataclass": dataclasses.dataclass,
+            "fields": dataclasses.fields,
+            "AutoConfig": object,
+            donor.config.name: DonorConfig,
+        },
     )
-    exec(compile(source, "model_config.py", "exec"), namespace)
-    donor_config = DonorLlama3Config(hidden_size=8)
+    donor_config = DonorConfig(hidden_size=8)
     donor_config.return_logits = "all"
-    cfg = namespace["Llama3Config"].from_donor(donor_config, object())
+    cfg = port_cls.from_donor(donor_config, object())
     assert (cfg.hidden_size, cfg.return_logits, cfg.embedding_multiplier) == (
         8,
         "all",
         1.0,
     )
+
+
+@needs_tree
+def test_registered_finalize_keeps_the_port_type() -> None:
+    """The rendered ``finalize`` runs the donor's and returns the port's config.
+
+    The framework builds the config with the inherited ``initialize``, so
+    the port's novel fields start at their defaults, and rejects a
+    ``finalize`` that returns another config type.
+    """
+    rendered = _render_port("gemma3_modulev3", "PortForCausalLM").files[
+        "model_config.py"
+    ]
+
+    @dataclasses.dataclass(kw_only=True)
+    class Gemma3Config:
+        hidden_size: int
+        return_logits: str = "last"
+
+        def finalize(
+            self, huggingface_config: Any, state_dict: Any, outputs: Any
+        ) -> Any:
+            return dataclasses.replace(self, return_logits=outputs)
+
+    port_cls = _exec_config(
+        rendered,
+        "Port",
+        {
+            "dataclass": dataclasses.dataclass,
+            "replace": dataclasses.replace,
+            "Gemma3Config": Gemma3Config,
+        },
+    )
+    cfg = port_cls(hidden_size=8).finalize(object(), {}, "all")
+    assert type(cfg) is port_cls
+    assert (cfg.hidden_size, cfg.return_logits, cfg.embedding_multiplier) == (
+        8,
+        "all",
+        1.0,
+    )
+
+
+_SYNTHETIC_REGISTERED_ARCH = """\
+from max.graph.weights import WeightsFormat
+from max.pipelines.lib import GraphRole, SupportedArchitecture
+from max.pipelines.modeling.types import PipelineTask
+
+from . import weight_adapters
+from .decoder import Fake
+from .model_config import FakeConfig
+
+fake_arch = SupportedArchitecture(
+    name="FakeForCausalLM",
+    task=PipelineTask.TEXT_GENERATION,
+    example_repo_ids=["org/fake"],
+    modules={GraphRole.DECODER: Fake},
+    config=FakeConfig,
+    default_weights_format=WeightsFormat.safetensors,
+    weight_adapters={
+        WeightsFormat.safetensors: weight_adapters.convert,
+    },
+    tool_parser="fake",
+)
+"""
+
+
+def test_synthetic_registered_donor(tmp_path: Path) -> None:
+    """A registered donor needs no pipeline model, and its config no finalize.
+
+    ``finalize_config()`` skips a config without ``finalize``, so the
+    port's ``finalize`` starts from the config itself.
+    """
+    fake = tmp_path / "archs" / "fake"
+    fake.mkdir(parents=True)
+    (fake / "arch.py").write_text(_SYNTHETIC_REGISTERED_ARCH, encoding="utf-8")
+    (fake / "decoder.py").write_text(
+        "from max.nn import Module\n\n\nclass Fake(Module):\n    pass\n",
+        encoding="utf-8",
+    )
+    (fake / "model_config.py").write_text(
+        "class FakeConfig:\n    pass\n", encoding="utf-8"
+    )
+    donor = donor_mod.load_donor(fake)
+    assert donor.registered
+    assert donor_mod.list_modulev3_donors(fake.parent) == [
+        ("fake", "FakeForCausalLM")
+    ]
+    assert not donor.config_defines("finalize")
+    skeleton = templates.render_skeleton(
+        slug="p",
+        short="Port",
+        arch_name="PortForCausalLM",
+        hf_id="org/m",
+        donor=donor,
+    )
+    assert "model.py" not in skeleton.files
+    assert "modules={GraphRole.DECODER: Port}," in skeleton.files["arch.py"]
+    assert 'tool_parser="fake",' in skeleton.files["arch.py"]
+    assert "cfg = self\n" in skeleton.files["model_config.py"]
+    assert "super().finalize(" not in skeleton.files["model_config.py"]
+    assert (
+        f"from {_ARCH_PKG}.fake.decoder import Fake" in skeleton.files["p.py"]
+    )
+    _lint(skeleton.files, "p", tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -706,6 +944,8 @@ def test_weight_adapter_forwards_pipeline_kwargs(
 _SNAPSHOT_CASES = [
     ("llama3_modulev3", "Qwen3ForCausalLM"),
     ("phi3_modulev3", "Phi4ForCausalLM"),
+    # Registers its decoder by role: no model.py.
+    ("gemma3_modulev3", "Gemma3ForCausalLM"),
 ]
 
 
@@ -776,6 +1016,8 @@ def test_slug_from_hf_id() -> None:
         ("mpnet_modulev3", "from max.graph import"),
         # Root module in llama3.py, and compares ``rope_type == "llama3"``.
         ("llama3_modulev3", '"llama3"'),
+        # Registered donor: the copy keeps its modules= registration.
+        ("gemma3_modulev3", "modules={GraphRole.DECODER:"),
     ],
 )
 def test_full_copy(slug: str, kept: str, tmp_path: Path) -> None:
@@ -850,7 +1092,7 @@ def test_build_lazily_runs_the_distributed_runtime_hook() -> None:
 
     A donor can set what ``_instantiate_module()`` reads in that hook
     (deepseekV3_modulev3 sets its expert-parallel batch manager there), so
-    the hook must run in the same order ``load_model()`` runs it.
+    the hook must run in the same order ``graph_specs()`` runs it.
     """
     from max.dtype import DType
 
@@ -1008,6 +1250,9 @@ def test_list_native_archs_smoke() -> None:
     out = _run("list_native_archs.py", "--match", "Qwen3ForCausalLM")
     assert "Qwen3ForCausalLM\tqwen3\n" in out
     assert "Qwen3ForCausalLM\tqwen3_embedding\n" in out
+    donors = _run("list_native_archs.py", "--donors")
+    assert "olmo3\tOlmo3ForCausalLM\tregistered\n" in donors
+    assert "gemma3_modulev3\tGemma3ForCausalLM_ModuleV3\tregistered\n" in donors
 
 
 _HUB_SMOKE: list[tuple[str, Callable[[str], list[str]], str]] = [
@@ -1053,3 +1298,31 @@ def test_scaffold_smoke(hf_id: str, tmp_path: Path) -> None:
     _run("run_oss_gates.py", hf_id, "--port-dir", str(port))
     report = _run("check_port.py", hf_id, "--port-dir", str(port))
     assert "missing (compile raises KeyError): 0" in report
+
+
+@pytest.mark.smoke
+def test_scaffold_registered_smoke(
+    tmp_path: Path, request: pytest.FixtureRequest
+) -> None:
+    """A port of a registered donor imports, registers and builds its decoder.
+
+    The port has no pipeline model of its own, so this covers the one MAX
+    builds from ``modules=`` for a custom architecture.
+    """
+    hf_id = request.config.getoption("--gemma3-hf-id")
+    _run(
+        "scaffold.py",
+        hf_id,
+        "--start-from",
+        "gemma3_modulev3",
+        "--output-dir",
+        str(tmp_path),
+        "--slug",
+        "test_port",
+    )
+    port = tmp_path / "test_port"
+    assert not (port / "model.py").exists()
+    assert "GraphRole.DECODER" in (port / "arch.py").read_text()
+    report = _run("check_port.py", hf_id, "--port-dir", str(port))
+    assert "missing (compile raises KeyError): 0" in report
+    assert "shape mismatch (compile raises ValueError): 0" in report

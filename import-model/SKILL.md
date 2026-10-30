@@ -209,6 +209,12 @@ slug list):
 pixi run python scripts/list_native_archs.py --donors
 ```
 
+The third column is the donor's style. A `registered` donor registers its
+decoder module by role in `arch.py`
+(`modules={GraphRole.DECODER: <Module>}`) and has no pipeline model of its
+own. A `pipeline_model` donor has a ModuleV3 pipeline model in `model.py`.
+Both work as donors, and the scaffold gives your port the donor's style.
+
 Heuristic HF-signal → donor slug hints are in
 [map-to-max.md](references/map-to-max.md). Quick version:
 
@@ -225,9 +231,11 @@ Heuristic HF-signal → donor slug hints are in
 | Hybrid attention and state-space layers             | `nemotron_h_modulev3`                            |
 | Vision-language (scaffold with `--full-copy`)       | `gemma3multimodal_modulev3`, `kimik2_5_modulev3` |
 
-Open the chosen arch's directory and read its model file (the module that
-`model.py` instantiates in `_instantiate_module()`, for example
-`olmo3/olmo3.py` or `llama3_modulev3/llama3.py`) and its `layers/`. You're
+Open the chosen arch's directory and read its root module file and its
+`layers/`. For a registered donor, the root module is the class `arch.py`
+registers for `GraphRole.DECODER` (`gemma3_modulev3/gemma3.py`). For a
+pipeline model donor, it's the module that `model.py` instantiates in
+`_instantiate_module()` (for example `olmo3/olmo3.py`). You're
 answering one question: which modules change and which stay the same in your
 port?
 
@@ -267,7 +275,19 @@ pixi run python scripts/scaffold.py <HF_MODEL_ID> --start-from <donor_slug> --ou
 
 This reads `architectures[0]` from the Hub `config.json` for
 `arch.py::name`, then writes a skeleton that subclasses the chosen ModuleV3
-architecture into `<output_dir>/<slug>/`. The slug defaults to the repo name,
+architecture into `<output_dir>/<slug>/`. The skeleton follows the donor's
+style:
+
+- **Registered donor** (`gemma3_modulev3`): `arch.py` registers the port's
+  root module with `modules={GraphRole.DECODER: <Short>}` and
+  `config=<Short>Config`. The framework builds the pipeline model: it
+  constructs the module as `<Short>(config)` on a `("tp",)` mesh over the
+  serving devices, and calls its `forward(inputs: DecoderInputs) ->
+  DecoderOutputs` (`max.pipelines.lib.role_contracts`). There is no
+  `model.py`.
+- **Pipeline model donor**: `model.py` subclasses the donor's pipeline model,
+  and its `_instantiate_module()` builds the port's root module.
+ The slug defaults to the repo name,
 size suffix included (`ernie_4_5_0_3b_pt`). Pass `--slug` to name the
 package after the architecture family. The generated classes are
 `<Short>Model` and `<Short>Config` (`Ernie4_5Model`), which can share names
@@ -282,13 +302,17 @@ by side.
   own classes and adapter (verify `name=`, encoding, and `memory_planner=`).
   When the donor declares no planner, the field is left out with a TODO. A
   value the scaffold can't trace to an import becomes a TODO and a warning.
-- `model_config.py`: donor config subclass with a `from_donor()` hook for
-  the fields the donor doesn't read (must be rewired during implementation)
-- `model.py`: pipeline model shell. `_create_model_config()` re-types the
-  donor's config as yours, and `_instantiate_module()` builds your root
-  module and places it on the device or mesh with the donor's placement. It
-  inherits the donor's batch processor, so input preparation keeps working
-  without a `batch_processor.py`.
+- `model_config.py`: donor config subclass with a hook for the fields the
+  donor doesn't read (must be rewired during implementation). A registered
+  donor's port overrides `finalize()`, which the framework calls with the
+  Hub config and the adapted checkpoint. A pipeline model donor's port has
+  `from_donor()`, which `model.py` calls.
+- `model.py` (pipeline model donors only): pipeline model shell.
+  `_create_model_config()` re-types the donor's config as yours, and
+  `_instantiate_module()` builds your root module and places it on the
+  device or mesh with the donor's placement. It inherits the donor's batch
+  processor, so input preparation keeps working without a
+  `batch_processor.py`.
 - `weight_adapters.py`: delegates to the donor's renames (must be rewritten
   for your checkpoint)
 - `<slug>.py`: **donor module** (must be edited to match HF during
@@ -330,14 +354,15 @@ In order:
 
 1. **`model_config.py`**: the donor's config reads the keys it knows. For
    every other `config.json` key from Phase 1 / `inspect_hf.py`, declare a
-   field on the port's config and set it in `from_donor()`, which
+   field on the port's config and set it in the hook the scaffold wrote:
+   `finalize()` for a registered donor, or `from_donor()`, which
    `model.py::_create_model_config()` calls with the donor's finished
    config. Confirm `construct_kv_params()` head counts and head_dim match HF.
    The pipeline sizes the KV cache from your config's `construct_kv_params()`,
-   but `from_donor()` copies `kv_params` from the donor's config, and the
-   modules read that copy. If you override `construct_kv_params()`,
-   `get_head_dim()`, or `get_num_layers()`, also set `kv_params` in
-   `from_donor()` from your override, so the cache and the modules agree.
+   but the donor builds `kv_params` with its own, and the modules read
+   `kv_params`. If you override `construct_kv_params()`, `get_head_dim()`,
+   or `get_num_layers()`, also set `kv_params` in the hook from your
+   override, so the cache and the modules agree.
 2. **`weight_adapters.py`**: map your checkpoint's safetensor keys to the
    parameter names your root module yields from `parameters`, including the
    root's wrapper prefix (`language_model.` in `olmo3`). Run
@@ -363,10 +388,12 @@ In order:
    embedding) should leave it unset. The scaffold also carries the donor's
    `batching=`. Change it only if the port's batching differs from the
    donor's.
-5. **`model.py`**: `_instantiate_module()` constructs your root module and calls
-   `.to(self.devices[0])`, or builds the module inside `default_device(mesh)`
-   for a multi-GPU port. Edit further only if HF wraps the backbone differently
-   (VL, multi-modal).
+5. **`model.py`** (pipeline model donors only): `_instantiate_module()`
+   constructs your root module and calls `.to(self.devices[0])`, or builds
+   the module inside `default_device(mesh)` for a multi-GPU port. Edit
+   further only if HF wraps the backbone differently (VL, multi-modal). A
+   registered port has no `model.py`: its root module's `__init__` takes
+   only the config, and its `forward()` takes `DecoderInputs`.
 
 Read HF `modeling_<type>.py` **while editing**, not after verification fails.
 Subclass the donor only where HF and donor match. Rewrite the module where

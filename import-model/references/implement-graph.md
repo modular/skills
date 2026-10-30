@@ -76,14 +76,22 @@ class MyMLP(Module[[Tensor], Tensor]):
   `F.concat()`, `F.flatten()`). `@` is matmul.
 - **Lists of layers.** Use `ModuleList(layers)`, which takes one iterable, so
   parameters register under `layers.<i>.`.
-- **KV cache.** The root module's `forward()` receives the flattened KV cache
-  inputs as trailing `*variadic_args`. Unflatten them there with
+- **KV cache.** A registered root module's `forward()` takes one
+  `DecoderInputs` and reads the KV cache inputs from `inputs.kv`. A pipeline
+  model donor's root module receives them flattened as trailing
+  `*variadic_args`. Either way, unflatten them with
   `self.kv_params.unflatten_kv_inputs(...)` (or `unflatten_basic_kv_tree()`
   for sliding plus global caches) and wrap each result with
-  `PagedCacheValues.from_upstream(...)`. `olmo3/olmo3.py` shows both steps.
+  `PagedCacheValues.from_upstream(...)`. `gemma3_modulev3/gemma3.py` shows
+  the registered form. On a multi-GPU mesh, pass
+  `DeviceMapping.replicated(mesh)` as the mapping, not `tokens.mapping`:
+  the tokens live on one device, and a cache wrapped with their mapping
+  breaks on more than one GPU.
 - **Compilation.** `ModuleV3PipelineModelWithKVCache.load_model()` builds the
   module under `F.lazy()`, so parameters are recorded symbolically, then calls
-  `compile(*input_types, weights=state_dict)`. `model.py` only implements
+  `compile(*input_types, weights=state_dict)`. A registered port writes none
+  of this: the framework's pipeline model finalizes the config and builds
+  the module. A pipeline model port's `model.py` only implements
   `_create_model_config()` and `_instantiate_module()`.
 
 ### Ops and kernels with no `Tensor` version

@@ -54,8 +54,11 @@ Set `multi_gpu_supported=True` in `arch.py` for a port that shards.
 
 ## The mesh
 
-`model.py` builds the mesh and constructs the module inside
-`default_device(mesh)`, so every weight is created on the mesh. The axis name
+The module is constructed inside `default_device(mesh)`, so every weight is
+created on the mesh. A registered port (`gemma3_modulev3`) gets this from the
+framework, which builds a `("tp",)` mesh over the serving devices. The module
+reads it from `config.mesh` where it needs it. A pipeline model port builds
+the mesh in `model.py`. The axis name
 tells the parallel layers which mesh axis to shard over: `"tp"` for tensor
 parallelism, `"dp"` for data parallelism
 (`max.nn.common_layers.mesh_axis`):
@@ -75,10 +78,15 @@ def _instantiate_module(self, model_config: MyConfig) -> MyModel:
 `Module.to()` moves a module to one device and raises for a multi-device
 mesh, so a sharded port can't build on one device and move afterward.
 
-`gemma3_modulev3/model.py` builds the mesh here. `deepseekV3_modulev3/model.py`
-builds it in `_create_model_config()` and stores it on the config, so modules
-that need the mesh during construction can read `config.mesh`. It picks the
-`"dp"` axis name when `data_parallel_degree > 1`.
+`deepseekV3_modulev3/model.py` builds it in `_create_model_config()` and
+stores it on the config, so modules that need the mesh during construction
+can read `config.mesh`. It picks the `"dp"` axis name when
+`data_parallel_degree > 1`.
+
+The tokens arrive on one device, so their mapping isn't the mesh's. Wrap
+the KV cache inputs with `PagedCacheValues.from_upstream(kv,
+DeviceMapping.replicated(mesh))`, not with `tokens.mapping`, or the port
+breaks on more than one GPU (`gemma3_modulev3/gemma3.py`).
 
 ## Sharded layers
 

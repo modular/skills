@@ -13,14 +13,22 @@
 """Resolve a ModuleV3 donor architecture for ``scaffold.py``.
 
 Builds on the ``ast`` layer in ``max_arch_paths``. :func:`load_donor`
-parses the donor's ``arch.py``, picks its ``SupportedArchitecture`` call,
-and walks the pipeline model's class lineage. Everything else the scaffold
-asks (the carried keywords, the root module, the config class) is a cached
-property of the returned :class:`Donor`, resolved on first use. The
-properties the subclass skeleton needs raise :class:`DonorError` for
-donors it can't subclass, so ``--full-copy`` never touches them.
-:func:`list_modulev3_donors` lists every architecture that
-:func:`load_donor` accepts.
+parses the donor's ``arch.py`` and picks its ``SupportedArchitecture`` call.
+A donor comes in one of two styles:
+
+- **registered**: the call sets ``modules={GraphRole.DECODER: <Module>}``
+  and ``config=``. The framework builds the pipeline model, so the donor
+  has none, and its decoder takes ``DecoderInputs``.
+- **pipeline model**: the call sets ``pipeline_model=`` to a ModuleV3
+  pipeline model, whose class lineage the donor walks to find the root
+  module and the config class.
+
+Everything else the scaffold asks (the carried keywords, the root module,
+the config class) is a cached property of the returned :class:`Donor`,
+resolved on first use. The properties the subclass skeleton needs raise
+:class:`DonorError` for donors it can't subclass, so ``--full-copy`` never
+touches them. :func:`list_donors` lists every architecture that :func:`load_donor`
+accepts.
 """
 
 from __future__ import annotations
@@ -87,10 +95,11 @@ class CarriedName:
     """Where the port imports it from."""
     spans: tuple[tuple[int, int], ...]
     """``(start, end)`` of each occurrence, as offsets into the value text."""
-    role: Literal["model", "config"] | None = None
-    """``model`` or ``config`` when the name is the class the donor passes as
-    ``pipeline_model=`` or ``config=``. The port has its own class for
-    each, so the renderer points these references at the port's classes."""
+    role: Literal["model", "config", "module"] | None = None
+    """``model``, ``config`` or ``module`` when the name is the class the
+    donor passes as ``pipeline_model=``, ``config=`` or its ``DECODER`` in
+    ``modules=``. The port has its own class for each, so the renderer
+    points these references at the port's classes."""
 
 
 @dataclass(frozen=True)
@@ -142,6 +151,24 @@ def _root_module_name(fn: ast.FunctionDef) -> str | None:
     return None
 
 
+def _registered_decoder(call: ast.Call) -> ast.Name | None:
+    """The class ``call`` registers for the ``DECODER`` role, if any.
+
+    Reads ``modules={GraphRole.DECODER: Cls}``. The key can also be the
+    role's string value, since ``GraphRole`` is a ``str`` enum.
+    """
+    value = call_keyword(call, "modules")
+    if not isinstance(value, ast.Dict):
+        return None
+    for key, entry in zip(value.keys, value.values, strict=True):
+        is_decoder = (
+            isinstance(key, ast.Attribute) and key.attr == "DECODER"
+        ) or (isinstance(key, ast.Constant) and key.value == "decoder")
+        if is_decoder and isinstance(entry, ast.Name):
+            return entry
+    return None
+
+
 def _method(node: ast.ClassDef, name: str) -> ast.FunctionDef | None:
     """The method ``name`` defined in the body of ``node``, if any."""
     for stmt in node.body:
@@ -176,15 +203,29 @@ class Donor:
     call: ast.Call
     """The ``SupportedArchitecture`` call the port is built from.
 
-    The first call whose ``pipeline_model=`` resolves to a ModuleV3
-    pipeline model. An ``arch.py`` can register more than one task (text
-    generation and embeddings), and mixing their keywords would register a
-    port that neither call describes.
+    The first call that registers a ``DECODER`` module or whose
+    ``pipeline_model=`` resolves to a ModuleV3 pipeline model. An
+    ``arch.py`` can register more than one task (text generation and
+    embeddings), and mixing their keywords would register a port that
+    neither call describes.
     """
     name: str
     """The architecture name :attr:`call` registers."""
-    lineage: tuple[tuple[ParsedModule, ast.ClassDef], ...]
-    """The ``pipeline_model=`` class, then its bases in the tree."""
+    lineage: tuple[tuple[ParsedModule, ast.ClassDef], ...] = ()
+    """The ``pipeline_model=`` class, then its bases in the tree. Empty for
+    a registered donor."""
+    decoder: tuple[ParsedModule, ast.ClassDef] | None = None
+    """The class a registered donor's ``modules=`` names for ``DECODER``."""
+
+    @property
+    def registered(self) -> bool:
+        """Whether the donor registers its modules by role.
+
+        A registered donor has no pipeline model: the framework builds one
+        from ``modules=`` and ``config=``, and constructs the decoder as
+        ``decoder_cls(config)``.
+        """
+        return self.decoder is not None
 
     def _fail(self, detail: str) -> DonorError:
         return DonorError(
@@ -194,7 +235,16 @@ class Donor:
 
     @property
     def model(self) -> ImportedName:
-        """The pipeline model class and the module that defines it."""
+        """The pipeline model class and the module that defines it.
+
+        Raises:
+            DonorError: The donor is registered, so it has none.
+        """
+        if not self.lineage:
+            raise DonorError(
+                f"{self.slug} registers its modules by role and has no "
+                f"pipeline model"
+            )
         parsed, node = self.lineage[0]
         return ImportedName(parsed.module, node.name)
 
@@ -225,13 +275,16 @@ class Donor:
         assert value.end_lineno is not None and value.end_col_offset is not None
         start = source_offset(source, value.lineno, value.col_offset)
         end = source_offset(source, value.end_lineno, value.end_col_offset)
-        roles: dict[str, Literal["model", "config"]] = {}
+        roles: dict[str, Literal["model", "config", "module"]] = {}
         model = call_keyword(self.call, "pipeline_model")
         config = call_keyword(self.call, "config")
+        decoder = _registered_decoder(self.call)
         if isinstance(model, ast.Name):
             roles[model.id] = "model"
         if isinstance(config, ast.Name):
             roles[config.id] = "config"
+        if decoder is not None:
+            roles[decoder.id] = "module"
 
         spans: dict[str, list[tuple[int, int]]] = {}
         for node in free_names([value]):
@@ -300,6 +353,8 @@ class Donor:
 
     @cached_property
     def _root_module(self) -> tuple[ParsedModule, ast.ClassDef] | None:
+        if self.decoder is not None:
+            return self.decoder
         if self._instantiate is None:
             return None
         parsed, fn = self._instantiate
@@ -326,12 +381,16 @@ class Donor:
 
     @property
     def module(self) -> ImportedName:
-        """The root module class ``_instantiate_module`` builds.
+        """The root module class: a registered donor's ``DECODER``, or the
+        class ``_instantiate_module`` builds.
 
         Raises:
             DonorError: The donor defines no ``_instantiate_module``, or
                 the class it builds can't be found in the tree.
         """
+        if self.decoder is not None:
+            parsed, node = self.decoder
+            return ImportedName(parsed.module, node.name)
         if self._instantiate is None:
             raise self._no_instantiate()
         if self._root_module is None:
@@ -361,16 +420,29 @@ class Donor:
 
     @cached_property
     def config(self) -> ImportedName:
-        """The config class the donor's ``_create_model_config`` builds.
+        """The donor's config class.
 
-        The llama3_modulev3 family builds ``config_class`` (``OlmoModel``
-        sets ``OlmoConfig`` there). Every other donor builds
-        ``model_config_cls``. The nearest class in the lineage that sets
-        either one wins.
+        A registered donor's is its ``config=``. A pipeline model donor's is
+        the class its ``_create_model_config`` builds: the llama3_modulev3
+        family builds ``config_class`` (``OlmoModel`` sets ``OlmoConfig``
+        there), and every other donor builds ``model_config_cls``. The
+        nearest class in the lineage that sets either one wins.
 
         Raises:
-            DonorError: No class in the lineage names a config class.
+            DonorError: The donor names no config class the tree defines.
         """
+        if self.registered:
+            value = call_keyword(self.call, "config")
+            found = (
+                resolve_class(self.root, self.arch, value.id)
+                if isinstance(value, ast.Name)
+                else None
+            )
+            if found is None:
+                raise self._fail(
+                    "could not resolve the config= class its arch.py registers"
+                )
+            return ImportedName(found[0].module, found[1].name)
         for parsed, node in self.lineage:
             assigned = _assigned(node)
             for attr in ("config_class", "model_config_cls"):
@@ -381,6 +453,22 @@ class Donor:
                         return ImportedName(found[0].module, found[1].name)
         raise self._fail(
             f"could not resolve the config class {self.model.name} builds"
+        )
+
+    def config_defines(self, method: str) -> bool:
+        """Whether the config class or one of its bases in the tree
+        defines ``method``.
+
+        Bases outside the architectures tree (in ``max.pipelines.lib``)
+        aren't read.
+        """
+        parsed = parse_arch_module(self.root, self.config.module)
+        node = parsed.class_def(self.config.name) if parsed else None
+        if parsed is None or node is None:
+            return False
+        return any(
+            _method(cls, method) is not None
+            for _, cls in class_lineage(self.root, parsed, node)
         )
 
     @cached_property
@@ -414,9 +502,10 @@ class Donor:
 
     @property
     def builds_config(self) -> bool:
-        """Whether the donor's ``_create_model_config`` returns a config.
+        """Whether the donor's module is built from a config object.
 
-        ``qwen3_embedding_modulev3`` returns ``None`` and builds its module
+        Always true for a registered donor. ``qwen3_embedding_modulev3``'s
+        ``_create_model_config`` returns ``None`` and builds its module
         from ``huggingface_config``, so the port has no config to re-type.
         """
         for _, node in self.lineage:
@@ -436,9 +525,19 @@ def _resolve_donor(donor_dir: Path) -> Donor | None:
         return None
     root = donor_dir.parent
     for call in supported_architecture_calls(arch.tree):
-        model = call_keyword(call, "pipeline_model")
         name = string_keyword(call, "name")
-        if not isinstance(model, ast.Name) or name is None:
+        if name is None:
+            continue
+        decoder = _registered_decoder(call)
+        if decoder is not None:
+            found = resolve_class(root, arch, decoder.id)
+            if found is not None:
+                return Donor(
+                    donor_dir.name, root, arch, call, name, decoder=found
+                )
+            continue
+        model = call_keyword(call, "pipeline_model")
+        if not isinstance(model, ast.Name):
             continue
         found = resolve_class(root, arch, model.id)
         if found is None:
@@ -468,8 +567,8 @@ def load_donor(donor_dir: Path) -> Donor:
     return donor
 
 
-def list_modulev3_donors(root: Path | None = None) -> list[tuple[str, str]]:
-    """Return ``(slug, arch name)`` for every ModuleV3 architecture directory.
+def list_donors(root: Path | None = None) -> list[Donor]:
+    """Return every ModuleV3 architecture directory, resolved as a donor.
 
     A directory qualifies when :func:`load_donor` accepts it. ``root``
     defaults to the installed MAX's architectures directory. Pass a
@@ -486,5 +585,10 @@ def list_modulev3_donors(root: Path | None = None) -> list[tuple[str, str]]:
         # it here would recurse on every rejected directory.
         donor = _resolve_donor(entry)
         if donor is not None:
-            donors.append((entry.name, donor.name))
+            donors.append(donor)
     return donors
+
+
+def list_modulev3_donors(root: Path | None = None) -> list[tuple[str, str]]:
+    """Return ``(slug, arch name)`` for every donor :func:`list_donors` finds."""
+    return [(donor.slug, donor.name) for donor in list_donors(root)]

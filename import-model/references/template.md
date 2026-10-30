@@ -122,7 +122,7 @@ slash). Pass to `--custom-architectures` and `run_oss_gates.py --port-dir` (not
 | `model_config.py`    | yes     | Donor config subclass: rewire                                          |
 | `<slug>.py`          | yes     | **Donor module: wrong until implemented**                              |
 | `weight_adapters.py` | yes     | Delegates to donor renames: rewrite                                    |
-| `model.py`           | yes     | `_instantiate_module()` builds your module. Edit if HF wrapper differs |
+| `model.py`           | some    | Pipeline model donors only: `_instantiate_module()` builds your module |
 
 Don't serve yet: `<slug>.py` still runs the donor module.
 
