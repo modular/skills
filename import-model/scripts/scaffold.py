@@ -13,7 +13,7 @@
 """Generate a custom-arch port skeleton by subclassing a ModuleV3 donor.
 
 Donors are the ModuleV3 architectures under ``max.pipelines.architectures``
-(``olmo3``, ``llama3_modulev3``, ``gemma3_modulev3``, ...). List them with
+(``olmo3``, ``llama3_modulev3``, ``phi3_modulev3``, ...). List them with
 ``list_native_archs.py --donors``.
 
 Default mode (recommended): produces a small subclass skeleton that inherits

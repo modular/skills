@@ -423,13 +423,6 @@ def test_unresolved_keyword_warns() -> None:
             f"{_ARCH_PKG}.llama3_modulev3.llama3.Llama3",
             f"{_ARCH_PKG}.llama3_modulev3.model.Llama3Model",
         ),
-        # Returns the root module from inside default_device(mesh).
-        (
-            "gemma3_modulev3",
-            "Gemma3ForCausalLM",
-            f"{_ARCH_PKG}.gemma3_modulev3.gemma3.Gemma3",
-            f"{_ARCH_PKG}.gemma3_modulev3.model.Gemma3Model",
-        ),
         # Inherits both classes from llama3_modulev3.
         (
             "phi3_modulev3",
@@ -732,7 +725,6 @@ _SNAPSHOT_CASES = [
     ("olmo3", "Olmo3ForCausalLM"),
     ("llama3_modulev3", "Qwen3ForCausalLM"),
     ("phi3_modulev3", "Phi4ForCausalLM"),
-    ("gemma3_modulev3", "Gemma3ForCausalLM"),
 ]
 
 
