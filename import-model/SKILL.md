@@ -31,6 +31,15 @@ module under `F.lazy()` and compiles it with `compile(weights=...)`.
 Single-GPU, tensor-parallel, and expert-parallel models all use ModuleV3.
 Multi-GPU models shard through a `DeviceMesh`.
 
+Before choosing a donor, read the
+[module registration compatibility reference](../migrate-max-v2-to-v3/references/module-registration.md)
+([published copy](https://github.com/modular/skills/blob/main/migrate-max-v2-to-v3/references/module-registration.md)
+if this skill was installed alone). Prefer a registered ModuleV3 donor when its
+task and required features are supported. Document the compatibility gap when
+retaining a custom pipeline. The runtime's encoder and vision support is broader
+than this skill's decoder scaffolding; do not infer generator support from the
+runtime table. Draft/speculator registration has not been added.
+
 The workflow phases are **decide and plan**, **implement**, and **verify**.
 Phase 1 is reading and planning. Phase 2 is the port: implement every divergent
 sublayer in the module. Phase 3 is verification, only after implementation is

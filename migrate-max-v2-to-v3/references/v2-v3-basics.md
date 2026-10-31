@@ -28,6 +28,11 @@ with F.lazy():
 nn_model.compile(*input_types, weights=state_dict)
 ```
 
+These are standalone compilation examples. For architectures using
+[module registration](module-registration.md), the shared runtime constructs,
+loads, compiles and executes the module. Do not copy these steps into an
+architecture-specific pipeline when the registered contract covers the model.
+
 Input types are required in both APIs, and compilation freezes the graph
 (`session.load()` or `compile()`). `compile(weights=...)` raises for a
 parameter with no state-dict entry (`KeyError`) or with a mismatched shape

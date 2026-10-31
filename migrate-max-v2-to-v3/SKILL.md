@@ -29,6 +29,14 @@ compiles with `F.lazy()` + `compile()`. Read
 `forward()` vs `__call__()`, the distributed mapping, and the import
 rules.
 
+For architecture serving integration, read the
+[module registration compatibility reference](references/module-registration.md).
+Prefer supported ModuleV3 role registration without an architecture-specific
+`PipelineModel`. The standalone compilation examples below explain the model
+API; the registration runtime owns those steps for registered architectures.
+Keep a custom pipeline for a documented unsupported task, backend or feature.
+Draft/speculator module registration has not been added.
+
 ## Workflow
 
 ### 1. Confirm the model is V2
@@ -218,8 +226,11 @@ distributed machinery maps onto V3 as follows:
 - **Expert parallelism**: V3 reuses `EPBatchManager`. Its
   `comm_buffers()` returns the communication buffers as `Tensor` values,
   and the MoE layer passes each device's shard to the dispatch calls as a
-  `TensorValue`. The pipeline model sets the manager up in
-  `_init_distributed_runtime()` (`deepseekV3_modulev3/model.py`).
+  `TensorValue`. For registered ModuleV3 decoders, the shared runtime uses
+  `DeploymentConfig` / `ExpertParallelDeploymentConfig` to configure EP;
+  see the [registration reference](references/module-registration.md).
+  `_init_distributed_runtime()` is an existing custom-pipeline integration
+  pattern, not boilerplate to add to a registered architecture.
 
 `gemma3_modulev3/` (TP) and `deepseekV3_modulev3/` (TP, TP + EP, DP + EP)
 show each pattern.
