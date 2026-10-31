@@ -64,7 +64,7 @@ gates on generic kernels).
 | `InlinedFixedVector[T, N]`                       | `Array[T, N]`                                                                    |
 | `Tensor[T]`                                      | Not in stdlib (use SIMD, List, Pointer)                                          |
 | `MutUnsafePointer` / `ImmUnsafePointer`          | `MutPointer` / `ImmPointer`                                                      |
-| `OptionalUnsafePointer`                          | `OptionalPointer`                                                                |
+| `OptionalUnsafePointer`, `OptionalPointer`       | `Optional[Pointer[T, origin]]` (also `Optional[MutPointer[...]]` / `ImmPointer`) |
 | `escaping` closures                              | Unified closures (`def(...) -> T`, captures in `{}`)                             |
 | `capturing`, `@__parameter`, `@__copy_capture`   | Capture list `{imm}` / `{var x}` / `{mut x}`; pass the closure as a value        |
 | `__del__(deinit self)`                           | `__deinit__(deinit self)`                                                        |
@@ -257,11 +257,10 @@ import std.random
 ```
 
 Prelude auto-imports (no import needed): `Int`, `String`, `Bool`, `List`,
-`Dict`, `Optional`, `SIMD`, `Float32`, `Float64`, `UInt8`, `Pointer`,
-`OptionalPointer`, `alloc`, `Span`, `Error`, `DType`, `Writable`, `Writer`,
-`Copyable`, `Movable`, `Equatable`, `Hashable`, `rebind`, `print`, `range`,
-`len`, and more. `Layout` and `dealloc` are **not** in the prelude — import them
-from `std.memory`.
+`Dict`, `Optional`, `SIMD`, `Float32`, `Float64`, `UInt8`, `Pointer`, `alloc`,
+`Span`, `Error`, `DType`, `Writable`, `Writer`, `Copyable`, `Movable`,
+`Equatable`, `Hashable`, `rebind`, `print`, `range`, `len`, and more. `Layout`
+and `dealloc` are **not** in the prelude — import them from `std.memory`.
 
 `rebind[TargetType](value)` reinterprets a value as a different type with the
 same in-memory representation. Useful when compile-time type expressions are
@@ -316,7 +315,7 @@ For-in: `for item in col:` (immutable) / `for ref item in col:` (mutable).
 | Type                          | Use                                                      |
 |-------------------------------|----------------------------------------------------------|
 | `Pointer[T, mut=M, origin=O]` | Safe, non-nullable. Deref with `p[]`.                    |
-| `OptionalPointer[T, origin]`  | Nullable pointer — `Optional[Pointer[...]]`.             |
+| `Optional[Pointer[T, O]]`     | Nullable pointer; `None` is the null niche.              |
 | `Allocation[T]`               | Owning handle returned by `alloc`. Explicitly destroyed. |
 | `Span(list)`                  | Non-owning contiguous view.                              |
 | `OwnedPointer[T]`             | Unique ownership (like Rust `Box`).                      |
@@ -379,8 +378,9 @@ A container that already tracks its own capacity may instead store a
 what `List` does; it is an optimization, not the default shape.
 
 `Pointer` is **non-null by design** — `Bool(p)` is unavailable, not merely
-deprecated. For nullable storage, use `OptionalPointer[T, origin]` (same layout;
-`None` is the null niche).
+deprecated. For nullable storage, use `Optional[Pointer[T, origin]]` (same
+layout; `None` is the null niche). An `_` origin nested inside it, as in
+`Optional[MutPointer[T, _]]`, makes the function generic over the origin.
 
 ## Origin system (not "lifetime")
 
