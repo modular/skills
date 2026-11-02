@@ -296,6 +296,16 @@ style:
   `model.py`.
 - **Pipeline model donor**: `model.py` subclasses the donor's pipeline model,
   and its `_instantiate_module()` builds the port's root module.
+
+The package the scaffold writes imports the architecture you chose. A shipped
+model directory imports its own files and the shared MAX libraries (`max.nn`,
+`max.graph`, `max.pipelines.lib`, `max.pipelines.kv_cache`, `max.serve`), and
+no other model. Copy each module the skeleton imports into the package and
+point the imports at the copies before you change model code; a symbol several
+models need belongs in the shared libraries. The package's `BUILD.bazel` names
+the architecture directories its files import, which is where a surviving edge
+shows.
+
  The slug defaults to the repo name,
 size suffix included (`ernie_4_5_0_3b_pt`). Pass `--slug` to name the
 package after the architecture family. The generated classes are
