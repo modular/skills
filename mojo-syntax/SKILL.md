@@ -63,6 +63,7 @@ gates on generic kernels).
 | `DynamicVector[T]`                               | `List[T]`                                                                        |
 | `InlinedFixedVector[T, N]`                       | `Array[T, N]`                                                                    |
 | `Tensor[T]`                                      | Not in stdlib (use SIMD, List, Pointer)                                          |
+| `UnsafePointer[T, O]`                            | `Pointer[T, O]`                                                                  |
 | `MutUnsafePointer` / `ImmUnsafePointer`          | `MutPointer` / `ImmPointer`                                                      |
 | `OptionalUnsafePointer`, `OptionalPointer`       | `Optional[Pointer[T, origin]]` (also `Optional[MutPointer[...]]` / `ImmPointer`) |
 | `escaping` closures                              | Unified closures (`def(...) -> T`, captures in `{}`)                             |
@@ -321,14 +322,12 @@ For-in: `for item in col:` (immutable) / `for ref item in col:` (mutable).
 | `OwnedPointer[T]`             | Unique ownership (like Rust `Box`).                      |
 | `ArcPointer[T]`               | Reference-counted shared ownership.                      |
 
-`UnsafePointer` is a deprecated alias of `Pointer` — it still compiles and
-warns. The other legacy aliases were **removed** and are hard errors (see the
-table at the top). Most of the pointer API is being renamed alongside
-`UnsafePointer`; those old spellings still compile but warn:
+`UnsafePointer` and the other legacy pointer aliases were **removed** and are
+hard errors (see the table at the top). Most of the pointer API was renamed
+alongside them; those old spellings still compile but warn:
 
 | Deprecated                | Replacement                             |
 |---------------------------|-----------------------------------------|
-| `UnsafePointer[T, O]`     | `Pointer[T, O]`                         |
 | `alloc[T](n)`             | `alloc(Layout[T](length=n))`             |
 | `p.free()`                | `dealloc(allocation^)`                  |
 | `p[i]`                    | `p[unsafe_offset=i]`                    |

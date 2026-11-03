@@ -212,9 +212,9 @@ struct Counter(Defaultable, Movable, Writable):
         self_ptr[].count += 1
         return PythonObject(self_ptr[].count)
 
-    # Auto-downcast alternative: first arg is UnsafePointer[Self, MutAnyOrigin]
+    # Auto-downcast alternative: first arg is Pointer[Self, MutAnyOrigin]
     @staticmethod
-    def get_count(self_ptr: UnsafePointer[Self, MutAnyOrigin]) -> PythonObject:
+    def get_count(self_ptr: Pointer[Self, MutAnyOrigin]) -> PythonObject:
         return PythonObject(self_ptr[].count)
 
 @export
@@ -234,10 +234,10 @@ def PyInit_counter_module() abi("C") -> PythonObject:
 
 ### Method signatures — two patterns
 
-| Pattern         | First parameter                               | Use when                     |
-|-----------------|-----------------------------------------------|------------------------------|
-| Manual downcast | `py_self: PythonObject`                       | Need raw PythonObject access |
-| Auto downcast   | `self_ptr: UnsafePointer[Self, MutAnyOrigin]` | Simpler, direct field access |
+| Pattern         | First parameter                         | Use when                     |
+|-----------------|-----------------------------------------|------------------------------|
+| Manual downcast | `py_self: PythonObject`                 | Need raw PythonObject access |
+| Auto downcast   | `self_ptr: Pointer[Self, MutAnyOrigin]` | Simpler, direct field access |
 
 Both are registered with `.def_method[Type.method]("name")`.
 

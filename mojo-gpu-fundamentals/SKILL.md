@@ -537,7 +537,7 @@ var vec_tensor = tensor.vectorize[1, 4]()  # group elements into SIMD[4]
 ## Reduction pattern
 
 Pointer indexing is `ptr[unsafe_offset=i]` — bare `ptr[i]` is deprecated. Use
-`MutPointer`, not the deprecated `UnsafePointer`.
+`MutPointer`; `UnsafePointer` was removed.
 
 ```mojo
 from std.bit import log2_floor
