@@ -62,17 +62,13 @@ matches no parameter is left out without a warning. That hides these bugs:
 Run the unconsumed-key audit in [state-dict-audit.md](state-dict-audit.md)
 before serving.
 
-## Dtype mismatches raise unless `auto_cast` permits them
+## Cast dtype mismatches outside `float32` and `bfloat16`
 
-A parameter's dtype comes from the module's default dtype
-(`_module_default_dtype()`, the encoding's dtype unless overridden). A
-checkpoint tensor in another dtype fails `compile()` with
-`Loaded tensor (shape=..., dtype=...) not assignable to parameter`. Cast in
-the adapter, or override `_prepare_state_dict()` in `model.py`.
-`ModuleV3PipelineModelWithKVCache.load_model()` calls `compile()` without
-`auto_cast`, so a pipeline port needs one of these casts. When you call
-`compile()` yourself, `compile(auto_cast=True)` casts between `float32` and
-`bfloat16`.
+A pipeline model casts each weight the adapter returns between `float32` and
+`bfloat16` to the parameter's dtype, unless `MODULAR_AUTO_CAST_WEIGHTS=false`.
+Any other mismatch raises
+`Loaded tensor (shape=..., dtype=...) not assignable to parameter`. Cast it in
+the adapter, or in `_prepare_state_dict()` in `model.py`.
 
 ## `numpy.from_dlpack` does not support bfloat16
 
