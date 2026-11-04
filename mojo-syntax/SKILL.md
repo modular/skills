@@ -657,7 +657,27 @@ except err:                               # err is Int
 
 `match` / `comptime match` / `if case` / `while case` are stabilized — see
 [idiomatic-mojo.md §10](references/idiomatic-mojo.md) for the pattern forms
-and when to prefer them over `elif` chains. Async is spelled `__async def`
+and when to prefer them over `elif` chains.
+
+Unwrap `Optional`/`OptionalReg` with a pattern, not `.value()` /
+`.unsafe_value()`:
+
+```mojo
+# WRONG
+if opt:
+    use(opt.value())
+# CORRECT
+if case .Some(x) = opt:
+    use(x)
+var n = opt.or_else(0)                # default
+match opt:                            # None arm does work
+    case .Some(x):
+        use(x)
+    case .None:
+        abort("why it can't be empty")
+```
+
+Exceptions are rare and listed in §10. Async is spelled `__async def`
 and `__await` (bare `async`/`await` still parse but warn that async is
 unstable); support is unfinished and its types are private — do not write
 async Mojo yet.

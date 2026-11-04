@@ -507,21 +507,25 @@ literal identity is spelling-based (`4` vs `0x4` are different keys).
 
 ### `if case` / `while case` / `or_else`
 
-Pick by shape, in order:
+Unwrap an `Optional` or `OptionalReg` with pattern matching or `or_else`,
+not with `.value()` or `.unsafe_value()`, wherever a pattern can express the
+code. Pick by shape, in order:
 
 - **Fallback to a default** → `opt.or_else(default)`. One expression, no
   branch: `var global_rank = my_rank.or_else(Int(ctx.device().id))`. Works on
   runtime and comptime Optionals alike. This replaces the
   `opt.value() if opt else default` ternary and the two-line
-  default-then-overwrite dance.
+  default-then-overwrite dance. `or_else` evaluates `default` eagerly, so keep
+  a branch when computing it is expensive or raises.
 - **Branch on presence** (use the payload only when it exists, other
   control flow otherwise) → `if case .Some(x) = opt:`. The pattern is the
   guard AND the binding.
 - **Dispatch on the payload's shape** (multiple cases, or the None side
   carries its own logic) → `match opt: case .Some(x): ... case .None: ...`.
-- Presence guaranteed by construction (an enclosing condition already
-  proves it, and absence is a caller bug)? Keep `.value()` — it aborts
-  loudly instead of silently skipping work.
+- **Presence guaranteed by construction** (absence is a caller bug) → still
+  `match`, with `case .None: abort("<why it can't be empty>")`, so the
+  invariant is named where it's relied on.
+
 ```mojo
 # WRONG: guard-then-unwrap
 var global_rank = my_rank.value() if my_rank else Int(ctx.device().id)
@@ -549,8 +553,10 @@ if not stored or Int(stored.value()) != Int(record):
 if case .Some(w) = sink_weight:
     sink_logit = w
 
-if case .Some(s) = get_global_or_null(key):
-    if Int(s) != Int(record):
+match get_global_or_null(key):         # absent OR mismatched still raises
+    case .Some(s) if Int(s) == Int(record):
+        use(s)
+    case _:
         raise Error("missing")
 
 while case .Some(item) = get_next():   # consume while it yields
