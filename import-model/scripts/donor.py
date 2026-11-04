@@ -344,6 +344,34 @@ class Donor:
         return None
 
     @cached_property
+    def weight_rules(self) -> ImportedName | None:
+        """The function that returns the donor's weight rules, and its module.
+
+        Set only when the donor loads its checkpoint through rules
+        (``use_weight_rules=True``). Reads ``weight_rules=`` and follows the
+        import that brought the referenced name into scope.
+        """
+        enabled = call_keyword(self.call, "use_weight_rules")
+        if not (isinstance(enabled, ast.Constant) and enabled.value is True):
+            return None
+        value = call_keyword(self.call, "weight_rules")
+        if isinstance(value, ast.Attribute) and isinstance(
+            value.value, ast.Name
+        ):
+            # e.g. weight_adapters.olmo3_weight_rules
+            imported = self.arch.imports.get(value.value.id)
+            if imported:
+                return ImportedName(
+                    f"{imported.module}.{imported.name}", value.attr
+                )
+        elif isinstance(value, ast.Name):
+            imported = self.arch.imports.get(value.id)
+            if imported is None and self.arch.defines(value.id):
+                imported = ImportedName(self.arch.module, value.id)
+            return imported
+        return None
+
+    @cached_property
     def _instantiate(self) -> tuple[ParsedModule, ast.FunctionDef] | None:
         for parsed, node in self.lineage:
             method = _method(node, "_instantiate_module")

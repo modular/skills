@@ -151,6 +151,8 @@ PORT_KEYWORDS = frozenset(
         "modules",
         "config",
         "weight_adapters",
+        "weight_rules",
+        "use_weight_rules",
         "default_weights_format",
         "default_encoding",
         "supported_encodings",
@@ -305,13 +307,17 @@ def render_arch(
     hf_id: str,
     donor_keywords: Mapping[str, DonorKeyword],
     registered: bool = False,
+    rules: bool = False,
 ) -> tuple[str, list[str]]:
     """Render arch.py from every keyword the donor's arch.py sets.
 
     ``donor_keywords`` is :attr:`Donor.keywords`. Keywords in
     ``PORT_KEYWORDS`` are skipped. With ``registered``, the port registers
     its root module for the ``DECODER`` role, the way a registered donor
-    does, instead of a pipeline model. Returns the file and its warnings.
+    does, instead of a pipeline model. With ``rules``, the port loads its
+    checkpoint through the weight rules its own weight_adapters.py returns,
+    the way a donor that loads through rules does, instead of a safetensors
+    adapter. Returns the file and its warnings.
     """
     keywords = _render_keywords(
         donor_keywords, slug=slug, short=short, registered=registered
@@ -329,6 +335,18 @@ def render_arch(
         )
         root = f"    pipeline_model={short}Model,\n"
     imports = _render_imports(keywords.imports, registered=registered)
+    if rules:
+        weights = (
+            "    weight_rules=weight_adapters.weight_rules,\n"
+            "    use_weight_rules=True,\n"
+        )
+    else:
+        weights = (
+            "    weight_adapters={\n"
+            "        WeightsFormat.safetensors:"
+            " weight_adapters.convert_safetensor_state_dict,\n"
+            "    },\n"
+        )
     return (
         f'''{_GENERATED_HEADER}"""Registers ``{arch_name}`` with {classes}."""
 
@@ -343,10 +361,7 @@ from . import weight_adapters
     default_encoding="bfloat16",
     supported_encodings={{"bfloat16"}},
 {root}    default_weights_format=WeightsFormat.safetensors,
-    weight_adapters={{
-        WeightsFormat.safetensors: weight_adapters.convert_safetensor_state_dict,
-    }},
-    config={short}Config,
+{weights}    config={short}Config,
 {keywords.text})
 ''',
         keywords.warnings,
@@ -778,9 +793,19 @@ class {short}({alias}):
 
 
 def render_weight_adapter(
-    *, donor_slug: str, donor_adapter: ImportedName | None
+    *,
+    donor_slug: str,
+    donor_adapter: ImportedName | None,
+    donor_rules: ImportedName | None = None,
 ) -> tuple[str, list[str]]:
-    """Render weight_adapters.py. Returns the file and its warnings."""
+    """Render weight_adapters.py. Returns the file and its warnings.
+
+    A donor that loads its checkpoint through weight rules gets a port-local
+    ``weight_rules`` that returns the donor's, so renames added there take
+    effect.
+    """
+    if donor_rules is not None:
+        return _render_weight_rules(donor_slug, donor_rules), []
     if donor_adapter is None:
         warning = (
             f"could not find a safetensors adapter in the {donor_slug} "
@@ -853,6 +878,36 @@ def convert_safetensor_state_dict(
     )
 
 
+def _render_weight_rules(donor_slug: str, donor_rules: ImportedName) -> str:
+    module, fn = donor_rules
+    import_line = f"from {module} import {fn} as _donor_rules"
+    if len(import_line) > 80:
+        import_line = f"from {module} import (\n    {fn} as _donor_rules,\n)"
+    return f'''{_GENERATED_HEADER}"""Weight rules. Delegates to the {donor_slug} donor's rules.
+
+The donor's rules map HF keys onto the donor module's parameter names. When
+your checkpoint's keys diverge from the donor's, add ``WeightRenaming`` or
+``Ignore`` rules here (see references/rename-weights.md). Rules rename, drop
+and relabel weights but don't cast them: ``compile()`` rejects a tensor whose
+dtype differs from its parameter's (see references/pitfalls-weights.md).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+{import_line}
+from max.pipelines.lib import WeightRule
+from transformers import PretrainedConfig
+
+
+def weight_rules(huggingface_config: PretrainedConfig) -> Sequence[WeightRule]:
+    """Returns the rules that name the checkpoint's weights for the port."""
+    # TODO(port): if HF keys diverge from the donor's, add rules after them.
+    return (*_donor_rules(huggingface_config),)
+'''
+
+
 @dataclass
 class Skeleton:
     """The rendered subclass skeleton."""
@@ -879,9 +934,12 @@ def render_skeleton(
         hf_id=hf_id,
         donor_keywords=donor.keywords,
         registered=donor.registered,
+        rules=donor.weight_rules is not None,
     )
     adapter, adapter_warnings = render_weight_adapter(
-        donor_slug=donor.slug, donor_adapter=donor.safetensors_adapter
+        donor_slug=donor.slug,
+        donor_adapter=donor.safetensors_adapter,
+        donor_rules=donor.weight_rules,
     )
     files = {
         "__init__.py": render_init(slug),

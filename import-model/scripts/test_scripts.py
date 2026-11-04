@@ -299,6 +299,7 @@ def test_arch_carries_donor_keywords(
     arch_name = (
         donor.name.removesuffix("_ModuleV3") if own_name else "Qwen3ForCausalLM"
     )
+    rules = donor.weight_rules is not None
     rendered, _ = templates.render_arch(
         slug="p",
         arch_name=arch_name,
@@ -306,14 +307,19 @@ def test_arch_carries_donor_keywords(
         hf_id="org/m",
         donor_keywords=donor.keywords,
         registered=donor.registered,
+        rules=rules,
     )
     got = _call_keywords(rendered)
     port = templates.PORT_KEYWORDS
     assert set(got) - port == set(donor.keywords) - port
-    # A port registers either a pipeline model or its modules, never both.
-    unused = "pipeline_model" if donor.registered else "modules"
-    assert port - {unused} <= set(got)
-    assert unused not in got
+    # A port registers either a pipeline model or its modules, and loads
+    # through either a safetensors adapter or weight rules, never both.
+    unused = {"pipeline_model" if donor.registered else "modules"}
+    unused |= (
+        {"weight_adapters"} if rules else {"weight_rules", "use_weight_rules"}
+    )
+    assert port - unused <= set(got)
+    assert not unused & set(got)
     assert len(got) == len(set(got))
     _lint({"arch.py": rendered}, "p", tmp_path)
 

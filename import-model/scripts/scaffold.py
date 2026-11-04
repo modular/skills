@@ -22,7 +22,8 @@ the donor's behavior and exposes the deltas a port typically overrides:
 - ``model_config.py``: the donor's config plus the port's novel HF fields.
 - ``<slug>.py``: the port's root ``max.nn.Module``, a subclass
   of the donor's root module. Override ``__init__`` and ``forward()``.
-- ``weight_adapters.py``: delegates to the donor's safetensors adapter.
+- ``weight_adapters.py``: delegates to the donor's safetensors adapter, or
+  to its weight rules when the donor loads through rules.
 - ``arch.py``: the registration, with the donor's serving settings.
 
 A donor that registers its modules by role (``gemma3_modulev3``) gives a
