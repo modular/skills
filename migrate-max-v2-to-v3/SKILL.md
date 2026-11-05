@@ -85,7 +85,7 @@ from max.nn.norm import RMSNorm
 from max.nn.sequential import ModuleList
 
 # KEEP (TensorValue-free, shared with V2):
-from max.nn.legacy.kv_cache import KVCacheParams, KVCacheParamInterface
+from max.nn.kv_cache import KVCacheParams, KVCacheParamInterface
 from max.nn.attention_mask import MHAMaskVariant
 ```
 

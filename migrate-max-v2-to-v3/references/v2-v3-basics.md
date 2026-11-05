@@ -193,7 +193,7 @@ from max.nn.sequential import ModuleList
 The KV cache splits across packages: `PagedCacheValues` comes from
 `max.nn.common_layers.kv_cache`, while `KVCacheParams`,
 `KVCacheParamInterface`, and `MultiKVCacheParams` stay in
-`max.nn.legacy.kv_cache`. `max.nn.legacy` also exports a `PagedCacheValues` of its
+`max.nn.kv_cache`. `max.nn.legacy` also exports a `PagedCacheValues` of its
 own, the same name resolving to the V2 input type, which lacks
 `from_upstream()`. The `max.experimental` path carries the V3 type.
 
@@ -216,7 +216,7 @@ needs a second look.
 ```python
 from max.nn.legacy.comm.ep import EPCommBuffers
 from max.nn.rope_scaling import DeepseekYarnRopeScalingParams
-from max.nn.legacy.kv_cache import KVCacheInputs, KVCacheParamInterface
+from max.nn.kv_cache import KVCacheInputs, KVCacheParamInterface
 ```
 
 ## When there is no Tensor equivalent
