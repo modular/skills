@@ -86,7 +86,7 @@ from max.nn.sequential import ModuleList
 
 # KEEP (TensorValue-free, shared with V2):
 from max.nn.legacy.kv_cache import KVCacheParams, KVCacheParamInterface
-from max.nn.legacy.attention import MHAMaskVariant
+from max.nn.attention_mask import MHAMaskVariant
 ```
 
 - `TensorType` and `DeviceRef` stay from `max.graph`. They define input

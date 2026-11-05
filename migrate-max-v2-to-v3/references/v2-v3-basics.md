@@ -215,7 +215,7 @@ needs a second look.
 
 ```python
 from max.nn.legacy.comm.ep import EPCommBuffers
-from max.nn.legacy.rotary_embedding import DeepseekYarnRopeScalingParams
+from max.nn.rope_scaling import DeepseekYarnRopeScalingParams
 from max.nn.legacy.kv_cache import KVCacheInputs, KVCacheParamInterface
 ```
 
