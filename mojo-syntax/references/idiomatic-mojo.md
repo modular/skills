@@ -619,7 +619,7 @@ match point:
 - `Optional[T]` instead of sentinel defaults.
 - One generic entry point (`is[NVIDIA_GPU]()`) over a growing set of
   `is_xyz()` methods.
-- Take `StringSlice`/`Span`/`Iterable` rather than owning types.
+- Take `StringSpan`/`Span`/`Iterable` rather than owning types.
 - Never accept an argument and silently ignore it on some targets.
 - Keep advanced, low-level functions out of module exports.
 - For `call_location()`, use a thin `@inline(.always)` wrapper that forwards

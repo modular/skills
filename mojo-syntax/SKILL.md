@@ -57,7 +57,7 @@ gates on generic kernels).
 | `from sys import ...`                            | `from std.sys import ...`                                                        |
 | `from os import ...`                             | `from std.os import ...`                                                         |
 | `from pathlib import ...`                        | `from std.pathlib import ...`                                                    |
-| `s[i]`                                           | `s[byte=i]` — returns `StringSlice`; wrap in `String()` if needed                |
+| `s[i]`                                           | `s[byte=i]` — returns `StringSpan`; wrap in `String()` if needed                 |
 | `s[0:10]`, `s[:5]`                               | No slice syntax on String — use `s.codepoint_slices()` or Python FFI             |
 | `constrained(cond, msg)`                         | `comptime assert cond, msg`                                                      |
 | `DynamicVector[T]`                               | `List[T]`                                                                        |
@@ -589,8 +589,8 @@ auto-imported and need no import statement.
 Byte indexing requires keyword syntax: `s[byte=idx]` (not `s[idx]`). `len(s)` is
 deprecated on `String` — use `s.byte_length()` or `s.count_codepoints()`.
 
-`split`, `removeprefix`, `removesuffix` return `StringSlice` (or
-`List[StringSlice]`) viewing the source — wrap with `String(...)` to
+`split`, `removeprefix`, `removesuffix` return `StringSpan` (or
+`List[StringSpan]`) viewing the source — wrap with `String(...)` to
 materialize an owned `String`.
 
 ### String indexing (common error)
@@ -601,7 +601,7 @@ var ch = s[0]
 var sub = s[0:10]
 
 # CORRECT — byte-level access
-var ch = s[byte=0]              # returns StringSlice
+var ch = s[byte=0]              # returns StringSpan
 var ch_str = String(s[byte=0])  # if you need a String
 
 # CORRECT — iterate codepoints for truncation
@@ -628,7 +628,7 @@ for cp_slice in s.codepoint_slices():
 for cp in s.codepoints():
     print(Int(cp))      # Codepoint is a Unicode scalar value type
 
-# StaticString = StringSlice with static origin (zero-allocation)
+# StaticString = StringSpan with static origin (zero-allocation)
 comptime GREETING: StaticString = "Hello, World"
 
 # t-strings for interpolation (lazy, type-safe)
