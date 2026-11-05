@@ -183,7 +183,7 @@ from max.tensor.sharding import (
 
 from max.nn import Module
 from max.nn.embedding import Embedding
-from max.nn.common_layers.functional_kernels import ...
+from max.nn.kernels import ...
 from max.nn.common_layers.kv_cache import PagedCacheValues
 from max.nn.common_layers.linear import ColumnParallelLinear
 from max.nn.norm import RMSNorm
@@ -324,9 +324,9 @@ needs no device.
 ### Everything else
 
 - A missing op used across architectures goes into
-  `max/nn/common_layers/functional_kernels.py` in the
+  `max/nn/kernels/` in the
   installed `max` package. In the MAX source repository, the file lives
-  at `max/python/max/nn/common_layers/functional_kernels.py`.
+  at `max/python/max/nn/kernels/`.
 - A missing layer gets a ModuleV3 version, added to `common_layers` or
   to the architecture's own `<arch>/layers/<layer_name>.py`.
 - Other NN components: make the existing class handle both `Tensor` and
@@ -337,7 +337,7 @@ needs no device.
   from max.tensor.sharding import DeviceMapping
   from max.tensor import Tensor
   from max.graph import DeviceRef, TensorValue
-  from max.nn.legacy.data_parallelism import split_batch_replicated
+  from max.nn._graph_ops.data_parallel import split_batch_replicated
 
 
   def split_replicated_batch(

@@ -52,7 +52,7 @@ the prompt.
 For models where `num_key_value_heads < num_attention_heads`, K and V
 must be repeated `num_attention_heads / num_key_value_heads` times before
 the attention dot product. The ragged attention kernels in
-`max.nn.common_layers.functional_kernels`
+`max.nn.kernels`
 (`flash_attention_ragged`) handle this from the KV head count in
 `kv_params`. Custom attention math outside those kernels must repeat K and
 V itself.
