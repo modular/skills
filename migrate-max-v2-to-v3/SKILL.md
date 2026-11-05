@@ -260,3 +260,16 @@ function over `TensorValue` into one over `Tensor`. The options, and the
 wrapper pattern for bridging a per-device `TensorValue` helper into a
 `Tensor` API, are in
 [references/v2-v3-basics.md](references/v2-v3-basics.md).
+
+The wrapper rules, which a reviewer enforces:
+
+- Wrap **one** graph op or kernel per `F.functional` call. A body that calls
+  two ops hides its intermediate placements from the sharding rules, and one
+  unplaceable step silently turns the whole body into per-device code.
+- `TensorValue` appears only in a wrapper's body. A helper that takes or
+  returns one for any other reason becomes a function of `Tensor`s.
+- Code that must read each device's own rows — a replica's row offsets —
+  goes in `F.call_on_mesh(fn, mesh, out_specs=...)`. For one raw graph op,
+  a rule-less `F.functional(ops.x)` is the shorthand; claim its `Unknown`
+  result with `rebind_mapping()`. An `Unknown()` operand needs a rule row
+  that names it.

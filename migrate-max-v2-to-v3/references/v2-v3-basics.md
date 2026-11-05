@@ -221,21 +221,107 @@ from max.nn.legacy.kv_cache import KVCacheInputs, KVCacheParamInterface
 
 ## When there is no Tensor equivalent
 
-- Any graph op or kernel: wrap it with `F.functional()`. It turns a
-  function over `TensorValue` into one over `Tensor`, and it runs the
-  function on each device's shard for a distributed input:
+### One op per `F.functional`
 
-  ```python
-  from max import functional as F
-  from max.graph import TensorValue, ops
+`F.functional()` turns a function over `TensorValue` into one over `Tensor`.
+Wrap a single graph op or kernel per call:
 
-
-  def _last_tokens(h: TensorValue, offsets: TensorValue) -> TensorValue:
-      return ops.gather(h, offsets[1:] - 1, axis=0)
+```python
+from max import functional as F
+from max.graph import TensorValue, ops
 
 
-  last_tokens = F.functional(_last_tokens)
-  ```
+def _gather(h: TensorValue, indices: TensorValue) -> TensorValue:
+    return ops.gather(h, indices, axis=0)
+
+
+gather_rows = F.functional(_gather)
+```
+
+- Arithmetic, slicing and reshaping stay on `Tensor` outside the wrapper,
+  where the sharding rules see each op.
+- A body that calls two ops hides its intermediate placements. One step the
+  rules cannot place turns the whole body into per-device code, and neither
+  review nor the IR check can see which step did it. When a computation of
+  several ops really must run on one device, `F.call_on_mesh()` is its home,
+  not a wider `F.functional` body.
+- `TensorValue` appears only in such a body, and in compile input types. A
+  helper that takes or returns `TensorValue` for any other reason becomes a
+  function of `Tensor`s over `F.*` ops; do not carry a V2 helper's
+  `TensorValue` signature into V3 code.
+
+### Code that runs on each device's own shard
+
+Sometimes a computation needs each device's own rows instead of the global
+tensor: a data-parallel replica's row offsets address only that replica's
+batch. `F.call_on_mesh()` is the way to say that. It runs a function once per
+device, hands it that device's shard and that device's `PerShard` entries,
+and joins the results under `out_specs`, which claims how they relate:
+
+```python
+def gather_last_tokens(h: Tensor, input_row_offsets: Tensor) -> Tensor:
+    """Gathers each request's last row from the ragged batch, per shard.
+
+    ``input_row_offsets`` is rebased into each replica's local frame under
+    data parallelism, so its values only address that replica's own rows.
+    """
+
+    def on_each_device(h: Tensor, offsets: Tensor) -> Tensor:
+        # Single-device tensors here: no sharding rule runs.
+        return F.gather(h, offsets[1:] - 1, axis=0)
+
+    return F.call_on_mesh(on_each_device, h.mesh, out_specs=h.mapping)(
+        h, input_row_offsets
+    )
+```
+
+- `fn` sees single-device `Tensor`s, so every op inside it takes the
+  single-device path: no rule is consulted, nothing reshards, and index
+  arithmetic on a sharded operand stays in its own frame. That is why the
+  whole computation belongs inside `fn`, not only the op that reads the
+  rows.
+- `out_specs` claims the result's placement (`h.mapping` here). Without it
+  the result is `Unknown`; claim it with `Tensor.rebind_mapping()`.
+- No `is_distributed` branch: `call_on_mesh` runs `fn` once on a one-device
+  mesh, so one code path covers one device and many.
+- Module code, per-device constants and several ops are all fine in `fn`:
+  `deepseekV41_modulev3/layers/block.py`'s `_on_each_device` is the
+  reference. Its `mesh.num_devices == 1` early return is only a fast path.
+- `transfer_to()` cannot move a tensor to or from `Unknown()`; only
+  `rebind_mapping()` changes that placement, and it moves no data. The claim
+  is trusted: check it against what `fn` actually reads.
+
+For one raw graph op, the shorthand is a rule-less `F.functional(ops.x)`,
+which is the same per-device call without the `Tensor` plumbing:
+
+```python
+_per_device_gather = F.functional(ops.gather)  # no rule: each device's rows
+last = _per_device_gather(h, indices, axis=0).rebind_mapping(h.mapping)
+```
+
+Its result is `Unknown`, and any argument computed **outside** it follows the
+rules again: on a data-parallel batch `offsets[1:]` is a slice of a sharded
+tensor, which raises under the default `auto_reshard(mode="raise")` and
+all-gathers into global indices inside `mode="silent"`. Wrap the whole
+computation in `call_on_mesh` instead.
+
+An op that must accept a per-device operand can also get an `Unknown` row in
+its own rule, in its own PR:
+
+```python
+# max/tensor/sharding/rules/shape.py, gather_rule
+rows.append(AxisAssignment((Unknown(), R), (Unknown(),)))
+rows.append(AxisAssignment((Unknown(), Unknown()), (Unknown(),)))
+```
+
+`F.gather`, `slice_tensor` and the elementwise rules name no `Unknown` row
+today, so an `Unknown` operand on them raises `ShardingError: ... no
+feasible plan`. A row like the above matches only when the operands are
+already placed that way, so it changes no call that works today; cover it
+with a test under `max/tests/integration/tensor/distributed/rules/`, which
+needs no device.
+
+### Everything else
 
 - A missing op used across architectures goes into
   `max/nn/common_layers/functional_kernels.py` in the
