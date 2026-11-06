@@ -499,7 +499,7 @@ var x = values[i][T].copy()          # or `^` to transfer
 | `@staticmethod`                                  | Static method                           |
 | `@deprecated("msg")`                             | Deprecation warning                     |
 | `@doc_hidden`                                    | Hide from docs                          |
-| `@explicit_destroy("msg")` (traits only)         | Linear trait; structs: `not Deinitable` |
+| `@explicit_destroy("msg")` (deprecated)          | Only structs support custom destruction messages right now |
 
 ## Contextual member references — prefer `.member`
 
