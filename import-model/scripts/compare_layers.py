@@ -258,7 +258,7 @@ def probe_multi_position(
                 print(f"{pos:>6}  (skip: past seq_len {seq_len})")
             continue
         prefix = tok.decode(
-            input_ids[0, :pos].tolist(), skip_special_tokens=True
+            ids[0, :pos].tolist(), skip_special_tokens=True
         )
         if not prefix.strip():
             # A BOS-only prefix decodes to no text: the server would answer
