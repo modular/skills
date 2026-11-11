@@ -7,7 +7,6 @@ Find your symptom below, then load the one category file it points to.
 - [`arch.py::name` must match `architectures[0]`
   exactly](pitfalls-config.md#archpyname-must-match-architectures0-exactly)
 - [`default_encoding` should match the Hub checkpoint dtype](pitfalls-config.md#default_encoding-should-match-the-hub-checkpoint-dtype)
-- [Memory estimator sizes weights from the checkpoint files](pitfalls-config.md#memory-estimator-sizes-weights-from-the-checkpoint-files)
 - [`gelu` and `gelu_new` are different GELUs](pitfalls-config.md#gelu-and-gelu_new-are-different-gelus)
 - [Import and config API traps](pitfalls-config.md#import-and-config-api-traps)
 

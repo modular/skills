@@ -6,7 +6,6 @@ describes these pitfalls:
 
 - `arch.py::name` must match `architectures[0]` exactly
 - `default_encoding` should match the Hub checkpoint dtype
-- Memory estimator sizes weights from the checkpoint files
 - `gelu` and `gelu_new` are different GELUs
 - Import and config API traps
 
@@ -30,21 +29,6 @@ The Hub config's `torch_dtype` field tells you what dtype the released
 weights are in. Setting `default_encoding="float32"` for a BF16-only
 checkpoint forces a conversion step that may not exist, or wastes memory.
 Match what the model ships in.
-
-## Memory estimator sizes weights from the checkpoint files
-
-MAX's `MemoryEstimator` sizes the weights from the checkpoint's file sizes on
-disk (`MAXModelConfig.weights_size()`), *before*
-`weight_adapters.convert_safetensor_state_dict` runs. If the released
-checkpoint ships FP32 tensors but your adapter casts them to BF16 at load
-time, the estimator still counts the FP32 bytes. A 25 GiB BF16 model
-pre-estimates at ~50 GiB and trips `--device-memory-utilization 0.5`, even
-though the BF16 weights fit on the device.
-
-**Workaround:** raise `--device-memory-utilization` (0.7–0.9) so the
-FP32-sized estimate fits. The fraction bounds the weights and the KV cache
-together. Raise it when the weights estimate doesn't fit, and lower it when
-the server fails to allocate the KV cache at startup.
 
 ## `gelu` and `gelu_new` are different GELUs
 

@@ -68,7 +68,7 @@ def _render_section(
     first, then the ``from`` imports, each sorted by module. Names from the
     same module merge into one statement. Sorting the whole section matters
     because donor names can live anywhere (for example
-    ``max.pipelines.architectures.deepseekV3.memory_planner``), and splicing
+    ``max.pipelines.architectures.deepseekV3.batch_processor``), and splicing
     one at a fixed position fails I001.
     """
     lines = sorted(set(plain), key=lambda line: line.split()[1].lower())
@@ -167,18 +167,6 @@ _REGISTERED_CARRIED_HEADER = (
     "    # Carried verbatim from the donor's arch.py. The port's decoder\n"
     "    # subclasses the donor's, so its serving settings apply.\n"
 )
-_PLANNER_NOTE = (
-    "    # KV-cache models need a planner. Without one, MAX budgets no"
-    " activation\n"
-    "    # memory. Inherited from the donor. Override it if the port"
-    " diverges.\n"
-)
-_PLANNER_ABSENT = (
-    "    # TODO(port): the donor sets no memory_planner, which is\n"
-    "    # correct only for architectures that do their own memory\n"
-    "    # estimation (diffusion, embedding). If this port uses a\n"
-    "    # KV cache, add memory_planner=PagedMemoryPlanner.\n"
-)
 
 
 def _port_bindings(slug: str, short: str) -> dict[str, ImportedName | None]:
@@ -270,8 +258,8 @@ def _render_keywords(
 ) -> _Keywords:
     """Render every donor keyword outside ``PORT_KEYWORDS``, in donor order.
 
-    A donor without ``memory_planner`` gets a TODO in its place, and so does
-    a keyword whose value can't be traced, with a warning.
+    A keyword whose value can't be traced gets a TODO in its place, with a
+    warning.
     """
     lines = []
     imports: list[tuple[str, str]] = []
@@ -291,10 +279,7 @@ def _render_keywords(
             continue
         expr, needed = _carry(value, slug=slug, short=short)
         imports.extend(needed)
-        note = _PLANNER_NOTE if keyword == "memory_planner" else ""
-        lines.append(f"{note}    {keyword}={expr},\n")
-    if "memory_planner" not in donor_keywords:
-        lines.append(_PLANNER_ABSENT)
+        lines.append(f"    {keyword}={expr},\n")
     header = _REGISTERED_CARRIED_HEADER if registered else _CARRIED_HEADER
     return _Keywords(header + "".join(lines), imports, warnings)
 

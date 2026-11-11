@@ -72,7 +72,7 @@ Required serve flags by tier:
 
 - Tiers 1–3 (generation): no flags beyond ``--custom-architectures``. If
   startup fails allocating the KV cache, lower
-  ``--device-memory-utilization`` (default ``0.9``).
+  ``--device-memory-utilization`` (default ``0.95``).
 - Tiers 4–5 (loglikelihood): pass ``--enable-echo``. The
   OpenAI-compat ``/v1/completions`` endpoint with ``echo=true,
   logprobs=N`` requires the model to be compiled with echo support.

@@ -241,47 +241,6 @@ def test_native_mapping_reads_every_registration() -> None:
 
 
 @needs_tree
-@pytest.mark.parametrize(
-    ("slug", "root_name", "expected"),
-    [
-        ("llama3_modulev3", "PagedMemoryPlanner", "PagedMemoryPlanner"),
-        # Call form: the reservation and its arguments must survive.
-        ("gemma3multimodal_modulev3", "PagedMemoryPlanner", "with_activation"),
-        # Per-architecture planner imported from another donor package.
-        (
-            "deepseekV3_modulev3",
-            "DeepseekV3ModuleV3MemoryPlanner",
-            "DeepseekV3",
-        ),
-    ],
-)
-def test_planner_resolution(slug: str, root_name: str, expected: str) -> None:
-    """A donor's ``memory_planner`` carries over with its arguments.
-
-    Eight architectures configure their planner with the Call form
-    ``with_activation_reservation(...)``. A resolver that only understood
-    bare names dropped the reservation without a warning.
-    """
-    planner = _donor(slug).keywords["memory_planner"]
-    assert planner.expr is not None and expected in planner.expr
-    assert [carried.name for carried in planner.names] == [root_name]
-
-
-@needs_tree
-def test_absent_planner_is_not_invented() -> None:
-    """A donor without a planner (an embedding model) gets a TODO only."""
-    keywords = _donor("mpnet_modulev3").keywords
-    assert "memory_planner" not in keywords
-    rendered, _ = _render_arch(keywords, "X")
-    # The TODO text names the keyword, so count only non-comment lines.
-    assert not [
-        line
-        for line in rendered.splitlines()
-        if "memory_planner=" in line and not line.lstrip().startswith("#")
-    ]
-
-
-@needs_tree
 @pytest.mark.parametrize("own_name", [False, True], ids=["Qwen3", "own"])
 @pytest.mark.parametrize("slug", [slug for slug, _ in _DONORS])
 def test_arch_carries_donor_keywords(
@@ -536,7 +495,6 @@ def test_scaffold_registered_gemma3(arch_name: str, tmp_path: Path) -> None:
         f'name="{arch_name}"',
         f"modules={{GraphRole.DECODER: {short}}},",
         f"config={short}Config,",
-        "memory_planner=PagedMemoryPlanner",
         "multi_gpu_supported=True",
         "supports_overlap_scheduler=False",
         "supports_device_graph_capture=False",
@@ -1300,7 +1258,6 @@ def test_scaffold_smoke(hf_id: str, tmp_path: Path) -> None:
     )
     assert "Scaffold created" in out
     port = tmp_path / "test_port"
-    assert "memory_planner=PagedMemoryPlanner" in (port / "arch.py").read_text()
     _run("run_oss_gates.py", hf_id, "--port-dir", str(port))
     report = _run("check_port.py", hf_id, "--port-dir", str(port))
     assert "missing (compile raises KeyError): 0" in report

@@ -253,8 +253,6 @@ class Donor:
         """Every keyword :attr:`call` sets, resolved, in source order.
 
         A keyword the donor leaves at its default is absent from the result.
-        For ``memory_planner`` that is correct for architectures that do
-        their own memory estimation (diffusion, embedding).
         """
         return {
             kw.arg: self._resolve(kw.value)
@@ -268,8 +266,8 @@ class Donor:
         Follows the import that brought each referenced name into scope, or
         the donor's own ``arch.py`` for a module-level constant. The text is
         preserved verbatim, so configured values such as
-        ``PagedMemoryPlanner.with_activation_reservation(0)`` carry their
-        arguments across to the port.
+        ``functools.partial(Parser, strict=True)`` carry their arguments
+        across to the port.
         """
         source = self.arch.source
         assert value.end_lineno is not None and value.end_col_offset is not None

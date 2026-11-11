@@ -314,13 +314,11 @@ with Hugging Face's own classes, so qualify them when you read the two side
 by side.
 
 - `arch.py`: registration shell carrying every `SupportedArchitecture`
-  keyword the donor sets verbatim (`memory_planner=`, `batching=`,
-  `reasoning_parser=`, ...), including a configured planner such as
-  `PagedMemoryPlanner.with_activation_reservation(...)`. The scaffold writes
-  `name=`, the repo IDs, the encodings, the weights format, and the port's
-  own classes and adapter (verify `name=`, encoding, and `memory_planner=`).
-  When the donor declares no planner, the field is left out with a TODO. A
-  value the scaffold can't trace to an import becomes a TODO and a warning.
+  keyword the donor sets verbatim (`batching=`, `reasoning_parser=`, ...).
+  The scaffold writes `name=`, the repo IDs, the encodings, the weights
+  format, and the port's own classes and adapter (verify `name=` and
+  encoding). A value the scaffold can't trace to an import becomes a TODO
+  and a warning.
 - `model_config.py`: donor config subclass with a hook for the fields the
   donor doesn't read (must be rewired during implementation). A registered
   donor's port overrides `finalize()`, which the framework calls with the
@@ -398,13 +396,9 @@ In order:
      with Llama)
    - Final norm and LM head (tie, logit scale, softcap)
 4. **`arch.py`**: confirm that `name=` matches `architectures[0]` and
-   `default_encoding` matches Hub `torch_dtype`. Keep the scaffolded
-   `memory_planner=` (copied from the donor). Without it, MAX budgets no
-   activation memory for the KV cache and skips `max_batch_size` inference.
-   If scaffold left a `memory_planner` TODO, the donor had none. Resolve it
-   before serving: KV-cache ports need `memory_planner=PagedMemoryPlanner`,
-   and only architectures doing their own memory estimation (diffusion,
-   embedding) should leave it unset. The scaffold also carries the donor's
+   `default_encoding` matches Hub `torch_dtype`. No memory estimate is
+   declared: the model worker measures peak memory during startup warmups
+   and sizes the KV cache from it. The scaffold carries the donor's
    `batching=`. Change it only if the port's batching differs from the
    donor's.
 5. **`model.py`** (pipeline model donors only): `_instantiate_module()`
@@ -501,8 +495,9 @@ Then serve:
 pixi run max serve --model-path <HF_MODEL_ID> --custom-architectures <port_dir>
 ```
 
-`max serve` reserves `--device-memory-utilization` (default `0.9`) of the
-device's memory for the KV cache. If startup fails allocating it (out of
+`max serve` uses `--device-memory-utilization` (default `0.95`) of the
+device's memory: the weights and the activation peak measured at startup,
+and the KV cache gets the rest. If startup fails allocating it (out of
 memory, or a buffer larger than the device allows), lower the fraction, for
 example `--device-memory-utilization 0.6`. Lower it too when the HF
 reference runs on the same machine as the server, where the two compete for
