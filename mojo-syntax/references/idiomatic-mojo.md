@@ -415,7 +415,7 @@ of the struct's `__eq__`, plus exhaustive-match diagnostics. Contract members:
 |Member|Contract|
 |---|---|
 |`_enum_case_names`|`ParameterList.of[...].values`: constant names in case-index order.|
-|`_enum_case_types`|`TypeList` values in the same order; `NoneType` for payload-less cases.|
+|`_enum_case_types`|`TypeList` values in the same order: a `Tuple` of each case's payload types, `Tuple[]` for payload-less cases.|
 |`_get_enum_discriminant(self) -> Int`|Map the backing value to its case index.|
 |`_unsafe_get_enum_payload[id: Int](ref self)`|Return `ref[self] TypeList[Trait=AnyType, Self._enum_case_types]()[id]`; payload-less enums `comptime assert False`.|
 
@@ -447,7 +447,7 @@ struct Kind(EnumLike, TrivialRegisterPassable):
     comptime _enum_case_names = ParameterList.of[
         "FIRST".value, "SECOND".value
     ].values
-    comptime _enum_case_types = TypeList.splat[2, NoneType].values
+    comptime _enum_case_types = TypeList.splat[2, Tuple[]].values
 
     def _get_enum_discriminant(self) -> Int:
         return Int(self.value)
