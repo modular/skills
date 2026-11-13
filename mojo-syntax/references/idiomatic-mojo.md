@@ -505,7 +505,7 @@ The coverage model (what counts as "covered"):
 payload duplicates and nested open-type literals aren't diagnosed, and
 literal identity is spelling-based (`4` vs `0x4` are different keys).
 
-### `if case` / `while case` / `or_else`
+### `if case` / `__guard case` / `while case` / `or_else`
 
 Unwrap an `Optional` or `OptionalReg` with pattern matching or `or_else`,
 not with `.value()` or `.unsafe_value()`, wherever a pattern can express the
@@ -517,14 +517,21 @@ code. Pick by shape, in order:
   `opt.value() if opt else default` ternary and the two-line
   default-then-overwrite dance. `or_else` evaluates `default` eagerly, so keep
   a branch when computing it is expensive or raises.
-- **Branch on presence** (use the payload only when it exists, other
-  control flow otherwise) → `if case .Some(x) = opt:`. The pattern is the
-  guard AND the binding.
-- **Dispatch on the payload's shape** (multiple cases, or the None side
-  carries its own logic) → `match opt: case .Some(x): ... case .None: ...`.
-- **Presence guaranteed by construction** (absence is a caller bug) → still
-  `match`, with `case .None: abort("<why it can't be empty>")`, so the
-  invariant is named where it's relied on.
+- **The empty case leaves the scope** (`return`, `raise`, `continue`,
+  `break`, `abort()`) and the rest of the block uses the payload →
+  `__guard case .Some(x) = opt else: <exit>`. The binding stays in scope
+  after the statement, so the normal path stays at the outer indentation.
+  Prefer it over a `match` whose `.None` arm only exits, over
+  `if case ... else: <exit>`, and over `if not opt: <exit>` followed by
+  `.value()`.
+- **Branch on presence** (use the payload only when it exists, then carry on
+  either way) → `if case .Some(x) = opt:`. The pattern is the guard AND the
+  binding.
+- **Dispatch on the payload's shape** (multiple cases, or both sides do work
+  and continue) → `match opt: case .Some(x): ... case .None: ...`.
+- **Presence guaranteed by construction** (absence is a caller bug) →
+  `__guard case .Some(x) = opt else: abort("<why it can't be empty>")`, so
+  the invariant is named where it's relied on.
 
 ```mojo
 # WRONG: guard-then-unwrap
@@ -563,12 +570,36 @@ while case .Some(item) = get_next():   # consume while it yields
     process(item)
 ```
 
+For the early-exit shape, `__guard case` keeps the normal path flat:
+
+```mojo
+# WRONG: the rest of the function nests under .Some
+match _memmem(haystack, needle):
+    case .Some(loc):
+        return Int(loc) - Int(self.unsafe_ptr())
+    case .None:
+        return -1
+
+# WRONG: check, then unwrap
+var ptr = handle.get_symbol[NoneType](cstr_name=name)
+if not ptr:
+    raise Error(t"symbol not found: {name}")
+return _DLCallable(ptr.unsafe_value())
+
+# CORRECT
+__guard case .Some(loc) = _memmem(haystack, needle) else:
+    return -1
+return Int(loc) - Int(self.unsafe_ptr())
+```
+
 `if case` composes with the else-arm discipline: an unwrap in one branch of
 a larger conditional chain stays readable as
 `if case .Some(x) = opt: ... elif <other cond>: ...`. Prefer it even when
 the guard is `comptime` (`comptime if case .Some(fn) = wrapper:`).
 
-Both compose with `comptime` — parameters bind as parameters:
+All of these compose with `comptime` — parameters bind as parameters, and
+`comptime __guard case .Some(v) = param else:` keeps `v` bound for the rest
+of the block:
 
 ```mojo
 comptime if case == Int = T:
@@ -598,6 +629,9 @@ match point:
   snapshots the subject once.
 - `elif` chains over unrelated expressions stay `if`/`elif`. Parameter
   subjects take `comptime match`.
+- A `match` on an `Optional` whose `.None` arm only exits,
+  `if case ... else: <exit>`, and `if not opt: <exit>` followed by
+  `.value()` all become `__guard case`.
 - A bare name in a pattern binds; if a comparison was meant, use `== name`
   (enum cases excepted: `case Color.red:` / `case .red:`).
 - Guarded cases don't count toward exhaustiveness; missing *coverage* warns

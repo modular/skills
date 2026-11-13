@@ -660,27 +660,25 @@ except err:                               # err is Int
 and when to prefer them over `elif` chains.
 
 Unwrap `Optional`/`OptionalReg` with a pattern, not `.value()` /
-`.unsafe_value()`:
+`.unsafe_value()`. [§10](references/idiomatic-mojo.md) says which form fits:
 
 ```mojo
 # WRONG
-if opt:
-    use(opt.value())
+if not opt:
+    return -1
+use(opt.value())
 # CORRECT
-if case .Some(x) = opt:
+__guard case .Some(x) = opt else:     # else must exit
+    return -1
+use(x)                                # x stays bound to the end of the block
+if case .Some(x) = opt:               # use it only if present
     use(x)
 var n = opt.or_else(0)                # default
-match opt:                            # None arm does work
-    case .Some(x):
-        use(x)
-    case .None:
-        abort("why it can't be empty")
 ```
 
-Exceptions are rare and listed in §10. Async is spelled `__async def`
-and `__await` (bare `async`/`await` still parse but warn that async is
-unstable); support is unfinished and its types are private — do not write
-async Mojo yet.
+Async is spelled `__async def` and `__await` (bare `async`/`await` still
+parse but warn that async is unstable); support is unfinished and its types
+are private — do not write async Mojo yet.
 
 ## Function types and closures
 
