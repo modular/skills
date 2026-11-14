@@ -592,6 +592,21 @@ __guard case .Some(loc) = _memmem(haystack, needle) else:
 return Int(loc) - Int(self.unsafe_ptr())
 ```
 
+Destructure a tuple payload in the pattern, not in the body:
+
+```mojo
+# WRONG: bind the tuple, then unpack it
+var pair_opt = lookup(key) # Optional[Tuple[Int, List[Int]]]
+if case .Some(pair) = pair_opt:
+    var index: Int
+    index, ref nums = pair
+    use(index, nums)
+
+# CORRECT
+if case .Some((index, nums)) = lookup(key):
+    use(index, nums)
+```
+
 `if case` composes with the else-arm discipline: an unwrap in one branch of
 a larger conditional chain stays readable as
 `if case .Some(x) = opt: ... elif <other cond>: ...`. Prefer it even when
@@ -632,6 +647,8 @@ match point:
 - A `match` on an `Optional` whose `.None` arm only exits,
   `if case ... else: <exit>`, and `if not opt: <exit>` followed by
   `.value()` all become `__guard case`.
+- A `.Some(t)` binding whose tuple is unpacked in the body becomes
+  `.Some((a, b))`.
 - A bare name in a pattern binds; if a comparison was meant, use `== name`
   (enum cases excepted: `case Color.red:` / `case .red:`).
 - Guarded cases don't count toward exhaustiveness; missing *coverage* warns
