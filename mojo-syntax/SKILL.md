@@ -31,7 +31,8 @@ the diff against [idiomatic-mojo.md](references/idiomatic-mojo.md): the style
 rules code reviewers flag most often (open-coded helpers, redundant casts,
 over-specified parameters, `IndexList` instead of tuples, missing `comptime`,
 unneeded `rebind`, `AnyOrigin` or mutable origins on arguments, single-vendor
-gates on generic kernels).
+gates on generic kernels). Then check it against every section of the
+[Mojo style guide](https://github.com/modular/modular/blob/main/Mojo/docs/contributing/stdlib/stdlib-code-style.md).
 
 ## Removed syntax — DO NOT generate these
 

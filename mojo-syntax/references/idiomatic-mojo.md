@@ -3,7 +3,9 @@
 The main `mojo-syntax` skill makes code compile; these rules make it pass
 review. Before submitting or reviewing Mojo, scan the diff for every WRONG
 pattern below. The first five sections are the ones reviewers flag most
-often in agent-written code.
+often in agent-written code. These rules add to the
+[Mojo style guide](https://github.com/modular/modular/blob/main/Mojo/docs/contributing/stdlib/stdlib-code-style.md);
+apply both.
 
 ## 1. Use existing helpers; never open-code them
 
