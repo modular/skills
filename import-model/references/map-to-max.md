@@ -34,7 +34,7 @@ Map the `config.json` findings to a starting arch:
 | `DeepseekV2ForCausalLM`, MLA on one GPU         | `deepseekV2_modulev3`                                                 |
 | `DeepseekV3ForCausalLM`, MLA + MoE across GPUs  | `deepseekV3_modulev3`                                                 |
 | Hybrid attention and Mamba layers               | `nemotron_h_modulev3`                                                 |
-| Vision-language (image + text)                  | `gemma3multimodal_modulev3`, `idefics3_modulev3`, `kimik2_5_modulev3` |
+| Vision-language (image + text)                  | `gemma3_modulev3`, `idefics3_modulev3`, `kimik2_5_modulev3`           |
 | `*ForMaskedLM` / sentence-embedding encoder     | `mpnet_modulev3`, `qwen3_embedding_modulev3`                          |
 
 `gemma3_modulev3` puts QK-norm per head (Qwen3's layout). `olmo3` puts it

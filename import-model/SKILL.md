@@ -238,7 +238,7 @@ Heuristic HF-signal → donor slug hints are in
 | MLA (latent KV), single GPU                         | `deepseekV2_modulev3`                            |
 | MLA + MoE, multi-GPU (TP, DP + EP)                  | `deepseekV3_modulev3`                            |
 | Hybrid attention and state-space layers             | `nemotron_h_modulev3`                            |
-| Vision-language (scaffold with `--full-copy`)       | `gemma3multimodal_modulev3`, `kimik2_5_modulev3` |
+| Vision-language (scaffold with `--full-copy`)       | `gemma3_modulev3`, `kimik2_5_modulev3`           |
 
 Open the chosen arch's directory and read its root module file and its
 `layers/`. For a registered donor, the root module is the class `arch.py`
