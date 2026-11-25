@@ -507,7 +507,7 @@ The coverage model (what counts as "covered"):
 payload duplicates and nested open-type literals aren't diagnosed, and
 literal identity is spelling-based (`4` vs `0x4` are different keys).
 
-### `if case` / `__guard case` / `while case` / `or_else`
+### `if case` / `guard case` / `while case` / `or_else`
 
 Unwrap an `Optional` or `OptionalReg` with pattern matching or `or_else`,
 not with `.value()` or `.unsafe_value()`, wherever a pattern can express the
@@ -521,7 +521,7 @@ code. Pick by shape, in order:
   a branch when computing it is expensive or raises.
 - **The empty case leaves the scope** (`return`, `raise`, `continue`,
   `break`, `abort()`) and the rest of the block uses the payload →
-  `__guard case .Some(x) = opt else: <exit>`. The binding stays in scope
+  `guard case .Some(x) = opt else: <exit>`. The binding stays in scope
   after the statement, so the normal path stays at the outer indentation.
   Prefer it over a `match` whose `.None` arm only exits, over
   `if case ... else: <exit>`, and over `if not opt: <exit>` followed by
@@ -532,7 +532,7 @@ code. Pick by shape, in order:
 - **Dispatch on the payload's shape** (multiple cases, or both sides do work
   and continue) → `match opt: case .Some(x): ... case .None: ...`.
 - **Presence guaranteed by construction** (absence is a caller bug) →
-  `__guard case .Some(x) = opt else: abort("<why it can't be empty>")`, so
+  `guard case .Some(x) = opt else: abort("<why it can't be empty>")`, so
   the invariant is named where it's relied on.
 
 ```mojo
@@ -572,7 +572,7 @@ while case .Some(item) = get_next():   # consume while it yields
     process(item)
 ```
 
-For the early-exit shape, `__guard case` keeps the normal path flat:
+For the early-exit shape, `guard case` keeps the normal path flat:
 
 ```mojo
 # WRONG: the rest of the function nests under .Some
@@ -589,7 +589,7 @@ if not ptr:
 return _DLCallable(ptr.unsafe_value())
 
 # CORRECT
-__guard case .Some(loc) = _memmem(haystack, needle) else:
+guard case .Some(loc) = _memmem(haystack, needle) else:
     return -1
 return Int(loc) - Int(self.unsafe_ptr())
 ```
@@ -615,7 +615,7 @@ a larger conditional chain stays readable as
 the guard is `comptime` (`comptime if case .Some(fn) = wrapper:`).
 
 All of these compose with `comptime` — parameters bind as parameters, and
-`comptime __guard case .Some(v) = param else:` keeps `v` bound for the rest
+`comptime guard case .Some(v) = param else:` keeps `v` bound for the rest
 of the block:
 
 ```mojo
@@ -648,7 +648,7 @@ match point:
   subjects take `comptime match`.
 - A `match` on an `Optional` whose `.None` arm only exits,
   `if case ... else: <exit>`, and `if not opt: <exit>` followed by
-  `.value()` all become `__guard case`.
+  `.value()` all become `guard case`.
 - A `.Some(t)` binding whose tuple is unpacked in the body becomes
   `.Some((a, b))`.
 - A bare name in a pattern binds; if a comparison was meant, use `== name`

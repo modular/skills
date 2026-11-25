@@ -669,7 +669,7 @@ if not opt:
     return -1
 use(opt.value())
 # CORRECT
-__guard case .Some(x) = opt else:     # else must exit
+guard case .Some(x) = opt else:     # else must exit
     return -1
 use(x)                                # x stays bound to the end of the block
 if case .Some(x) = opt:               # use it only if present
