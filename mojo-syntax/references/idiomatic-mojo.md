@@ -348,7 +348,9 @@ match x:
     case (0, var x) | (var x, 1):# or-pattern: same names bound on every
     case .Some(0):               #   alternative (payload-less cases bind none)
     case .Some(ref v):           # ref into a mutable payload writes back
-    case var y:                  # owned copy (mutable); bare name is imm
+    case var y:                  # owned, mutable: an unguarded binding moves
+                                 #   an rvalue subject, else copies; bare name
+                                 #   is imm
     case 0 as n:                 # bind the whole subject after testing it
     case _:                      # wildcard; irrefutable, closes the match
 ```
@@ -361,7 +363,7 @@ where the grammar requires it. Compiler-verified matrix:
 | Arm                                   | Compares alone? | Notes |
 |---------------------------------------|-----------------|-------|
 | `case 1:` / `case "a":` / `case True:` | yes | `== 1:` **warns "redundant"** |
-| `case -1:` (negative literal)          | no — error      | write `case == -1:` |
+| `case -1:` / `case -0.5:` (negative literal) | yes | `== -1:` **warns "redundant"** |
 | `case {1, 2}:` (initializer list)      | no — error      | name the subject fields, such as `case {x=1, y=2}:` |
 | `case .Some(0):` / `case DType.int32:` / `case _Ops.BARRIER.value:` | yes | enum tags and any dotted path compare; no `==` |
 | `case LOAD_DRAM:` (bare name)          | **binds**       | even a comptime alias — silently shadows, later arms warn unreachable; write `case == LOAD_DRAM:` |

@@ -468,10 +468,16 @@ for key in my_dict:
 var nums = List[Int](1, 2, 3)
 
 # CORRECT — bracket literals
-var nums = [1, 2, 3]                              # List[Int]
+var nums: List = [1, 2, 3]                        # List[Int]; element type inferred
 var nums: List[Float32] = [1.0, 2.0, 3.0]         # explicit element type
+var fixed = [1, 2, 3]                             # Array[Int, 3]: fixed size, no append
+var evens = [x * 2 for x in range(3)]             # comprehension: List[Int]
 var scores = {"alice": 95, "bob": 87}              # Dict[String, Int]
 ```
+
+An unannotated list literal is an `Array`, and an unannotated `[]` is an
+error. A `List` parameter or return type gives the same context as an
+annotation.
 
 `List[T]` rejects negative indices at compile time — use `lst[len(lst) - 1]`,
 not `lst[-1]`. (Library types may still support it.)
@@ -500,7 +506,7 @@ var x = values[i][T].copy()          # or `^` to transfer
 | `@staticmethod`                                  | Static method                           |
 | `@deprecated("msg")`                             | Deprecation warning                     |
 | `@doc_hidden`                                    | Hide from docs                          |
-| `@explicit_destroy("msg")` (deprecated)          | Only structs support custom destruction messages right now |
+| `@explicit_destroy("msg")` (deprecated)          | Add `else "msg"` to the `Deinitable` conformance: `not Deinitable else "msg"`, `Deinitable where cond else "msg"` |
 
 ## Contextual member references — prefer `.member`
 
@@ -683,9 +689,9 @@ are private — do not write async Mojo yet.
 
 ## Function types and closures
 
-No lambda. Closures use bare `def` with a capture list in `{}` after the arg
-list. `escaping`, `capturing`, `@__parameter`, and `@__copy_capture` are
-removed:
+A closure is a nested `def` or a one-expression `lambda`, with any capture
+list in `{}` after the arg list. `escaping`, `capturing`, `@__parameter`, and
+`@__copy_capture` are removed:
 
 ```mojo
 comptime MyFn = def(Int) -> None                  # closure trait
@@ -696,12 +702,18 @@ def closure(i: Int) {mut count, imm ptr, var x}:  # captures: mut/imm/var
     count += ptr[i] + x^                          # `^` at use site, not in `{}`
 
 vectorize[simd_width](size, closure)
+
+var inc = lambda (x: Int) -> Int: x + 1           # body is one expression
+filter(items, lambda (x: Int) {lo} -> Bool: x > lo)  # captures before `->`
 ```
+
+A `lambda` without `-> T` returns `None`, so a body with a value is an error.
 
 `imm` is default. `var x` is owned — transfer with `x^` at the use site.
 A closure with captures is a runtime value, so pass it as an argument
-(`f(my_closure)`). Only a `thin` function (no captures) can be a
-compile-time parameter.
+(`f(my_closure)`). Only a `thin` function or lambda can be a compile-time
+parameter: no captures, and no capture list other than `{}`. A written `{imm}`
+or `{mut}` makes a lambda capturing even when it uses no outer variable.
 
 ## Type hierarchy
 
